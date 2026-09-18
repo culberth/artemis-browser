@@ -87,3 +87,45 @@ Read this at the start of every session. Consolidate when it gets repetitive.
   -e ARTEMIS_USER=artemis -e ARTEMIS_PASSWORD=artemis apache/activemq-artemis:latest-alpine`, then
   seed with the bundled CLI (`artemis producer --destination queue://orders --message-count 5`).
   Readiness log line is "Server is now active", not "live".
+
+- **2026-09-18 — `java-formatter-maven-plugin` rewrites sources during the build.** It is bound to
+  run on every `mvn` invocation and restyles Java to Allman braces with its own wrapping. Write code
+  normally and let it run; don't hand-match the style, and don't be surprised when `git status` shows
+  source files modified after a build you thought was read-only.
+
+- **2026-09-18 — Phase 1 shipped.** PR #1 merged into `Milestone001`; work continues on `phase02`.
+
+- **2026-09-18 — Two filter dialects exist, and mixing them fails SILENTLY.** Management operations
+  (`countMessages`, `browse`) take Artemis *core* filter syntax: `AMQPriority`, `AMQTimestamp`,
+  `AMQDurable`, `AMQSize`, `AMQUserID`, custom properties by bare name. A JMS-style
+  `JMSPriority = 4` is not an error — it returns 0 matches on a queue where all 5 messages are
+  priority 4. JMS selector syntax belongs only on `session.createBrowser(queue, selector)`.
+  Whatever the UI exposes must name its dialect, or users get confidently wrong answers.
+
+- **2026-09-18 — `broker.listQueues(filterJson, page, pageSize)` returns a JSON String**
+  `{"data":[...],"count":N}`, every value quoted as a string (`"messageCount":"0"`). One call gets
+  every queue with all counters — far cheaper than per-queue attribute reads. Field is
+  `messagesAcked`, not `messagesAcknowledged`. Filter arg is JSON:
+  `{"field":"","operation":"","value":""}`.
+
+- **2026-09-18 — `queue.<n>.browse(page, pageSize[, filter])` returns a Map** keyed by the literal
+  string `javax.management.openmbean.CompositeData` whose value is a `CompositeData[]`. Each entry
+  carries messageID, userID, address, durable, expiration, largeMessage, persistentSize, priority,
+  protocol, redelivered, timestamp, type, `text` (for text bodies) and `PropertiesText`. Verified
+  non-destructive: counts and delivering/acked were unchanged after browsing.
+
+- **2026-09-18 — Phase 2 architecture: two read paths, deliberately.** The paged/filtered LIST uses
+  management `browse` (server-side paging, so a 50k DLQ does not stream through the client, plus
+  `countMessages` for accurate filtered totals). The single-message DETAIL uses a JMS `QueueBrowser`
+  with a `JMSMessageID` selector, because management browse only exposes `text` bodies and we want
+  full fidelity for bytes/map messages. Both are non-destructive.
+
+- **2026-09-18 — Spring Boot 4.1.1 ships Jackson 3.** Package root is `tools.jackson.*`
+  (`tools.jackson.databind.ObjectMapper`, `tools.jackson.core.type.TypeReference`), not
+  `com.fasterxml.jackson.*`. It arrives transitively via `spring-boot-starter-jackson`, so no extra
+  dependency is needed — only the right import. The 2.x `jackson-annotations` is also on the
+  classpath, which makes a wrong import look plausible until it fails to resolve.
+
+- **2026-09-18 — Phase 2 shipped**: overview page with auto-refresh, server-side pagination,
+  core-syntax filtering, per-message detail, and saved connections (host/port/username, never
+  passwords — a test asserts the file contains no "password" string). 52 tests.

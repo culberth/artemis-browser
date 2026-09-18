@@ -5,47 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>artemis-browser &mdash; queues</title>
     <link rel="stylesheet" th:href="@{/app.css}">
+    <meta th:if="${refresh > 0}" http-equiv="refresh" th:content="${refresh}">
 </head>
 <body>
 <div class="wrap">
     <div class="panel topbar">
         <div>
             <h1 style="margin:0">artemis-browser</h1>
-            <span class="conn" th:if="${connection}" th:text="${connection.describe()}">user@host:port</span>
+            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
         </div>
-        <form method="post" th:action="@{/disconnect}">
-            <button class="secondary" type="submit">Disconnect</button>
-        </form>
+        <div class="field-row">
+            <a class="tab" th:href="@{/overview}">Overview</a>
+            <a class="tab" th:href="@{/queues}">Browse</a>
+            <form method="post" th:action="@{/disconnect}">
+                <button class="secondary" type="submit">Disconnect</button>
+            </form>
+        </div>
     </div>
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
-    <form class="panel field-row" method="get" th:action="@{/queues}">
-        <div style="min-width:18rem;flex:1">
-            <label for="name">Queue</label>
-            <select id="name" name="name" style="width:100%" onchange="this.form.submit()">
-                <option value="">&mdash; select a queue &mdash;</option>
-                <option th:each="q : ${queueNames}"
-                        th:value="${q}"
-                        th:text="${q}"
-                        th:selected="${q == selected}">queue</option>
-            </select>
+    <form class="panel" method="get" th:action="@{/queues}">
+        <div class="field-row">
+            <div style="min-width:16rem;flex:1">
+                <label for="name">Queue</label>
+                <select id="name" name="name" style="width:100%" onchange="this.form.submit()">
+                    <option value="">&mdash; select a queue &mdash;</option>
+                    <option th:each="q : ${queueNames}"
+                            th:value="${q}"
+                            th:text="${q}"
+                            th:selected="${q == selected}">queue</option>
+                </select>
+            </div>
+            <div>
+                <label for="size">Page size</label>
+                <select id="size" name="size" onchange="this.form.submit()">
+                    <option th:each="n : ${sizeChoices}"
+                            th:value="${n}" th:text="${n}"
+                            th:selected="${n == size}">50</option>
+                </select>
+            </div>
+            <div>
+                <label for="refresh">Auto-refresh</label>
+                <select id="refresh" name="refresh" onchange="this.form.submit()">
+                    <option th:each="r : ${refreshChoices}"
+                            th:value="${r}"
+                            th:text="${r == 0} ? 'Off' : ('Every ' + ${r} + 's')"
+                            th:selected="${r == refresh}">Off</option>
+                </select>
+            </div>
         </div>
-        <div>
-            <label for="limit">Show</label>
-            <select id="limit" name="limit" onchange="this.form.submit()">
-                <option th:each="n : ${limitChoices}"
-                        th:value="${n}"
-                        th:text="${n} + ' messages'"
-                        th:selected="${n == limit}">50</option>
-            </select>
+
+        <div class="field-row" style="margin-top:.85rem">
+            <div style="flex:1;min-width:20rem">
+                <label for="filter">Filter</label>
+                <input id="filter" type="text" name="filter" th:value="${filter}" style="width:100%"
+                       placeholder="AMQPriority &gt; 4    |    myProperty = 'abc'" autocomplete="off">
+            </div>
+            <div>
+                <button type="submit">Apply</button>
+            </div>
+            <p class="note" style="width:100%">
+                Filters use Artemis <strong>core</strong> syntax &mdash; <code>AMQPriority</code>,
+                <code>AMQTimestamp</code>, <code>AMQDurable</code>, <code>AMQSize</code>, or a
+                property by its bare name. JMS selector names such as <code>JMSPriority</code> are
+                not rejected; they simply match nothing.
+            </p>
         </div>
-        <div>
-            <button type="submit">Refresh</button>
-        </div>
-        <p class="note" style="width:100%" th:if="${queueNames != null and queueNames.isEmpty()}">
-            This broker reported no queues.
-        </p>
     </form>
 
     <div class="panel" th:if="${stats}">
@@ -69,55 +95,62 @@
         </p>
     </div>
 
-    <div class="panel" th:if="${browse}">
-        <h2>
-            Messages
-            <span class="muted" th:if="${browse.more()}"
-                  th:text="'(first ' + ${browse.limit()} + ' of more)'">(more)</span>
-        </h2>
+    <div class="panel" th:if="${messages}">
+        <div class="topbar" style="margin-bottom:.75rem">
+            <h2 style="margin:0">
+                Messages
+                <span class="muted" th:if="${messages.totalMatching() > 0}"
+                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()}">range</span>
+                <span class="muted" th:if="${!#strings.isEmpty(messages.filter())}">(filtered)</span>
+            </h2>
+            <div class="pager" th:if="${messages.totalPages() > 1}">
+                <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"
+                   th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=1)}">&laquo; First</a>
+                <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"
+                   th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.previousPage()})}">&lsaquo; Prev</a>
+                <span class="muted" th:text="'Page ' + ${messages.page()} + ' of ' + ${messages.totalPages()}">Page 1 of 1</span>
+                <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
+                   th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.nextPage()})}">Next &rsaquo;</a>
+                <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
+                   th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.totalPages()})}">Last &raquo;</a>
+            </div>
+        </div>
 
-        <p class="muted" th:if="${browse.messages().isEmpty()}">This queue is empty.</p>
+        <p class="muted" th:if="${messages.messages().isEmpty()}">
+            <span th:if="${#strings.isEmpty(messages.filter())}">This queue is empty.</span>
+            <span th:unless="${#strings.isEmpty(messages.filter())}">No messages match that filter.</span>
+        </p>
 
-        <div class="table-scroll" th:unless="${browse.messages().isEmpty()}">
+        <div class="table-scroll" th:unless="${messages.messages().isEmpty()}">
             <table>
                 <thead>
                 <tr>
-                    <th>#</th>
+                    <th class="num">#</th>
                     <th>Type</th>
                     <th>Timestamp</th>
-                    <th>Priority</th>
+                    <th class="num">Priority</th>
+                    <th class="num">Size</th>
                     <th>Flags</th>
-                    <th>Message ID</th>
-                    <th>Body &amp; properties</th>
+                    <th>Body</th>
+                    <th></th>
                 </tr>
                 </thead>
                 <tbody>
-                <tr th:each="m : ${browse.messages()}">
-                    <td class="num" th:text="${m.position()}">1</td>
+                <tr th:each="m : ${messages.messages()}">
+                    <td class="num muted" th:text="${m.position()}">1</td>
                     <td th:text="${m.type()}">Text</td>
                     <td th:text="${m.timestampText()}">&mdash;</td>
                     <td class="num" th:text="${m.priority()}">4</td>
+                    <td class="num muted" th:text="${m.sizeBytes()}">0</td>
                     <td>
                         <span class="badge" th:if="${m.persistent()}">persistent</span>
                         <span class="badge" th:if="${m.redelivered()}">redelivered</span>
-                        <span class="badge" th:if="${m.groupId()}" th:text="'group ' + ${m.groupId()}">group</span>
                     </td>
-                    <td><code th:text="${m.messageId()}">ID</code></td>
-                    <td>
-                        <details>
-                            <summary>Body</summary>
-                            <pre th:text="${m.bodyPreview()}">body</pre>
-                            <p class="note" th:if="${m.bodyTruncated()}">Body truncated for display.</p>
-                        </details>
-                        <details th:if="${!m.properties().isEmpty()}">
-                            <summary th:text="'Properties (' + ${m.properties().size()} + ')'">Properties</summary>
-                            <table>
-                                <tr th:each="p : ${m.properties()}">
-                                    <td><code th:text="${p.key}">key</code></td>
-                                    <td th:text="${p.value}">value</td>
-                                </tr>
-                            </table>
-                        </details>
+                    <td class="body-cell">
+                        <code th:text="${m.bodyPreview()}">body</code><span th:if="${m.bodyTruncated()}" class="muted">&hellip;</span>
+                    </td>
+                    <td style="width:1%;white-space:nowrap">
+                        <a class="badge-link" th:href="@{/message(name=${selected},id=${m.messageId()})}">Open</a>
                     </td>
                 </tr>
                 </tbody>

@@ -8,6 +8,8 @@ public class ConnectForm
     private String port = "61616";
     private String username = "";
     private String password = "";
+    private String label = "";
+    private boolean remember;
 
     public String getHost()
     {
@@ -47,5 +49,25 @@ public class ConnectForm
     public void setPassword(String password)
     {
         this.password = password;
+    }
+
+    public String getLabel()
+    {
+        return label;
+    }
+
+    public void setLabel(String label)
+    {
+        this.label = label;
+    }
+
+    public boolean isRemember()
+    {
+        return remember;
+    }
+
+    public void setRemember(boolean remember)
+    {
+        this.remember = remember;
     }
 }
