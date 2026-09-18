@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; connect</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <h1>artemis-browser</h1>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel" method="post" th:action="@{/connect}" th:object="${form}">
+        <h2>Connect to a broker</h2>
+        <div class="grid">
+            <div>
+                <label for="host">Host</label>
+                <input id="host" type="text" th:field="*{host}" autocomplete="off" required>
+            </div>
+            <div>
+                <label for="port">Port</label>
+                <input id="port" type="number" min="1" max="65535" th:field="*{port}" required>
+            </div>
+            <div>
+                <label for="username">Username</label>
+                <input id="username" type="text" th:field="*{username}" autocomplete="off" required>
+            </div>
+            <div>
+                <label for="password">Password</label>
+                <input id="password" type="password" th:field="*{password}" autocomplete="off">
+            </div>
+        </div>
+        <p style="margin-top:1rem">
+            <button type="submit">Connect</button>
+        </p>
+        <p class="note">
+            The password is used to open the connection and then discarded &mdash; it is not stored
+            in your session and never sent back to the browser. Reconnecting means retyping it.
+        </p>
+    </form>
+</div>
+</body>
+</html>

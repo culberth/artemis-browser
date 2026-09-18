@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; queues</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div class="panel topbar">
+        <div>
+            <h1 style="margin:0">artemis-browser</h1>
+            <span class="conn" th:if="${connection}" th:text="${connection.describe()}">user@host:port</span>
+        </div>
+        <form method="post" th:action="@{/disconnect}">
+            <button class="secondary" type="submit">Disconnect</button>
+        </form>
+    </div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel field-row" method="get" th:action="@{/queues}">
+        <div style="min-width:18rem;flex:1">
+            <label for="name">Queue</label>
+            <select id="name" name="name" style="width:100%" onchange="this.form.submit()">
+                <option value="">&mdash; select a queue &mdash;</option>
+                <option th:each="q : ${queueNames}"
+                        th:value="${q}"
+                        th:text="${q}"
+                        th:selected="${q == selected}">queue</option>
+            </select>
+        </div>
+        <div>
+            <label for="limit">Show</label>
+            <select id="limit" name="limit" onchange="this.form.submit()">
+                <option th:each="n : ${limitChoices}"
+                        th:value="${n}"
+                        th:text="${n} + ' messages'"
+                        th:selected="${n == limit}">50</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">Refresh</button>
+        </div>
+        <p class="note" style="width:100%" th:if="${queueNames != null and queueNames.isEmpty()}">
+            This broker reported no queues.
+        </p>
+    </form>
+
+    <div class="panel" th:if="${stats}">
+        <h2>
+            <span th:text="${stats.name()}">queue</span>
+            <span class="badge" th:text="${stats.routingType()}">ANYCAST</span>
+            <span class="badge" th:if="${stats.durable()}">durable</span>
+            <span class="badge" th:if="${stats.paused()}">paused</span>
+        </h2>
+        <div class="stats">
+            <div class="stat"><span class="k">Messages</span><span class="v" th:text="${stats.messageCount()}">0</span></div>
+            <div class="stat"><span class="k">Delivering</span><span class="v" th:text="${stats.deliveringCount()}">0</span></div>
+            <div class="stat"><span class="k">Scheduled</span><span class="v" th:text="${stats.scheduledCount()}">0</span></div>
+            <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${stats.consumerCount()}">0</span></div>
+            <div class="stat"><span class="k">Added</span><span class="v" th:text="${stats.messagesAdded()}">0</span></div>
+            <div class="stat"><span class="k">Acknowledged</span><span class="v" th:text="${stats.messagesAcknowledged()}">0</span></div>
+        </div>
+        <p class="note">
+            Address <code th:text="${stats.address()}">address</code>.
+            Browsing is read-only: messages are copied, never consumed or acknowledged.
+        </p>
+    </div>
+
+    <div class="panel" th:if="${browse}">
+        <h2>
+            Messages
+            <span class="muted" th:if="${browse.more()}"
+                  th:text="'(first ' + ${browse.limit()} + ' of more)'">(more)</span>
+        </h2>
+
+        <p class="muted" th:if="${browse.messages().isEmpty()}">This queue is empty.</p>
+
+        <div class="table-scroll" th:unless="${browse.messages().isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>Timestamp</th>
+                    <th>Priority</th>
+                    <th>Flags</th>
+                    <th>Message ID</th>
+                    <th>Body &amp; properties</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="m : ${browse.messages()}">
+                    <td class="num" th:text="${m.position()}">1</td>
+                    <td th:text="${m.type()}">Text</td>
+                    <td th:text="${m.timestampText()}">&mdash;</td>
+                    <td class="num" th:text="${m.priority()}">4</td>
+                    <td>
+                        <span class="badge" th:if="${m.persistent()}">persistent</span>
+                        <span class="badge" th:if="${m.redelivered()}">redelivered</span>
+                        <span class="badge" th:if="${m.groupId()}" th:text="'group ' + ${m.groupId()}">group</span>
+                    </td>
+                    <td><code th:text="${m.messageId()}">ID</code></td>
+                    <td>
+                        <details>
+                            <summary>Body</summary>
+                            <pre th:text="${m.bodyPreview()}">body</pre>
+                            <p class="note" th:if="${m.bodyTruncated()}">Body truncated for display.</p>
+                        </details>
+                        <details th:if="${!m.properties().isEmpty()}">
+                            <summary th:text="'Properties (' + ${m.properties().size()} + ')'">Properties</summary>
+                            <table>
+                                <tr th:each="p : ${m.properties()}">
+                                    <td><code th:text="${p.key}">key</code></td>
+                                    <td th:text="${p.value}">value</td>
+                                </tr>
+                            </table>
+                        </details>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>
