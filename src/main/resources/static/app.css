@@ -124,3 +124,54 @@ details summary { cursor: pointer; color: var(--accent); }
     display: inline-block; padding: .05rem .4rem; border: 1px solid var(--border);
     border-radius: 4px; font-size: .75rem; color: var(--muted);
 }
+
+/* --- Phase 2 --- */
+.tab {
+    display: inline-block;
+    padding: .4rem .7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+}
+.tab:hover { border-color: var(--accent); color: var(--accent); }
+.tab.disabled { opacity: .4; pointer-events: none; }
+
+.pager { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+
+a { color: var(--accent); }
+
+.badge-link {
+    display: inline-block; padding: .15rem .45rem; border: 1px solid var(--border);
+    border-radius: 4px; font-size: .78rem; text-decoration: none;
+}
+.badge-link:hover { border-color: var(--accent); }
+
+button.linkish {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: .78rem; padding: .15rem .3rem; font-weight: 500;
+}
+button.linkish:hover { color: var(--danger-text); }
+
+.checkbox { display: flex; align-items: center; gap: .4rem; padding-bottom: .5rem; }
+.checkbox input { width: auto; }
+
+.badge.warn { border-color: var(--danger-border); color: var(--danger-text); }
+tr.row-warn td { background: color-mix(in srgb, var(--danger-bg) 45%, transparent); }
+
+td.strong, .strong { font-weight: 700; }
+th.num, td.num { text-align: right; }
+
+.body-cell code {
+    display: inline-block;
+    max-width: 38rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+pre.tall { max-height: 34rem; }
+
+table th { white-space: nowrap; }

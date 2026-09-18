@@ -6,10 +6,12 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 
 /** A dropped or never-established connection sends the user back to the connect form. */
 @ControllerAdvice
-public class BrokerErrorAdvice {
+public class BrokerErrorAdvice
+{
 
     @ExceptionHandler(NotConnectedException.class)
-    public String handleNotConnected() {
+    public String handleNotConnected()
+    {
         return "redirect:/";
     }
 }

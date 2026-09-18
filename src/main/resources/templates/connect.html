@@ -12,6 +12,25 @@
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
+    <div class="panel" th:if="${!saved.isEmpty()}">
+        <h2>Saved connections</h2>
+        <div class="table-scroll">
+            <table>
+                <tr th:each="s : ${saved}">
+                    <td th:text="${s.displayName()}">name</td>
+                    <td style="width:1%;white-space:nowrap">
+                        <a class="badge-link" th:href="@{/(use=${s.key()})}">Use</a>
+                        <form method="post" th:action="@{/connections/forget}" style="display:inline">
+                            <input type="hidden" name="key" th:value="${s.key()}">
+                            <button class="linkish" type="submit">Forget</button>
+                        </form>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <p class="note">Saved entries hold host, port and username. Passwords are never stored.</p>
+    </div>
+
     <form class="panel" method="post" th:action="@{/connect}" th:object="${form}">
         <h2>Connect to a broker</h2>
         <div class="grid">
@@ -32,12 +51,26 @@
                 <input id="password" type="password" th:field="*{password}" autocomplete="off">
             </div>
         </div>
-        <p style="margin-top:1rem">
-            <button type="submit">Connect</button>
-        </p>
+
+        <div class="field-row" style="margin-top:1rem">
+            <div>
+                <label for="label">Label <span class="muted">(optional)</span></label>
+                <input id="label" type="text" th:field="*{label}" placeholder="Production DLQ box"
+                       autocomplete="off">
+            </div>
+            <div class="checkbox">
+                <input id="remember" type="checkbox" th:field="*{remember}">
+                <label for="remember" style="display:inline">Remember this connection</label>
+            </div>
+            <div>
+                <button type="submit">Connect</button>
+            </div>
+        </div>
+
         <p class="note">
             The password is used to open the connection and then discarded &mdash; it is not stored
-            in your session and never sent back to the browser. Reconnecting means retyping it.
+            in your session, never written to disk, and never sent back to the browser. Reconnecting
+            means retyping it.
         </p>
     </form>
 </div>
