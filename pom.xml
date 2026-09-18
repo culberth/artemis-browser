@@ -27,6 +27,7 @@
           The JDK on PATH here is 26 even though we target release 21, so the agent sees 26.
         -->
         <jacoco.version>0.8.15</jacoco.version>
+		<java-formatter-maven-plugin.version>1.0.1</java-formatter-maven-plugin.version>
     </properties>
 
     <dependencies>
@@ -100,6 +101,19 @@
                     </execution>
                 </executions>
             </plugin>
+			<plugin>
+                <groupId>io.github.culberth</groupId>
+                <artifactId>java-formatter-maven-plugin</artifactId>
+                <version>${java-formatter-maven-plugin.version}</version>
+                <executions>
+					<execution>
+						  <id>format-sources</id>
+						  <goals>
+								<goal>format</goal>
+						  </goals>
+					</execution>
+                </executions>
+			</plugin>
         </plugins>
     </build>
 </project>

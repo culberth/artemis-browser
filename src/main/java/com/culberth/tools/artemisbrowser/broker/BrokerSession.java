@@ -14,16 +14,19 @@ import org.springframework.web.context.annotation.SessionScope;
 /**
  * One user's live connection to a broker, held for the life of their HTTP session.
  *
- * <p>The password is used to open the connection and then dropped — only {@link ConnectionInfo}
- * (host, port, username) is retained, so a session hijack or a heap dump does not hand over broker
- * credentials. Reconnecting requires retyping the password, which is the intended trade.
+ * <p>
+ * The password is used to open the connection and then dropped — only {@link ConnectionInfo} (host, port, username) is
+ * retained, so a session hijack or a heap dump does not hand over broker credentials. Reconnecting requires retyping
+ * the password, which is the intended trade.
  *
- * <p>Everything is synchronized: a JMS {@link Session} is not thread-safe, and a browser with two
- * tabs open will happily make concurrent requests.
+ * <p>
+ * Everything is synchronized: a JMS {@link Session} is not thread-safe, and a browser with two tabs open will happily
+ * make concurrent requests.
  */
 @Component
 @SessionScope
-public class BrokerSession implements AutoCloseable {
+public class BrokerSession implements AutoCloseable
+{
 
     private final long managementTimeoutMillis;
     private final int connectionTimeoutMillis;
@@ -34,16 +37,18 @@ public class BrokerSession implements AutoCloseable {
     private ManagementChannel management;
     private ConnectionInfo info;
 
-    public BrokerSession(
-            @Value("${artemis.management-timeout-ms:10000}") long managementTimeoutMillis,
-            @Value("${artemis.connection-timeout-ms:10000}") int connectionTimeoutMillis) {
+    public BrokerSession(@Value("${artemis.management-timeout-ms:10000}") long managementTimeoutMillis,
+            @Value("${artemis.connection-timeout-ms:10000}") int connectionTimeoutMillis)
+    {
         this.managementTimeoutMillis = managementTimeoutMillis;
         this.connectionTimeoutMillis = connectionTimeoutMillis;
     }
 
-    public synchronized void connect(BrokerCredentials credentials) {
+    public synchronized void connect(BrokerCredentials credentials)
+    {
         close();
-        try {
+        try
+        {
             factory = new ActiveMQConnectionFactory(credentials.brokerUrl());
             factory.setCallTimeout(connectionTimeoutMillis);
             factory.setConnectionTTL(-1);
@@ -56,43 +61,51 @@ public class BrokerSession implements AutoCloseable {
             // Required before a consumer — including the management reply consumer — will receive.
             connection.start();
             session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            management = new ManagementChannel(
-                    session,
-                    ActiveMQDefaultConfiguration.getDefaultManagementAddress().toString(),
-                    managementTimeoutMillis);
+            management = new ManagementChannel(session,
+                    ActiveMQDefaultConfiguration.getDefaultManagementAddress().toString(), managementTimeoutMillis);
             info = credentials.toInfo();
-        } catch (JMSSecurityException e) {
+        }
+        catch (JMSSecurityException e)
+        {
             close();
-            throw new BrokerException("The broker rejected those credentials for user '"
-                    + credentials.username() + "'.", e);
-        } catch (JMSException e) {
+            throw new BrokerException(
+                    "The broker rejected those credentials for user '" + credentials.username() + "'.", e);
+        }
+        catch (JMSException e)
+        {
             close();
-            throw new BrokerException("Could not connect to " + credentials.brokerUrl() + ": "
-                    + rootMessage(e), e);
-        } catch (RuntimeException e) {
+            throw new BrokerException("Could not connect to " + credentials.brokerUrl() + ": " + rootMessage(e), e);
+        }
+        catch (RuntimeException e)
+        {
             close();
-            throw new BrokerException("Could not connect to " + credentials.brokerUrl() + ": "
-                    + rootMessage(e), e);
+            throw new BrokerException("Could not connect to " + credentials.brokerUrl() + ": " + rootMessage(e), e);
         }
     }
 
-    public synchronized boolean isConnected() {
+    public synchronized boolean isConnected()
+    {
         return connection != null && session != null;
     }
 
-    public synchronized ConnectionInfo info() {
+    public synchronized ConnectionInfo info()
+    {
         return info;
     }
 
-    synchronized Session requireSession() {
-        if (session == null) {
+    synchronized Session requireSession()
+    {
+        if (session == null)
+        {
             throw new NotConnectedException();
         }
         return session;
     }
 
-    synchronized ManagementChannel requireManagement() {
-        if (management == null) {
+    synchronized ManagementChannel requireManagement()
+    {
+        if (management == null)
+        {
             throw new NotConnectedException();
         }
         return management;
@@ -100,8 +113,10 @@ public class BrokerSession implements AutoCloseable {
 
     @Override
     @PreDestroy
-    public synchronized void close() {
-        if (management != null) {
+    public synchronized void close()
+    {
+        if (management != null)
+        {
             management.close();
             management = null;
         }
@@ -114,20 +129,27 @@ public class BrokerSession implements AutoCloseable {
         info = null;
     }
 
-    private void closeQuietly(AutoCloseable closeable) {
-        if (closeable == null) {
+    private void closeQuietly(AutoCloseable closeable)
+    {
+        if (closeable == null)
+        {
             return;
         }
-        try {
+        try
+        {
             closeable.close();
-        } catch (Exception ignored) {
+        }
+        catch (Exception ignored)
+        {
             // Tearing down after a failure; the original failure is the one worth reporting.
         }
     }
 
-    private String rootMessage(Throwable t) {
+    private String rootMessage(Throwable t)
+    {
         Throwable root = t;
-        while (root.getCause() != null && root.getCause() != root) {
+        while (root.getCause() != null && root.getCause() != root)
+        {
             root = root.getCause();
         }
         return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();

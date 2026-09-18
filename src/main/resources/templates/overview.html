@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; overview</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+    <meta th:if="${refresh > 0}" http-equiv="refresh" th:content="${refresh}">
+</head>
+<body>
+<div class="wrap">
+    <div class="panel topbar">
+        <div>
+            <h1 style="margin:0">artemis-browser</h1>
+            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
+        </div>
+        <div class="field-row">
+            <a class="tab" th:href="@{/overview}">Overview</a>
+            <a class="tab" th:href="@{/queues}">Browse</a>
+            <form method="post" th:action="@{/disconnect}">
+                <button class="secondary" type="submit">Disconnect</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel field-row" method="get" th:action="@{/overview}">
+        <div>
+            <label for="refresh">Auto-refresh</label>
+            <select id="refresh" name="refresh" onchange="this.form.submit()">
+                <option th:each="r : ${refreshChoices}"
+                        th:value="${r}"
+                        th:text="${r == 0} ? 'Off' : ('Every ' + ${r} + 's')"
+                        th:selected="${r == refresh}">Off</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">Refresh now</button>
+        </div>
+        <p class="note" style="width:100%" th:if="${refresh > 0}">
+            Reloading every <span th:text="${refresh}">15</span> seconds.
+        </p>
+    </form>
+
+    <div class="panel">
+        <h2>
+            Queues <span class="muted" th:text="'(' + ${queues.size()} + ')'">(0)</span>
+        </h2>
+        <p class="muted" th:if="${queues.isEmpty()}">This broker reported no queues.</p>
+        <div class="table-scroll" th:unless="${queues.isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Queue</th>
+                    <th>Address</th>
+                    <th class="num">Messages</th>
+                    <th class="num">Delivering</th>
+                    <th class="num">Scheduled</th>
+                    <th class="num">Consumers</th>
+                    <th class="num">Added</th>
+                    <th class="num">Acked</th>
+                    <th>Flags</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="q : ${queues}" th:classappend="${q.stalled()} ? 'row-warn' : ''">
+                    <td>
+                        <a th:href="@{/queues(name=${q.name()})}" th:text="${q.name()}">queue</a>
+                    </td>
+                    <td class="muted" th:text="${q.address()}">address</td>
+                    <td class="num strong" th:text="${q.messageCount()}">0</td>
+                    <td class="num" th:text="${q.deliveringCount()}">0</td>
+                    <td class="num" th:text="${q.scheduledCount()}">0</td>
+                    <td class="num" th:text="${q.consumerCount()}">0</td>
+                    <td class="num muted" th:text="${q.messagesAdded()}">0</td>
+                    <td class="num muted" th:text="${q.messagesAcked()}">0</td>
+                    <td>
+                        <span class="badge" th:if="${q.paused()}">paused</span>
+                        <span class="badge" th:if="${q.internalQueue()}">internal</span>
+                        <span class="badge warn" th:if="${q.stalled()}">no consumer</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Rows flagged <span class="badge warn">no consumer</span> have messages waiting with
+            nothing attached to take them.
+        </p>
+    </div>
+</div>
+</body>
+</html>

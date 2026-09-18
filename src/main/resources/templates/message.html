@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; message</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div class="panel topbar">
+        <div>
+            <h1 style="margin:0">artemis-browser</h1>
+            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
+        </div>
+        <div class="field-row">
+            <a class="tab" th:href="@{/overview}">Overview</a>
+            <a class="tab" th:if="${queueName}" th:href="@{/queues(name=${queueName})}">Back to queue</a>
+            <form method="post" th:action="@{/disconnect}">
+                <button class="secondary" type="submit">Disconnect</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div th:if="${message}">
+        <div class="panel">
+            <h2>
+                Message on <span th:text="${message.queueName()}">queue</span>
+                <span class="badge" th:text="${message.type()}">Text</span>
+                <span class="badge" th:if="${message.persistent()}">persistent</span>
+                <span class="badge" th:if="${message.redelivered()}">redelivered</span>
+            </h2>
+            <div class="table-scroll">
+                <table>
+                    <tr><th>Message ID</th><td><code th:text="${message.messageId()}">ID</code></td></tr>
+                    <tr><th>Correlation ID</th><td><code th:text="${message.correlationId()} ?: '—'">—</code></td></tr>
+                    <tr><th>Destination</th><td th:text="${message.destination()}">queue</td></tr>
+                    <tr><th>Timestamp</th><td th:text="${message.timestampText()} ?: '—'">—</td></tr>
+                    <tr><th>Expires</th><td th:text="${message.expirationText()}">never</td></tr>
+                    <tr><th>Priority</th><td th:text="${message.priority()}">4</td></tr>
+                    <tr><th>Delivery count</th><td th:text="${message.deliveryCount()}">0</td></tr>
+                    <tr><th>Group ID</th><td th:text="${message.groupId()} ?: '—'">—</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Body</h2>
+            <pre class="tall" th:text="${message.body()}">body</pre>
+            <p class="note" th:if="${message.bodyTruncated()}">
+                Body truncated for display. The message itself is untouched.
+            </p>
+        </div>
+
+        <div class="panel">
+            <h2>Properties
+                <span class="muted" th:text="'(' + ${message.properties().size()} + ')'">(0)</span>
+            </h2>
+            <p class="muted" th:if="${message.properties().isEmpty()}">No properties.</p>
+            <div class="table-scroll" th:unless="${message.properties().isEmpty()}">
+                <table>
+                    <thead><tr><th>Name</th><th>Value</th></tr></thead>
+                    <tbody>
+                    <tr th:each="p : ${message.properties()}">
+                        <td><code th:text="${p.key}">key</code></td>
+                        <td th:text="${p.value}">value</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
