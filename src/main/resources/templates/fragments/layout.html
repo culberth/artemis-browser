@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  One nav for every page. Each page passes the name of the section it is in so the current tab can
+  be marked; adding a page means adding it here once, not in six templates that drift apart.
+-->
+<div th:fragment="nav(active)" class="panel topbar">
+    <div>
+        <h1 style="margin:0">artemis-browser</h1>
+        <span class="conn" th:if="${connection}" th:text="${connection.describe()}">user@host:port</span>
+    </div>
+    <div class="field-row nav">
+        <a class="tab" th:classappend="${active == 'broker'} ? 'current' : ''"
+           th:href="@{/broker}">Broker</a>
+        <a class="tab" th:classappend="${active == 'overview'} ? 'current' : ''"
+           th:href="@{/overview}">Queues</a>
+        <a class="tab" th:classappend="${active == 'addresses'} ? 'current' : ''"
+           th:href="@{/addresses}">Addresses</a>
+        <a class="tab" th:classappend="${active == 'browse'} ? 'current' : ''"
+           th:href="@{/queues}">Browse</a>
+        <a class="tab" th:classappend="${active == 'search'} ? 'current' : ''"
+           th:href="@{/search}">Search</a>
+        <form method="post" th:action="@{/disconnect}">
+            <button class="secondary" type="submit">Disconnect</button>
+        </form>
+    </div>
+</div>
+
+<div th:fragment="refresh(action, active)" class="panel field-row">
+    <form method="get" th:action="${action}" class="field-row" style="width:100%">
+        <div>
+            <label for="refresh">Auto-refresh</label>
+            <select id="refresh" name="refresh" onchange="this.form.submit()">
+                <option th:each="r : ${refreshChoices}"
+                        th:value="${r}"
+                        th:text="${r == 0} ? 'Off' : ('Every ' + ${r} + 's')"
+                        th:selected="${r == refresh}">Off</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">Refresh now</button>
+        </div>
+    </form>
+</div>
+
+</body>
+</html>

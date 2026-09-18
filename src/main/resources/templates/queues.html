@@ -9,19 +9,7 @@
 </head>
 <body>
 <div class="wrap">
-    <div class="panel topbar">
-        <div>
-            <h1 style="margin:0">artemis-browser</h1>
-            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
-        </div>
-        <div class="field-row">
-            <a class="tab" th:href="@{/overview}">Overview</a>
-            <a class="tab" th:href="@{/queues}">Browse</a>
-            <form method="post" th:action="@{/disconnect}">
-                <button class="secondary" type="submit">Disconnect</button>
-            </form>
-        </div>
-    </div>
+    <div th:replace="~{fragments/layout :: nav('browse')}"></div>
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
@@ -103,6 +91,10 @@
                       th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()}">range</span>
                 <span class="muted" th:if="${!#strings.isEmpty(messages.filter())}">(filtered)</span>
             </h2>
+            <div class="field-row">
+                <a class="badge-link" th:href="@{/export(name=${selected},filter=${filter},format=csv)}">Export CSV</a>
+                <a class="badge-link" th:href="@{/export(name=${selected},filter=${filter},format=json)}">Export JSON</a>
+            </div>
             <div class="pager" th:if="${messages.totalPages() > 1}">
                 <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=1)}">&laquo; First</a>

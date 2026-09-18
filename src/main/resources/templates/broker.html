@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; broker</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+    <meta th:if="${refresh > 0}" http-equiv="refresh" th:content="${refresh}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('broker')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div th:replace="~{fragments/layout :: refresh('/broker', 'broker')}"></div>
+
+    <div class="panel" th:if="${health}">
+        <h2>
+            Broker
+            <span class="badge" th:text="${health.version()}">2.44.0</span>
+            <span class="badge" th:if="${health.running()}" th:text="${health.state()}">STARTED</span>
+            <span class="badge warn" th:unless="${health.running()}" th:text="${health.state()}">STOPPED</span>
+        </h2>
+        <div class="stats">
+            <div class="stat"><span class="k">Uptime</span><span class="v small" th:text="${health.uptime()}">—</span></div>
+            <div class="stat"><span class="k">Connections</span><span class="v" th:text="${health.connectionCount()}">0</span></div>
+            <div class="stat"><span class="k">Sessions</span><span class="v" th:text="${health.sessionCount()}">0</span></div>
+            <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${health.consumerCount()}">0</span></div>
+            <div class="stat" th:classappend="${health.memoryPressure()} ? 'stat-warn' : ''">
+                <span class="k">Address memory</span>
+                <span class="v" th:text="${health.memoryUsedPercent()} + '%'">0%</span>
+                <span class="muted" th:text="${health.memoryUsedBytes()} + ' bytes'">0 bytes</span>
+            </div>
+            <div class="stat" th:classappend="${health.diskPressure()} ? 'stat-warn' : ''">
+                <span class="k">Disk</span>
+                <span class="v" th:text="${#numbers.formatDecimal(health.diskUsedPercent(), 1, 2)} + '%'">0%</span>
+                <span class="muted" th:text="'blocks at ' + ${health.maxDiskPercent()} + '%'">blocks at 90%</span>
+            </div>
+        </div>
+        <p class="note">
+            Node <code th:text="${health.nodeId()}">id</code>.
+            Artemis blocks producers once disk use reaches its threshold, so the number worth
+            watching is the gap, not the crossing.
+        </p>
+    </div>
+
+    <div class="panel" th:if="${acceptors}">
+        <h2>Acceptors <span class="muted" th:text="'(' + ${acceptors.size()} + ')'">(0)</span></h2>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>Name</th><th>Protocols</th><th>Host</th><th class="num">Port</th></tr></thead>
+                <tbody>
+                <tr th:each="a : ${acceptors}">
+                    <td th:text="${a.name()}">artemis</td>
+                    <td class="muted" th:text="${a.protocols()}">CORE,AMQP</td>
+                    <td th:text="${a.host()}">0.0.0.0</td>
+                    <td class="num" th:text="${a.port()}">61616</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel" th:if="${connections}">
+        <h2>Connections <span class="muted" th:text="'(' + ${connections.size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${connections.isEmpty()}">Nothing is connected.</p>
+        <div class="table-scroll" th:unless="${connections.isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Connection</th><th>Client address</th><th>Created</th><th class="num">Sessions</th><th></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${connections}">
+                    <td><code th:text="${c.connectionId()}">id</code></td>
+                    <td th:text="${c.clientAddress()}">host:port</td>
+                    <td th:text="${c.createdText()}">—</td>
+                    <td class="num" th:text="${c.sessionCount()}">1</td>
+                    <td><span class="badge" th:if="${c.self()}">this tool</span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel" th:if="${consumers}">
+        <h2>Consumers <span class="muted" th:text="'(' + ${consumers.size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${consumers.isEmpty()}">Nothing is consuming.</p>
+        <div class="table-scroll" th:unless="${consumers.isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Queue</th><th>Connection</th><th class="num">Delivering</th>
+                    <th class="num">Delivered</th><th class="num">Acked</th><th>Status</th><th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${consumers}">
+                    <td th:text="${c.queueName()}">queue</td>
+                    <td><code th:text="${c.connectionId()}">id</code></td>
+                    <td class="num" th:text="${c.deliveringCount()}">0</td>
+                    <td class="num muted" th:text="${c.messagesDelivered()}">0</td>
+                    <td class="num muted" th:text="${c.messagesAcknowledged()}">0</td>
+                    <td th:text="${c.status()}">OK</td>
+                    <td>
+                        <span class="badge" th:if="${c.browseOnly()}">browse only</span>
+                        <span class="badge" th:if="${c.self()}">this tool</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            This tool keeps one consumer of its own, on a temporary queue it uses to receive
+            management replies. It is labelled rather than hidden, so the consumer count on an
+            otherwise idle broker still adds up.
+        </p>
+    </div>
+</div>
+</body>
+</html>

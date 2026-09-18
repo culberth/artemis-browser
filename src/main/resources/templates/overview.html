@@ -9,39 +9,11 @@
 </head>
 <body>
 <div class="wrap">
-    <div class="panel topbar">
-        <div>
-            <h1 style="margin:0">artemis-browser</h1>
-            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
-        </div>
-        <div class="field-row">
-            <a class="tab" th:href="@{/overview}">Overview</a>
-            <a class="tab" th:href="@{/queues}">Browse</a>
-            <form method="post" th:action="@{/disconnect}">
-                <button class="secondary" type="submit">Disconnect</button>
-            </form>
-        </div>
-    </div>
+    <div th:replace="~{fragments/layout :: nav('overview')}"></div>
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
-    <form class="panel field-row" method="get" th:action="@{/overview}">
-        <div>
-            <label for="refresh">Auto-refresh</label>
-            <select id="refresh" name="refresh" onchange="this.form.submit()">
-                <option th:each="r : ${refreshChoices}"
-                        th:value="${r}"
-                        th:text="${r == 0} ? 'Off' : ('Every ' + ${r} + 's')"
-                        th:selected="${r == refresh}">Off</option>
-            </select>
-        </div>
-        <div>
-            <button type="submit">Refresh now</button>
-        </div>
-        <p class="note" style="width:100%" th:if="${refresh > 0}">
-            Reloading every <span th:text="${refresh}">15</span> seconds.
-        </p>
-    </form>
+    <div th:replace="~{fragments/layout :: refresh('/overview', 'overview')}"></div>
 
     <div class="panel">
         <h2>

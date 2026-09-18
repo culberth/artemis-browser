@@ -129,3 +129,29 @@ Read this at the start of every session. Consolidate when it gets repetitive.
 - **2026-09-18 — Phase 2 shipped**: overview page with auto-refresh, server-side pagination,
   core-syntax filtering, per-message detail, and saved connections (host/port/username, never
   passwords — a test asserts the file contains no "password" string). 52 tests.
+
+- **2026-09-18 — Broker-level management shapes.** `listAddresses(filter,page,pageSize)` returns
+  `{"data":[...]}` with every value string-quoted, and `routingTypes` is a JSON array encoded
+  *inside* a JSON string (`"[\"ANYCAST\"]"`) — it needs unwrapping or it renders as escaped
+  brackets. `getAcceptorsAsJSON`, `listConnectionsAsJSON` and `listAllConsumersAsJSON` return plain
+  JSON arrays. Health attributes come back with mixed types: `version`/`uptime` String,
+  `connectionCount` Long (despite an int getter), `diskStoreUsage` Double, and `status` is a JSON
+  String holding `server.state` and `server.nodeId`.
+
+- **2026-09-18 — There is no "which connection am I" management call.** Our own connection is
+  identified by finding the consumer sitting on our management reply queue and reading its
+  connectionID. Both the connections and consumers views label ours rather than hiding it, so the
+  consumer count on an idle broker still adds up.
+
+- **2026-09-18 — Cross-queue search is two-phase on purpose.** `countMessages(filter)` on every
+  queue first (cheap, returns a number), then browse only the queues that matched. Browsing every
+  queue speculatively pulls message bodies from the whole broker to answer a question that is
+  usually "it is in exactly one of these".
+
+- **2026-09-18 — CSV export must defuse formula injection.** Message bodies are attacker-controlled
+  as far as this tool is concerned, and exports get opened in Excel. Every field is quoted and a
+  leading `=`, `+`, `-` or `@` gets an apostrophe. Don't "simplify" the quoting to only-when-needed.
+
+- **2026-09-18 — Phase 3 shipped**: cross-queue search, CSV/JSON export, broker health/connections
+  view, address view with multicast fan-out. 68 tests. The `events` address with `sub-a`/`sub-b`
+  finally exercised the FQQN browse path end to end.

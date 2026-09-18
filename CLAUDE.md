@@ -13,6 +13,8 @@ Built so far:
   selected queue's counters and messages.
 - **Phase 2** — an all-queues overview with optional auto-refresh, server-side pagination, filtering,
   a per-message detail view, and remembered broker locations.
+- **Phase 3** — cross-queue search, CSV/JSON export, a broker health and connections view, and an
+  address view that shows multicast fan-out.
 
 **Read-only is the product, not a detail.** Anything that could consume, acknowledge, move, or
 delete is out of scope until it is deliberately put in scope. Both read paths are verified
@@ -24,6 +26,10 @@ through a 1200-message queue.
 DLQ does not stream through this process. The single-message *detail* uses a JMS `QueueBrowser` with
 a `JMSMessageID` selector, because management `browse` only exposes `text` bodies — bytes, map and
 stream messages would otherwise show nothing.
+
+**Exports are untrusted content.** A message body is whatever a producer wrote, and a CSV export is
+opened in a spreadsheet. Every field is quoted, and a leading `=`, `+`, `-` or `@` is prefixed with
+an apostrophe so the file is not evaluated as formulas. `MessageExporterTest` covers it.
 
 **Filters use Artemis core syntax, not JMS selectors.** `AMQPriority`, `AMQTimestamp`, `AMQDurable`,
 `AMQSize`, or a property by its bare name. A JMS-style `JMSPriority = 4` is *not* rejected — it
@@ -43,8 +49,18 @@ OpenJFX, FXML, TestFX/Monocle or the ribbon CSS tokens over.
   list and counters in a single `listQueues` call — per-queue attribute reads cost ten round trips
   each and do not survive an auto-refreshing overview. `QueueBrowseService` owns both read paths.
   `ConnectionStore` remembers broker locations on disk, passwords excluded by design.
-- `web/` — Thymeleaf controllers plus `LoopbackHostFilter`. Pages: `/` connect, `/overview`
-  all queues, `/queues` one queue's messages, `/message` one message.
+  `BrokerInfoService` reads the broker's own health, acceptors, connections and consumers;
+  `AddressDirectory` groups queues under their addresses; `MessageSearchService` searches across
+  queues; `MessageExporter` writes CSV/JSON.
+- `web/` — Thymeleaf controllers plus `LoopbackHostFilter`. Pages: `/` connect, `/broker` health,
+  `/overview` all queues, `/addresses` addresses and their queues, `/queues` one queue's messages,
+  `/message` one message, `/search` across queues, `/export` a download.
+- `templates/fragments/layout.html` — the nav, in one place. Adding a page means editing it once.
+
+**Addresses versus queues.** Producers send to an address; consumers read from a queue. Under
+anycast they line up one to one, which is why a queue-only view got Phases 1–2 a long way. Under
+multicast one address fans out to a queue per subscriber, each holding its own copy and none named
+after the address — which is exactly when `QueueStats.browseName()`'s FQQN handling matters.
 
 ## Security posture
 
