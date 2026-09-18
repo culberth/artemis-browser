@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.culberth.tools</groupId>
+    <artifactId>artemis-browser</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>${project.artifactId}</name>
+    <description>Read-only web browser for ActiveMQ Artemis queues</description>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <!--
+          0.8.12 (the version the sibling projects pin) cannot instrument Java 26 class files:
+          the build fails with "Unsupported class file major version 70" from inside the agent.
+          The JDK on PATH here is 26 even though we target release 21, so the agent sees 26.
+        -->
+        <jacoco.version>0.8.15</jacoco.version>
+    </properties>
+
+    <dependencies>
+        <!--
+          Spring Boot 4 renamed the MVC starter: spring-boot-starter-web still resolves, but
+          spring-boot-starter-webmvc is the current name and the one cached locally at 4.1.1.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
+        <!--
+          Three things are easy to get wrong here, all of them silent:
+
+          1. artemis-jakarta-client, NOT artemis-jms-client. The latter targets the old javax.jms
+             namespace; Spring Boot 4 is jakarta.* throughout, and mixing them fails at runtime with
+             NoClassDefFoundError on jakarta/jms/Connection rather than at compile time.
+          2. groupId org.apache.artemis, NOT org.apache.activemq. Artemis moved groupId; Boot 4.1.1
+             manages the client under the new one (2.53.0 at time of writing).
+          3. No <version> and no artemis.version property of our own. spring-boot-dependencies
+             defines a property by exactly that name and imports org.apache.artemis:artemis-bom with
+             it, so declaring one here silently redirects the BOM import to a coordinate that does
+             not exist and the build fails while resolving the parent, before it ever reads this
+             dependency.
+        -->
+        <dependency>
+            <groupId>org.apache.artemis</groupId>
+            <artifactId>artemis-jakarta-client</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Spring Boot 4 moved the @WebMvcTest slice out of spring-boot-test-autoconfigure into its
+          own artifact. Without this, @WebMvcTest simply does not resolve and the only symptom is
+          "package org.springframework.boot.test.autoconfigure.web.servlet does not exist".
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

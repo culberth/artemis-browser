@@ -4,25 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-**artemis-browser** — a Spring Boot web application built with Maven.
+**artemis-browser** — a read-only web browser for ActiveMQ Artemis queues. Spring Boot 4.1.1 on
+Maven, Java 21, Thymeleaf server-rendered (no npm, no build step).
+
+Phase 1, which is built: connect to a broker with host/port/username/password, list every queue on
+it, and inspect a selected queue — counters plus the messages themselves — **without consuming
+anything**.
+
+**Read-only is the product, not a detail.** Browsing uses a JMS `QueueBrowser`, the one read path
+the spec guarantees is non-destructive. A `MessageConsumer` that simply never acknowledges is not an
+acceptable substitute: it moves messages into the delivering state. Anything that could consume,
+acknowledge, move, or delete is out of scope until it is deliberately put in scope.
 
 **Not JavaFX.** The three sibling projects in `P:\ClaudeCowork\Projects` (`data-blaster`,
-`javafx-ribbon-view-switcher`, `track-generator-system`) are JavaFX desktop apps and are otherwise
-good models — read `data-blaster/pom.xml` before writing this one's. But don't carry OpenJFX, FXML,
-TestFX/Monocle or the ribbon CSS tokens over; this app serves a web UI.
+`javafx-ribbon-view-switcher`, `track-generator-system`) are JavaFX desktop apps. Don't carry
+OpenJFX, FXML, TestFX/Monocle or the ribbon CSS tokens over.
 
-Still undecided: which frontend (Thymeleaf, static bundle, separate SPA) and what the app actually
-browses. Ask rather than assume — and ask before adding a frontend build step (npm, Vite,
-`frontend/`), which sets the whole dev loop.
+## How it fits together
 
-## Repo state
+- `broker/` — everything that talks to Artemis. `BrokerSession` is `@SessionScope`: one live
+  connection per HTTP session, holding host/port/username but **never the password**.
+  `ManagementChannel` is the request/reply plumbing for the `activemq.management` address, which is
+  how queues get listed at all (JMS itself has no "list queues"). `QueueDirectory` reads the queue
+  list and counters; `QueueBrowseService` does the non-destructive read.
+- `web/` — Thymeleaf controllers plus `LoopbackHostFilter`.
 
-`LICENSE` and `README.md` only — no `pom.xml`, no sources, no tests, no `.gitignore`. Branches
-`main`, `phase01` and `Milestone001` are identical. Re-run `/init` once real code lands.
+## Security posture
 
-House baseline from the siblings, to confirm rather than copy blindly: Spring Boot
-`4.1.1` parent, Java 21, groupId `com.culberth.tools`, version `1.0.0-SNAPSHOT`, JaCoCo,
-`java-formatter-maven-plugin`.
+Loopback only: `server.address=127.0.0.1` **and** `LoopbackHostFilter`, which rejects any request
+whose `Host` header is not a loopback literal. Both are needed — binding loopback does not stop DNS
+rebinding, and this app has no login of its own while holding an authenticated broker connection.
+
+If it is ever made network-reachable, that filter is not the thing to relax; real authentication is
+what would have to be built. See `.claude/memory.md` for the specific traps already fixed here.
 
 ## Build and test
 
@@ -34,8 +48,14 @@ mvn clean install                     # full build
 mvn test                              # all tests
 mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
-mvn spring-boot:run                   # run the app
+mvn spring-boot:run                   # run the app on http://localhost:8080
 ```
+
+Dependency resolution goes through a local Nexus (`mirrorOf *`), configured in Maven's own
+`conf/settings.xml` rather than `~/.m2`. If Nexus is down, nothing resolves.
+
+To test against a real broker, see the container recipe in `.claude/memory.md` — note it maps
+**62616**, because 61616 is already taken on this machine.
 
 ## Where things go
 
