@@ -116,6 +116,36 @@
             otherwise idle broker still adds up.
         </p>
     </div>
+
+    <div class="panel" th:if="${producers}">
+        <h2>Producers <span class="muted" th:text="'(' + ${producers.size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${producers.isEmpty()}">Nothing is producing.</p>
+        <div class="table-scroll" th:unless="${producers.isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Address</th><th>Connection</th><th>Created</th>
+                    <th class="num">Sent</th><th class="num">Bytes sent</th><th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="p : ${producers}">
+                    <td th:text="${p.address()}">orders</td>
+                    <td><code th:text="${p.connectionId()}">id</code></td>
+                    <td th:text="${p.createdText()}">—</td>
+                    <td class="num" th:text="${p.messagesSent()}">0</td>
+                    <td class="num muted" th:text="${p.bytesSent()}">0</td>
+                    <td><span class="badge" th:if="${p.self()}">this tool</span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            This tool keeps one producer of its own, sending management requests to
+            <code>activemq.management</code>. It is labelled rather than hidden, for the same
+            reason its reply consumer is.
+        </p>
+    </div>
 </div>
 </body>
 </html>

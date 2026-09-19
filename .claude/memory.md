@@ -155,3 +155,16 @@ Read this at the start of every session. Consolidate when it gets repetitive.
 - **2026-09-18 — Phase 3 shipped**: cross-queue search, CSV/JSON export, broker health/connections
   view, address view with multicast fan-out. 68 tests. The `events` address with `sub-a`/`sub-b`
   finally exercised the FQQN browse path end to end.
+
+- **2026-09-19 — `broker.listProducersInfoAsJSON()` shape**, verified against a live broker with an
+  active producer: `{"id","name","connectionID","sessionID","creationTime","destination",
+  "lastProducedMessageID","msgSent","msgSizeSent"}`. Unlike most other management JSON here,
+  `msgSent`/`msgSizeSent` are bare numbers, not string-quoted — `creationTime` still is (epoch
+  millis as a string). `destination` is the address it sends to. This tool's own `ManagementChannel`
+  producer shows up in the list (sending to `activemq.management`), exactly like its reply consumer
+  shows up in `listAllConsumersAsJSON()` — labelled "this tool" via the existing `ourConnectionId()`
+  match, not filtered out.
+
+- **2026-09-19 — Phase 4 (in progress): producers view**, added to the existing `/broker` health
+  page rather than a new page — same "who's touching the broker" picture the Connections/Consumers
+  panels already give, from the producer side. `BrokerProducer`, `BrokerInfoService.producers()`.

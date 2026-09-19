@@ -45,6 +45,7 @@ public class BrokerController
             model.addAttribute("acceptors", brokerInfo.acceptors());
             model.addAttribute("connections", brokerInfo.connections());
             model.addAttribute("consumers", brokerInfo.consumers());
+            model.addAttribute("producers", brokerInfo.producers());
         }
         catch (BrokerException e)
         {

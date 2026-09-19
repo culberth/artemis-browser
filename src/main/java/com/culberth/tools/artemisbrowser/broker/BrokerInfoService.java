@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Reads the broker's own health, acceptors, connections and consumers. All attribute reads. */
+/** Reads the broker's own health, acceptors, connections, consumers and producers. All attribute reads. */
 @Service
 public class BrokerInfoService
 {
@@ -85,6 +85,23 @@ public class BrokerInfoService
                     queueName != null && queueName.equals(replyQueue)));
         }
         return consumers;
+    }
+
+    public List<BrokerProducer> producers()
+    {
+        String ourConnection = ourConnectionId();
+        List<BrokerProducer> producers = new ArrayList<>();
+        for (JsonNode node : array(invoke("listProducersInfoAsJSON")))
+        {
+            String connectionId = text(node, "connectionID");
+            producers.add(new BrokerProducer(text(node, "id"), text(node, "destination"), connectionId,
+                    epoch(node.get("creationTime")), asLong(text(node, "msgSent")), asLong(text(node, "msgSizeSent")),
+                    // This tool's own management channel sends every request as a producer to
+                    // activemq.management, so it shows up here just like its reply consumer shows
+                    // up in consumers(). Label it rather than hide it, for the same reason.
+                    connectionId != null && connectionId.equals(ourConnection)));
+        }
+        return producers;
     }
 
     /**
