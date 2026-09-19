@@ -39,7 +39,8 @@ public class BrokerInfoService
                 number(management.attribute(ResourceNames.BROKER, "totalConsumerCount")),
                 number(management.attribute(ResourceNames.BROKER, "addressMemoryUsage")),
                 number(management.attribute(ResourceNames.BROKER, "addressMemoryUsagePercentage")),
-                decimal(management.attribute(ResourceNames.BROKER, "diskStoreUsage")),
+                // diskStoreUsage is a 0..1 ratio; maxDiskUsage and diskPressure() work in 0..100.
+                decimal(management.attribute(ResourceNames.BROKER, "diskStoreUsage")) * 100,
                 number(management.attribute(ResourceNames.BROKER, "maxDiskUsage")));
     }
 

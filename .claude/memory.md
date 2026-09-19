@@ -168,3 +168,27 @@ Read this at the start of every session. Consolidate when it gets repetitive.
 - **2026-09-19 — Phase 4 (in progress): producers view**, added to the existing `/broker` health
   page rather than a new page — same "who's touching the broker" picture the Connections/Consumers
   panels already give, from the producer side. `BrokerProducer`, `BrokerInfoService.producers()`.
+
+- **2026-09-19 — `diskStoreUsage` is a 0..1 ratio, not a percentage.** `BrokerHealth.diskUsedPercent()`
+  and `diskPressure()` both work in 0..100 like `maxDiskUsage` does. Reading `diskStoreUsage` straight
+  into `BrokerHealth` displayed "0.10%" for an actually-85%-full disk and meant `diskPressure()` could
+  never trip. `BrokerInfoService.health()` now multiplies by 100. Caught by Codex review, confirmed
+  against a live broker (showed 10.34% correctly after the fix).
+
+- **2026-09-19 — Export must not reuse the UI list's preview truncation.** `QueueBrowseService.page()`
+  cuts each message body to `artemis.body-preview-chars` (200) for the table view — CSV/JSON export
+  called the same method, so any body over 200 chars was silently cut in a downloaded file despite
+  `export-max-messages` allowing up to 5,000 messages. Added `pageForExport(...)`, which uses
+  `artemis.body-detail-chars` (200000, the same cap the single-message detail view already uses)
+  instead. CSV now also has a `bodyTruncated` column, matching what JSON already got for free from
+  `MessageSummary`. Caught by Codex review.
+
+- **2026-09-19 — Artemis's own `browse()` truncates the `text` attribute independently of this app**,
+  around ~256 chars, and appends a literal `", + N more"` suffix to the value itself rather than
+  signalling truncation out of band. Verified live: a 250-char body came back whole, a 500-char body
+  came back as 256 chars of body text plus that suffix. This is a broker-side limit (Artemis's
+  `management-message-attribute-size-limit`, default 256) on the *browse* read path specifically —
+  raising `artemis.body-detail-chars` past it does nothing, and it does not affect the JMS
+  `QueueBrowser` detail path, which reads the real body. Export inherits this ceiling for any queue
+  with large text messages; it is not something `pageForExport` can work around, only the JMS detail
+  path can.

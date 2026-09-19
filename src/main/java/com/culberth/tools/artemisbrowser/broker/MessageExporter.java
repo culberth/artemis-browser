@@ -13,7 +13,7 @@ public class MessageExporter
 
     private static final String[] HEADERS =
     { "queue", "position", "messageId", "coreId", "type", "timestamp", "priority", "persistent", "redelivered",
-            "sizeBytes", "protocol", "body"
+            "sizeBytes", "protocol", "body", "bodyTruncated"
     };
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -28,7 +28,8 @@ public class MessageExporter
                     quote(message.messageId()), quote(message.coreId()), quote(message.type()),
                     quote(message.timestampText()), String.valueOf(message.priority()),
                     String.valueOf(message.persistent()), String.valueOf(message.redelivered()),
-                    String.valueOf(message.sizeBytes()), quote(message.protocol()), quote(message.bodyPreview())));
+                    String.valueOf(message.sizeBytes()), quote(message.protocol()), quote(message.bodyPreview()),
+                    String.valueOf(message.bodyTruncated())));
             writer.write("\r\n");
         }
         writer.flush();

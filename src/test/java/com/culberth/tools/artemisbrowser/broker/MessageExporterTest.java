@@ -24,7 +24,7 @@ class MessageExporterTest
         String csv = csv(message("a,b,\"c\""));
         String row = csv.lines().skip(1).findFirst().orElseThrow();
 
-        assertTrue(row.endsWith("\"a,b,\"\"c\"\"\""), row);
+        assertTrue(row.endsWith("\"a,b,\"\"c\"\"\",false"), row);
         // Header plus exactly one data row: an unescaped newline or comma would produce more.
         assertEquals(2, csv.lines().count(), csv);
     }
@@ -65,6 +65,17 @@ class MessageExporterTest
 
         assertTrue(csv.contains("\"\""), csv);
         assertTrue(!csv.contains("null"), csv);
+    }
+
+    @Test
+    @DisplayName("CSV exposes whether the body was truncated, same as JSON does")
+    void csvExposesTruncation() throws Exception
+    {
+        MessageSummary truncated = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE",
+                "partial", true);
+        String row = csv(truncated).lines().skip(1).findFirst().orElseThrow();
+
+        assertTrue(row.endsWith(",true"), row);
     }
 
     @Test

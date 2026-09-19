@@ -95,7 +95,7 @@ public class SearchController
         }
 
         boolean json = "json".equalsIgnoreCase(format);
-        MessagePage page = browseService.page(name, filter, 1, exportMax);
+        MessagePage page = browseService.pageForExport(name, filter, 1, exportMax);
 
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(json ? "application/json" : "text/csv");
