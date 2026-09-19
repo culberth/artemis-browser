@@ -8,19 +8,7 @@
 </head>
 <body>
 <div class="wrap">
-    <div class="panel topbar">
-        <div>
-            <h1 style="margin:0">artemis-browser</h1>
-            <span class="conn" th:text="${connection.describe()}">user@host:port</span>
-        </div>
-        <div class="field-row">
-            <a class="tab" th:href="@{/overview}">Overview</a>
-            <a class="tab" th:if="${queueName}" th:href="@{/queues(name=${queueName})}">Back to queue</a>
-            <form method="post" th:action="@{/disconnect}">
-                <button class="secondary" type="submit">Disconnect</button>
-            </form>
-        </div>
-    </div>
+    <div th:replace="~{fragments/layout :: nav('browse')}"></div>
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 

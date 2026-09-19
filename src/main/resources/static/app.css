@@ -175,3 +175,15 @@ th.num, td.num { text-align: right; }
 pre.tall { max-height: 34rem; }
 
 table th { white-space: nowrap; }
+
+/* --- Phase 3 --- */
+.nav { gap: .4rem; }
+.tab.current { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.stat .v.small { font-size: .95rem; }
+.stat .muted { display: block; font-size: .75rem; }
+.stat-warn { border-color: var(--danger-border); }
+.stat-warn .v { color: var(--danger-text); }
+
+h3 a { text-decoration: none; }
+h3 a:hover { text-decoration: underline; }

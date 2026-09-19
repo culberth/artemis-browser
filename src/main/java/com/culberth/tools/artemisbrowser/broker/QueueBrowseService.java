@@ -72,6 +72,21 @@ public class QueueBrowseService
      */
     public MessagePage page(String queueName, String filter, int page, int pageSize)
     {
+        return page(queueName, filter, page, pageSize, bodyPreviewChars);
+    }
+
+    /**
+     * Like {@link #page}, but keeps the body up to {@code artemis.body-detail-chars} instead of the UI's short list
+     * preview. Used by export: truncating every row to a length meant for a table cell would silently drop most of the
+     * message from a CSV/JSON download.
+     */
+    public MessagePage pageForExport(String queueName, String filter, int page, int pageSize)
+    {
+        return page(queueName, filter, page, pageSize, bodyDetailChars);
+    }
+
+    private MessagePage page(String queueName, String filter, int page, int pageSize, int previewChars)
+    {
         ManagementChannel management = brokerSession.requireManagement();
         String resource = ResourceNames.QUEUE + queueName;
         String effectiveFilter = filter == null ? "" : filter.trim();
@@ -85,7 +100,7 @@ public class QueueBrowseService
         long firstPosition = (long) (page - 1) * pageSize + 1;
         for (CompositeData entry : compositeData(result))
         {
-            messages.add(toSummary(entry, firstPosition + messages.size()));
+            messages.add(toSummary(entry, firstPosition + messages.size(), previewChars));
         }
         return new MessagePage(queueName, effectiveFilter, page, pageSize, total, messages);
     }
@@ -138,7 +153,7 @@ public class QueueBrowseService
         return new CompositeData[0];
     }
 
-    private MessageSummary toSummary(CompositeData data, long position)
+    private MessageSummary toSummary(CompositeData data, long position, int previewChars)
     {
         Long timestamp = asLongOrNull(get(data, "timestamp"));
         String body = asString(get(data, "text"));
@@ -146,14 +161,14 @@ public class QueueBrowseService
         {
             body = "(no text body — open the message to read it)";
         }
-        boolean truncated = body.length() > bodyPreviewChars;
+        boolean truncated = body.length() > previewChars;
 
         return new MessageSummary(position, asString(get(data, "userID")), asString(get(data, "messageID")),
                 TYPE_NAMES.getOrDefault((int) asLong(get(data, "type")), "Message"), timestamp,
                 timestamp == null ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
                 (int) asLong(get(data, "priority")), asBoolean(get(data, "durable")),
                 asBoolean(get(data, "redelivered")), asLong(get(data, "persistentSize")),
-                asString(get(data, "protocol")), truncated ? body.substring(0, bodyPreviewChars) : body, truncated);
+                asString(get(data, "protocol")), truncated ? body.substring(0, previewChars) : body, truncated);
     }
 
     private MessageDetail toDetail(String queueName, Message message) throws JMSException

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; search</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('search')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel" method="get" th:action="@{/search}">
+        <h2>Search every queue</h2>
+        <div class="field-row">
+            <div style="flex:1;min-width:22rem">
+                <label for="filter">Filter</label>
+                <input id="filter" type="text" name="filter" th:value="${filter}" style="width:100%"
+                       placeholder="correlationId = 'abc-123'" autocomplete="off" autofocus>
+            </div>
+            <div class="checkbox">
+                <input id="internal" type="checkbox" name="internal" value="true" th:checked="${internal}">
+                <label for="internal" style="display:inline">Include internal queues</label>
+            </div>
+            <div>
+                <button type="submit">Search</button>
+            </div>
+        </div>
+        <p class="note">
+            Filters use Artemis <strong>core</strong> syntax &mdash; a property by its bare name, or
+            <code>AMQPriority</code>, <code>AMQTimestamp</code>, <code>AMQDurable</code>,
+            <code>AMQSize</code>. JMS selector names such as <code>JMSCorrelationID</code> are not
+            rejected; they simply match nothing.
+        </p>
+    </form>
+
+    <div class="panel" th:if="${result}">
+        <h2>
+            Results
+            <span class="muted"
+                  th:text="${result.totalMatches()} + ' in ' + ${result.matches().size()} + ' of ' + ${result.queuesSearched()} + ' queues'">
+                0 in 0 of 0 queues</span>
+        </h2>
+
+        <p class="muted" th:if="${result.matches().isEmpty()}">
+            Nothing matched in any of the
+            <span th:text="${result.queuesSearched()}">0</span> queues searched.
+        </p>
+
+        <p class="note" th:if="${result.truncated()}">
+            Some queues had more matches than are shown. Open a queue to page through all of them.
+        </p>
+
+        <div th:each="m : ${result.matches()}" style="margin-top:1.25rem">
+            <h3 style="margin:0 0 .5rem">
+                <a th:href="@{/queues(name=${m.queueName()},filter=${result.filter()})}"
+                   th:text="${m.queueName()}">queue</a>
+                <span class="muted" th:text="'— ' + ${m.matchCount()} + ' match(es)'">— 0 matches</span>
+                <span class="badge" th:if="${m.partial()}"
+                      th:text="'showing first ' + ${m.messages().size()}">showing first 50</span>
+            </h3>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Type</th><th>Timestamp</th><th class="num">Priority</th>
+                        <th>Body</th><th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="msg : ${m.messages()}">
+                        <td th:text="${msg.type()}">Text</td>
+                        <td th:text="${msg.timestampText()}">&mdash;</td>
+                        <td class="num" th:text="${msg.priority()}">4</td>
+                        <td class="body-cell"><code th:text="${msg.bodyPreview()}">body</code></td>
+                        <td style="width:1%;white-space:nowrap">
+                            <a class="badge-link"
+                               th:href="@{/message(name=${m.queueName()},id=${msg.messageId()})}">Open</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

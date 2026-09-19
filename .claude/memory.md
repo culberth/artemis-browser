@@ -129,3 +129,66 @@ Read this at the start of every session. Consolidate when it gets repetitive.
 - **2026-09-18 — Phase 2 shipped**: overview page with auto-refresh, server-side pagination,
   core-syntax filtering, per-message detail, and saved connections (host/port/username, never
   passwords — a test asserts the file contains no "password" string). 52 tests.
+
+- **2026-09-18 — Broker-level management shapes.** `listAddresses(filter,page,pageSize)` returns
+  `{"data":[...]}` with every value string-quoted, and `routingTypes` is a JSON array encoded
+  *inside* a JSON string (`"[\"ANYCAST\"]"`) — it needs unwrapping or it renders as escaped
+  brackets. `getAcceptorsAsJSON`, `listConnectionsAsJSON` and `listAllConsumersAsJSON` return plain
+  JSON arrays. Health attributes come back with mixed types: `version`/`uptime` String,
+  `connectionCount` Long (despite an int getter), `diskStoreUsage` Double, and `status` is a JSON
+  String holding `server.state` and `server.nodeId`.
+
+- **2026-09-18 — There is no "which connection am I" management call.** Our own connection is
+  identified by finding the consumer sitting on our management reply queue and reading its
+  connectionID. Both the connections and consumers views label ours rather than hiding it, so the
+  consumer count on an idle broker still adds up.
+
+- **2026-09-18 — Cross-queue search is two-phase on purpose.** `countMessages(filter)` on every
+  queue first (cheap, returns a number), then browse only the queues that matched. Browsing every
+  queue speculatively pulls message bodies from the whole broker to answer a question that is
+  usually "it is in exactly one of these".
+
+- **2026-09-18 — CSV export must defuse formula injection.** Message bodies are attacker-controlled
+  as far as this tool is concerned, and exports get opened in Excel. Every field is quoted and a
+  leading `=`, `+`, `-` or `@` gets an apostrophe. Don't "simplify" the quoting to only-when-needed.
+
+- **2026-09-18 — Phase 3 shipped**: cross-queue search, CSV/JSON export, broker health/connections
+  view, address view with multicast fan-out. 68 tests. The `events` address with `sub-a`/`sub-b`
+  finally exercised the FQQN browse path end to end.
+
+- **2026-09-19 — `broker.listProducersInfoAsJSON()` shape**, verified against a live broker with an
+  active producer: `{"id","name","connectionID","sessionID","creationTime","destination",
+  "lastProducedMessageID","msgSent","msgSizeSent"}`. Unlike most other management JSON here,
+  `msgSent`/`msgSizeSent` are bare numbers, not string-quoted — `creationTime` still is (epoch
+  millis as a string). `destination` is the address it sends to. This tool's own `ManagementChannel`
+  producer shows up in the list (sending to `activemq.management`), exactly like its reply consumer
+  shows up in `listAllConsumersAsJSON()` — labelled "this tool" via the existing `ourConnectionId()`
+  match, not filtered out.
+
+- **2026-09-19 — Phase 4 (in progress): producers view**, added to the existing `/broker` health
+  page rather than a new page — same "who's touching the broker" picture the Connections/Consumers
+  panels already give, from the producer side. `BrokerProducer`, `BrokerInfoService.producers()`.
+
+- **2026-09-19 — `diskStoreUsage` is a 0..1 ratio, not a percentage.** `BrokerHealth.diskUsedPercent()`
+  and `diskPressure()` both work in 0..100 like `maxDiskUsage` does. Reading `diskStoreUsage` straight
+  into `BrokerHealth` displayed "0.10%" for an actually-85%-full disk and meant `diskPressure()` could
+  never trip. `BrokerInfoService.health()` now multiplies by 100. Caught by Codex review, confirmed
+  against a live broker (showed 10.34% correctly after the fix).
+
+- **2026-09-19 — Export must not reuse the UI list's preview truncation.** `QueueBrowseService.page()`
+  cuts each message body to `artemis.body-preview-chars` (200) for the table view — CSV/JSON export
+  called the same method, so any body over 200 chars was silently cut in a downloaded file despite
+  `export-max-messages` allowing up to 5,000 messages. Added `pageForExport(...)`, which uses
+  `artemis.body-detail-chars` (200000, the same cap the single-message detail view already uses)
+  instead. CSV now also has a `bodyTruncated` column, matching what JSON already got for free from
+  `MessageSummary`. Caught by Codex review.
+
+- **2026-09-19 — Artemis's own `browse()` truncates the `text` attribute independently of this app**,
+  around ~256 chars, and appends a literal `", + N more"` suffix to the value itself rather than
+  signalling truncation out of band. Verified live: a 250-char body came back whole, a 500-char body
+  came back as 256 chars of body text plus that suffix. This is a broker-side limit (Artemis's
+  `management-message-attribute-size-limit`, default 256) on the *browse* read path specifically —
+  raising `artemis.body-detail-chars` past it does nothing, and it does not affect the JMS
+  `QueueBrowser` detail path, which reads the real body. Export inherits this ceiling for any queue
+  with large text messages; it is not something `pageForExport` can work around, only the JMS detail
+  path can.
