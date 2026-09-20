@@ -52,10 +52,11 @@ These are decisions already made, not open questions. They are here so a new fea
 against them.
 
 - **Read-only**, as above.
-- **Loopback only.** `server.address=127.0.0.1` *and* `LoopbackHostFilter`. The app has no login of
-  its own while holding an authenticated broker connection, so it must not be reachable. If it is
-  ever made network-reachable, the filter is not the thing to relax — real authentication is what
-  would have to be built first.
+- **Loopback by default, reachable further only with a login and TLS.** `server.address` decides
+  where it listens; `AllowedHostFilter` decides which `Host` headers it answers; `ReachabilityGuard`
+  refuses to start exposed without both a login and TLS. The constraint used to be "loopback only,
+  because there is no login" — Phase 7 built the login rather than relaxing the filter, which is
+  what that constraint always said would have to happen first.
 - **The broker password is never retained.** It goes from the form to `connect()` and is dropped.
   Remembered connections store host, port and username only.
 - **One broker per HTTP session.** Session expiry is connection expiry. Multi-broker comparison is
