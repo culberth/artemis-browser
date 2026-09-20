@@ -143,7 +143,7 @@ class MessageSearchServiceTest
     {
         List<MessageSummary> summaries = java.util.stream.IntStream.range(0, messages)
                 .mapToObj(i -> new MessageSummary(i + 1, "ID:" + i, String.valueOf(i), "Text", 0L, "", 4, true, false,
-                        10, "CORE", "body", false))
+                        10, "CORE", false, "body", false))
                 .toList();
         return new MessagePage(queueName, "count = 1", 1, messages, messages, summaries);
     }

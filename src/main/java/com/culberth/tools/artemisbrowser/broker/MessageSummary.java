@@ -14,7 +14,7 @@ package com.culberth.tools.artemisbrowser.broker;
  */
 public record MessageSummary(long position, String messageId, String coreId, String type, Long timestamp,
         String timestampText, int priority, boolean persistent, boolean redelivered, long sizeBytes, String protocol,
-        String bodyPreview, boolean bodyTruncated)
+        boolean largeMessage, String bodyPreview, boolean bodyTruncated)
 {
 
     /**
@@ -24,6 +24,6 @@ public record MessageSummary(long position, String messageId, String coreId, Str
     public MessageSummary withBody(String body, boolean truncated)
     {
         return new MessageSummary(position, messageId, coreId, type, timestamp, timestampText, priority, persistent,
-                redelivered, sizeBytes, protocol, body, truncated);
+                redelivered, sizeBytes, protocol, largeMessage, body, truncated);
     }
 }

@@ -39,7 +39,15 @@ mvn clean install    # full build
 mvn test              # all tests
 mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
+mvn verify -Pintegration              # unit tests + integration tests (needs Docker)
 ```
+
+Integration tests are named `*IT` and run only under the `integration` profile, so a normal build
+needs nothing but Maven. They start a real Artemis in a container (Testcontainers) and check the two
+things a mock cannot: that the management request/reply plumbing works against a real broker, and
+that browsing, searching and exporting leave every counter exactly where they found it. That second
+one is the product's central claim, and `ReadOnlyGuaranteeIT` is what stops it being merely
+believed.
 
 `java-formatter-maven-plugin` reformats all Java sources on every build (Allman braces, its own
 wrapping), bound to the default lifecycle — expect `git status` to show modified source files after
@@ -71,7 +79,7 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
 | `/search` | Cross-queue search |
-| `/export` | CSV/JSON download of a search or queue result |
+| `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
@@ -94,6 +102,7 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.search-max-per-queue` | `50` | Messages fetched per matching queue during cross-queue search |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
 | `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
+| `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |
 
 ## Security posture
 
@@ -125,6 +134,17 @@ whether what you got is the whole body. The pass is bounded by `artemis.export-b
 anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
 complete. Like every other read here, it consumes nothing — verified against a live broker with
 counters unchanged after repeated exports.
+
+A cross-queue search exports the same way, one queue at a time: each matching queue is re-read with
+export bodies and written out before the next is fetched, so a search that matched in thirty queues
+never holds thirty queues' worth of bodies at once. CSV names the queue on every row; JSON groups
+messages under their queue.
+
+That pass is the one place in the app that holds real message bodies in memory, so it is bounded
+twice: `artemis.export-body-scan-limit` caps how far it walks, and `artemis.export-body-total-chars`
+caps what it keeps. Once the character budget is spent, remaining rows keep their management body
+and are flagged truncated, so the file always says which rows were cut. Both the CSV and the JSON
+writers stream to the response rather than building the document in memory first.
 
 ## Layout
 

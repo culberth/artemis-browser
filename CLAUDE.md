@@ -7,7 +7,7 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 **artemis-browser** — a read-only web browser for ActiveMQ Artemis queues. Spring Boot 4.1.1 on
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–4 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
-producers, address view. 116 tests.
+producers, address view. Phase 5 is in progress on `phase05`. 128 unit tests, 11 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -56,8 +56,11 @@ mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
 mvn test -Dtest=OneTest,TwoTest       # several (comma, not +)
 mvn spring-boot:run                   # run the app on http://localhost:8080
+mvn verify -Pintegration              # + integration tests: starts a real broker in Docker
 ```
 
+- `*IT` tests run only under `-Pintegration`, so `mvn clean install` needs nothing but Maven. They
+  cover what a mock cannot: the management round trip, and that reading consumes nothing.
 - Dependency resolution goes through a local Nexus (`mirrorOf *`), configured in Maven's own
   `conf/settings.xml` rather than `~/.m2`. If Nexus is down, nothing resolves.
 - `java-formatter-maven-plugin` reformats sources on every build, so expect `git status` to show
@@ -110,4 +113,5 @@ individual files only when relevant.
 ## Git
 
 Read, branch, and edit freely. Ask before `git push`, force-push, merge, rebasing shared history, or
-deleting a branch. `main` is the branch to target for PRs; current work is on `phase04`.
+deleting a branch. `main` is the branch to target for PRs; current work is on `phase05`, which
+merges up through `Milestone003`.

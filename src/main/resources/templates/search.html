@@ -42,7 +42,17 @@
             <span class="muted"
                   th:text="${result.totalMatches()} + ' in ' + ${result.matches().size()} + ' of ' + ${result.queuesSearched()} + ' queues'">
                 0 in 0 of 0 queues</span>
+            <span th:if="${!result.matches().isEmpty()}" style="float:right;font-size:.8rem;font-weight:normal">
+                <a class="badge-link"
+                   th:href="@{/export(filter=${result.filter()},internal=${internal},format=csv)}">Export CSV</a>
+                <a class="badge-link"
+                   th:href="@{/export(filter=${result.filter()},internal=${internal},format=json)}">Export JSON</a>
+            </span>
         </h2>
+        <p class="note" th:if="${!result.matches().isEmpty()}">
+            An export re-reads every matching queue with whole message bodies, so it contains more than
+            this page shows.
+        </p>
 
         <p class="muted" th:if="${result.matches().isEmpty()}">
             Nothing matched in any of the
@@ -58,8 +68,9 @@
                 <a th:href="@{/queues(name=${m.queueName()},filter=${result.filter()})}"
                    th:text="${m.queueName()}">queue</a>
                 <span class="muted" th:text="'— ' + ${m.matchCount()} + ' match(es)'">— 0 matches</span>
-                <span class="badge" th:if="${m.partial()}"
-                      th:text="'showing first ' + ${m.messages().size()}">showing first 50</span>
+                <a class="badge-link" th:if="${m.partial()}"
+                   th:href="@{/queues(name=${m.queueName()},filter=${result.filter()})}"
+                   th:text="'showing first ' + ${m.messages().size()} + ' — page through the rest'">showing first 50</a>
             </h3>
             <div class="table-scroll">
                 <table>
@@ -71,7 +82,11 @@
                     </thead>
                     <tbody>
                     <tr th:each="msg : ${m.messages()}">
-                        <td th:text="${msg.type()}">Text</td>
+                        <td>
+                            <span th:text="${msg.type()}">Text</span>
+                            <span class="badge" th:if="${msg.largeMessage()}"
+                                  title="Held in the broker's large-message store">large</span>
+                        </td>
                         <td th:text="${msg.timestampText()}">&mdash;</td>
                         <td class="num" th:text="${msg.priority()}">4</td>
                         <td class="body-cell"><code th:text="${msg.bodyPreview()}">body</code></td>

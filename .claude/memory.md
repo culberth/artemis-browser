@@ -87,6 +87,12 @@ from — a wrong parse here yields a believable number rather than an error.
   `server.nodeId`. **`diskStoreUsage` is a 0..1 ratio, not a percentage** — reading it straight
   showed "0.10%" for an 85%-full disk and meant `diskPressure()` could never trip;
   `BrokerInfoService.health()` multiplies by 100.
+- **A large message is announced differently on each read path.** Management `browse` has a
+  `largeMessage` boolean attribute; the JMS read path has no such API and instead carries the
+  property **`_AMQ_LARGE_SIZE`** (Artemis's `Message.HDR_LARGE_BODY_SIZE`), whose value is the real
+  body size. Both are read, because neither path can see the other's. Verified against a broker
+  holding 250KB messages — the default `min-large-message-size` is 100KB, so `--message-size 250000`
+  produces one.
 - **There is no "which connection am I" call.** Our own connection is identified by finding the
   consumer sitting on our management reply queue and reading its `connectionID`.
 
@@ -100,6 +106,43 @@ from — a wrong parse here yields a believable number rather than an error.
   exports through its FQQN.
 - **The `events` address with `sub-a`/`sub-b`** is what exercises the FQQN browse path end to end.
   Worth recreating whenever that path changes — a bare name fails silently, not loudly.
+
+## Traps hit while working
+
+- **`mvn spring-boot:run` forks a JVM, and stopping the Maven process does not stop it.** The
+  orphan keeps port 8080, so the next run fails with "Port 8080 was already in use" while the stale
+  app keeps serving — against *old* classes and *new* templates, which shows up as a SpringEL error
+  for a record accessor that exists in the source. Kill by port, not by task:
+  `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process -Force`.
+
+## Testing
+
+- **`JMSManagementHelper` refuses a foreign message**: "Cannot send a foreign message as a
+  management message". It requires a real `ActiveMQMessage`, so a mocked `Session` cannot get as far
+  as sending a request — every management round trip has to be tested against a real broker, not
+  mocked. `ManagementChannelTest` is therefore small on purpose; `ManagementChannelIT` carries the
+  rest.
+- **A timeout is produced deterministically by addressing a non-management address.** Nothing is
+  listening there, so the receive runs out. Asking a healthy broker for a slow reply is the flaky
+  alternative.
+- **Spring Boot 4.1.1 manages `org.testcontainers:testcontainers` (2.0.5) but not its
+  `junit-jupiter` module.** Drive the container from `@BeforeAll` and the extra artifact is not
+  needed.
+- **A JMS durable subscription's queue is named `clientId.subscriptionName`** — `it-client.it-sub`
+  for client id `it-client` and subscription `it-sub` — bound to the topic's address. That is the
+  cheapest way to create the address != queue name case the FQQN path needs. The subscription must
+  exist *before* anything is published, or the publication is dropped with nowhere to route.
+
+## Verified UI behaviour
+
+- **Export of a cross-queue search** (2026-09-19): 9 messages across 3 queues came out with whole
+  400-character bodies in both CSV and JSON, where the search page itself shows 200-character
+  previews. The search page's "showing first 50" links through to the queue view with the filter
+  applied, which pages correctly through 60 matches.
+- **The overview sorts and filters server-side**, no JavaScript: column headings are links, and the
+  refresh control carries `sort`/`dir`/`q` as hidden inputs. Note the row loop variable in
+  `overview.html` is `queue`, not `q` — `q` is the search box, and naming the loop variable `q`
+  silently shadows it.
 
 ## Conventions
 

@@ -12,6 +12,7 @@ import java.util.Map;
  */
 public record MessageDetail(String queueName, String messageId, String correlationId, String type, String destination,
         String timestampText, String expirationText, int priority, boolean persistent, boolean redelivered,
-        long deliveryCount, String groupId, String body, boolean bodyTruncated, Map<String, String> properties)
+        long deliveryCount, String groupId, boolean largeMessage, String body, boolean bodyTruncated,
+        Map<String, String> properties)
 {
 }

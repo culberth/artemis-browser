@@ -73,20 +73,30 @@ public class QueueBrowseService
      */
     private static final int MIN_BROKER_TRUNCATION_LENGTH = 64;
 
+    /**
+     * How a large message announces itself on the JMS read path — Artemis's own {@code Message.HDR_LARGE_BODY_SIZE},
+     * carrying the real body size. Management browse has a {@code largeMessage} attribute instead; the two paths do not
+     * agree on a spelling, so both are read. Verified against a broker holding a 250KB message.
+     */
+    private static final String LARGE_BODY_SIZE = "_AMQ_LARGE_SIZE";
+
     private final BrokerSession brokerSession;
     private final int bodyPreviewChars;
     private final int bodyDetailChars;
     private final int exportBodyScanLimit;
+    private final long exportBodyTotalChars;
 
     public QueueBrowseService(BrokerSession brokerSession,
             @Value("${artemis.body-preview-chars:200}") int bodyPreviewChars,
             @Value("${artemis.body-detail-chars:200000}") int bodyDetailChars,
-            @Value("${artemis.export-body-scan-limit:20000}") int exportBodyScanLimit)
+            @Value("${artemis.export-body-scan-limit:20000}") int exportBodyScanLimit,
+            @Value("${artemis.export-body-total-chars:20000000}") long exportBodyTotalChars)
     {
         this.brokerSession = brokerSession;
         this.bodyPreviewChars = bodyPreviewChars;
         this.bodyDetailChars = bodyDetailChars;
         this.exportBodyScanLimit = exportBodyScanLimit;
+        this.exportBodyTotalChars = exportBodyTotalChars;
     }
 
     /**
@@ -113,9 +123,13 @@ public class QueueBrowseService
      *
      * <p>
      * So the listing still comes from management browse — the broker does the paging and the core filtering — and then
-     * the bodies that need it are filled in from a single JMS browser pass, which reads real bodies of any type. That
-     * pass is bounded by {@code artemis.export-body-scan-limit}; anything it does not reach keeps its management body,
-     * marked truncated.
+     * the bodies that need it are filled in from a single JMS browser pass, which reads real bodies of any type.
+     *
+     * <p>
+     * That pass is bounded twice, because it is the one place here that holds real message bodies in memory:
+     * {@code artemis.export-body-scan-limit} caps how far it walks, and {@code artemis.export-body-total-chars} caps
+     * what it keeps. Whatever it does not reach or cannot afford keeps its management body, marked truncated — a short
+     * body is never presented as a whole one.
      *
      * @param browseName the queue's FQQN where it differs from its name; see {@link QueueStats#browseName()}
      */
@@ -130,12 +144,12 @@ public class QueueBrowseService
             return listing;
         }
 
-        Map<String, String> bodies = bodies(browseName, wanted);
+        Map<String, Body> bodies = bodies(browseName, wanted);
         List<MessageSummary> filled = new ArrayList<>(listing.messages().size());
         for (MessageSummary message : listing.messages())
         {
-            String body = message.messageId() == null ? null : bodies.get(message.messageId());
-            filled.add(body == null ? message : withBody(message, body));
+            Body body = message.messageId() == null ? null : bodies.get(message.messageId());
+            filled.add(body == null ? message : message.withBody(body.text(), body.truncated()));
         }
         return new MessagePage(listing.queueName(), listing.filter(), listing.page(), listing.pageSize(),
                 listing.totalMatching(), filled);
@@ -147,12 +161,6 @@ public class QueueBrowseService
         return message.bodyTruncated() || NO_TEXT_BODY.equals(message.bodyPreview());
     }
 
-    private MessageSummary withBody(MessageSummary message, String body)
-    {
-        boolean truncated = body.length() > bodyDetailChars;
-        return message.withBody(truncated ? body.substring(0, bodyDetailChars) : body, truncated);
-    }
-
     /**
      * Real bodies for a known set of messages, in one browser pass.
      *
@@ -162,10 +170,11 @@ public class QueueBrowseService
      * all, and stops as soon as the last one is found — which for an unfiltered export is within the first page, since
      * those messages are the head of the queue.
      */
-    private Map<String, String> bodies(String browseName, Set<String> messageIds)
+    private Map<String, Body> bodies(String browseName, Set<String> messageIds)
     {
-        Map<String, String> bodies = new LinkedHashMap<>();
+        Map<String, Body> bodies = new LinkedHashMap<>();
         Session session = brokerSession.requireSession();
+        long budget = exportBodyTotalChars;
         synchronized (this)
         {
             try (QueueBrowser browser = session.createBrowser(session.createQueue(browseName)))
@@ -173,14 +182,16 @@ public class QueueBrowseService
                 Enumeration<?> enumeration = browser.getEnumeration();
                 int scanned = 0;
                 while (enumeration.hasMoreElements() && bodies.size() < messageIds.size()
-                        && scanned < exportBodyScanLimit)
+                        && scanned < exportBodyScanLimit && budget > 0)
                 {
                     Message message = (Message) enumeration.nextElement();
                     scanned++;
                     String id = message.getJMSMessageID();
                     if (id != null && messageIds.contains(id))
                     {
-                        bodies.put(id, bodyOf(message));
+                        Body body = read(message, budget);
+                        budget -= body.text().length();
+                        bodies.put(id, body);
                     }
                 }
             }
@@ -191,6 +202,33 @@ public class QueueBrowseService
             }
         }
         return bodies;
+    }
+
+    /**
+     * One body, cut to whichever ceiling bites first: the per-message {@code artemis.body-detail-chars}, or what is
+     * left of the export's total budget. Either way the row is marked truncated, so a cut body is never presented as a
+     * whole one.
+     */
+    private Body read(Message message, long budget) throws JMSException
+    {
+        String text = bodyOf(message);
+        boolean truncated = false;
+        if (text.length() > bodyDetailChars)
+        {
+            text = text.substring(0, bodyDetailChars);
+            truncated = true;
+        }
+        if (text.length() > budget)
+        {
+            text = text.substring(0, (int) budget);
+            truncated = true;
+        }
+        return new Body(text, truncated);
+    }
+
+    /** A body read over JMS, and whether anything was cut off it on the way. */
+    private record Body(String text, boolean truncated)
+    {
     }
 
     private MessagePage page(String queueName, String filter, int page, int pageSize, int previewChars)
@@ -290,7 +328,7 @@ public class QueueBrowseService
                 timestamp == null ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
                 (int) asLong(get(data, "priority")), asBoolean(get(data, "durable")),
                 asBoolean(get(data, "redelivered")), asLong(get(data, "persistentSize")),
-                asString(get(data, "protocol")), body, truncated);
+                asString(get(data, "protocol")), asBoolean(get(data, "largeMessage")), body, truncated);
     }
 
     private MessageDetail toDetail(String queueName, Message message) throws JMSException
@@ -306,8 +344,8 @@ public class QueueBrowseService
                 expiration == 0 ? "never" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(expiration)),
                 message.getJMSPriority(), message.getJMSDeliveryMode() == jakarta.jms.DeliveryMode.PERSISTENT,
                 message.getJMSRedelivered(), message.getLongProperty("JMSXDeliveryCount"),
-                message.getStringProperty("JMSXGroupID"), truncated ? body.substring(0, bodyDetailChars) : body,
-                truncated, properties(message));
+                message.getStringProperty("JMSXGroupID"), message.propertyExists(LARGE_BODY_SIZE),
+                truncated ? body.substring(0, bodyDetailChars) : body, truncated, properties(message));
     }
 
     private String typeOf(Message message)
