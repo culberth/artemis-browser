@@ -10,10 +10,17 @@ import org.springframework.stereotype.Service;
  * Finds messages across every queue at once — the "I have the order ID but not the queue" case.
  *
  * <p>
- * Deliberately two-phase. {@code countMessages(filter)} is asked of every queue first, which is one cheap round trip
- * each and returns a number rather than message bodies; only the queues that actually matched are then browsed.
- * Browsing every queue speculatively would pull message bodies from the whole broker to answer a question that is
- * usually "it is in exactly one of these".
+ * Every queue is browsed with the filter, bounded to {@code artemis.search-max-per-queue} rows each. This used to be
+ * two-phase and cheaper — {@code countMessages(filter)} per queue, then browse only the queues that reported a match —
+ * until measuring at 100,000 messages showed the count cannot carry that weight. Artemis examines only the first
+ * {@code management-browse-page-size} messages (200 by default) when counting with a filter, so a queue whose match
+ * sits at position 99,999 reports zero and was never browsed: the search answered "nothing found" for a message that
+ * was there. A filtered browse scans the whole queue and finds it.
+ *
+ * <p>
+ * What that costs is a broker-side scan of each queue instead of a counter read, which is the price of the answer being
+ * true. What it gives up is an exact total: the number reported per queue is how many were found, a floor, not how many
+ * exist.
  *
  * <p>
  * Read-only throughout: counting and browsing both leave the queue untouched.
@@ -79,22 +86,29 @@ public class MessageSearchService
             }
             searched++;
 
-            long count = count(management, queue.name(), effectiveFilter);
-            if (count <= 0)
-            {
-                continue;
-            }
-            total += count;
-
             if (perQueue <= 0)
             {
-                matches.add(new SearchResult.QueueMatches(queue.name(), count, List.of()));
+                // Counting only, for export: it will fetch each queue's messages itself.
+                long count = count(management, queue.name(), effectiveFilter);
+                if (count > 0)
+                {
+                    matches.add(new SearchResult.QueueMatches(queue.name(), count, false, List.of()));
+                    total += count;
+                }
                 continue;
             }
-            int take = (int) Math.min(count, perQueue);
-            MessagePage page = browseService.page(queue.name(), effectiveFilter, 1, take);
-            truncated = truncated || count > page.messages().size();
-            matches.add(new SearchResult.QueueMatches(queue.name(), count, page.messages()));
+
+            List<MessageSummary> found = browseService.matching(queue.name(), effectiveFilter, perQueue);
+            if (found.isEmpty())
+            {
+                continue;
+            }
+            // The number found, not the number there are: a filtered count stops after the broker's
+            // management-browse-page-size, so it cannot be trusted as a total.
+            total += found.size();
+            boolean filledTheLimit = found.size() >= perQueue;
+            truncated = truncated || filledTheLimit;
+            matches.add(new SearchResult.QueueMatches(queue.name(), found.size(), filledTheLimit, found));
         }
         return new SearchResult(effectiveFilter, searched, total, truncated, matches);
     }

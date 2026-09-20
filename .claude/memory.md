@@ -107,6 +107,13 @@ from — a wrong parse here yields a believable number rather than an error.
   body size. Both are read, because neither path can see the other's. Verified against a broker
   holding 250KB messages — the default `min-large-message-size` is 100KB, so `--message-size 250000`
   produces one.
+- **A filtered `countMessages` only examines the first `management-browse-page-size` messages**
+  (200 by default) — it is a sample, not a count. Measured on a 100,000-message queue:
+  `countMessages()` unfiltered returned 100000, while `countMessages("AMQPriority=4")` returned 200
+  and `countMessages("count=500")` returned 0 for a message that is definitely there. A filtered
+  **`browse`** has no such window: it scans the whole queue and finds a match at position 99,999 in
+  about 300ms. So browse to find things; never use a filtered count to decide whether something is
+  there.
 - **There is no "which connection am I" call.** Our own connection is identified by finding the
   consumer sitting on our management reply queue and reading its `connectionID`.
 
@@ -120,6 +127,25 @@ from — a wrong parse here yields a believable number rather than an error.
   exports through its FQQN.
 - **The `events` address with `sub-a`/`sub-b`** is what exercises the FQQN browse path end to end.
   Worth recreating whenever that path changes — a bare name fails silently, not loudly.
+
+## Measured limits
+
+Taken against one containerised broker on this machine, 100,000 messages of 200 characters in one
+queue, with the other queues small. Times are end-to-end HTTP, not broker time.
+
+| What | At 100k |
+|---|---|
+| Overview (all queues) | ~310ms |
+| Queue page 1 | ~400ms |
+| Queue **page 2000** | ~310ms — deep paging is flat, which is the whole point of server-side paging |
+| Filtered queue page | ~300ms |
+| Diagnose | ~300ms |
+| Cross-queue search | ~300ms, including a match at position 99,999 |
+| Export 5,000 messages | ~1.7s, 2MB |
+
+- **Seeding is the slow part**, not reading: 100,000 messages took 2m22s to produce through the CLI.
+- Nothing degraded with depth. The ceiling found at this size was not performance at all — it was
+  the filtered-count window above, which made search silently wrong from about 200 messages.
 
 ## Traps hit while working
 

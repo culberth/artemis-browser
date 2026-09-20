@@ -14,15 +14,20 @@ import static org.mockito.Mockito.verify;
 
 import java.util.List;
 import java.util.Map;
-import org.apache.activemq.artemis.api.core.management.ResourceNames;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Searching is two-phase on purpose: count on every queue, browse only the ones that matched. A regression that browsed
- * everything would still return the right answer — it would just quietly pull every body on the broker through this
- * process to do it, so the cheap phase is what the tests hold in place.
+ * Searching browses every queue rather than asking each one how many messages match.
+ *
+ * <p>
+ * It used to do the cheap thing: {@code countMessages(filter)} per queue, then browse only the queues that reported a
+ * match. Measuring at 100,000 messages showed why that was wrong — Artemis only examines the first
+ * {@code management-browse-page-size} messages (200 by default) when counting with a filter, so a queue whose match sat
+ * at position 99,999 reported zero and was never browsed. The search said "0 matches" for a message that was definitely
+ * there, which is the exact failure the feature exists to prevent.
  */
 class MessageSearchServiceTest
 {
@@ -40,27 +45,66 @@ class MessageSearchServiceTest
         queueDirectory = mock(QueueDirectory.class);
         browseService = mock(QueueBrowseService.class);
         given(brokerSession.requireManagement()).willReturn(management);
+        given(browseService.matching(anyString(), anyString(), anyInt())).willReturn(List.of());
     }
 
     @Test
-    @DisplayName("only the queues that counted a match are browsed")
-    void browsesOnlyWhatMatched()
+    @DisplayName("a match deep in a large queue is found, where counting would have missed it")
+    void findsAMatchPastTheCountingWindow()
+    {
+        // The regression test for the measured bug: countMessages answers 0 for this queue.
+        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false), queue("payments", false)));
+        given(browseService.matching("payments", "count = 99999", 50)).willReturn(messages(1));
+
+        SearchResult result = service().search("count = 99999", false);
+
+        assertEquals(1, result.totalMatches());
+        assertEquals("payments", result.matches().get(0).queueName());
+        verify(management, never()).invoke(anyString(), eq("countMessages"), anyString());
+    }
+
+    @Test
+    @DisplayName("every queue is browsed, and only the ones that matched are reported")
+    void browsesEveryQueueAndReportsTheMatches()
     {
         given(queueDirectory.overview())
                 .willReturn(List.of(queue("orders", false), queue("payments", false), queue("DLQ", false)));
-        counts("orders", 2);
-        counts("payments", 0);
-        counts("DLQ", 0);
-        given(browseService.page("orders", "count = 1", 1, 2)).willReturn(page("orders", 2));
+        given(browseService.matching("orders", "count = 1", 50)).willReturn(messages(2));
 
         SearchResult result = service().search("count = 1", false);
 
         assertEquals(3, result.queuesSearched());
-        assertEquals(2, result.totalMatches());
         assertEquals(1, result.matches().size());
-        assertEquals("orders", result.matches().get(0).queueName());
-        verify(browseService, never()).page(eq("payments"), anyString(), anyInt(), anyInt());
-        verify(browseService, never()).page(eq("DLQ"), anyString(), anyInt(), anyInt());
+        assertEquals(2, result.totalMatches());
+        verify(browseService).matching("payments", "count = 1", 50);
+        verify(browseService).matching("DLQ", "count = 1", 50);
+    }
+
+    @Test
+    @DisplayName("a queue that fills the per-queue limit reports a floor, not a total")
+    void reportsAFloorWhenTheLimitIsReached()
+    {
+        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
+        given(browseService.matching("orders", "count = 1", 50)).willReturn(messages(50));
+
+        SearchResult result = service().search("count = 1", false);
+
+        assertTrue(result.truncated());
+        assertTrue(result.matches().get(0).partial());
+        assertEquals(50, result.totalMatches(), "the number found, which is all that can be known cheaply");
+    }
+
+    @Test
+    @DisplayName("a result inside the limit is complete and says so")
+    void doesNotFlagACompleteResult()
+    {
+        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
+        given(browseService.matching("orders", "count = 1", 50)).willReturn(messages(3));
+
+        SearchResult result = service().search("count = 1", false);
+
+        assertFalse(result.truncated());
+        assertFalse(result.matches().get(0).partial());
     }
 
     @Test
@@ -69,52 +113,25 @@ class MessageSearchServiceTest
     {
         given(queueDirectory.overview())
                 .willReturn(List.of(queue("orders", false), queue("$.artemis.internal.sf.cluster", true)));
-        counts("orders", 0);
 
         assertEquals(1, service().search("count = 1", false).queuesSearched());
-        verify(management, never()).invoke(ResourceNames.QUEUE + "$.artemis.internal.sf.cluster", "countMessages",
-                "count = 1");
-    }
-
-    @Test
-    @DisplayName("asking for internal queues searches them too")
-    void searchesInternalQueuesWhenAsked()
-    {
-        given(queueDirectory.overview())
-                .willReturn(List.of(queue("orders", false), queue("$.artemis.internal.sf.cluster", true)));
-        counts("orders", 0);
-        counts("$.artemis.internal.sf.cluster", 0);
+        verify(browseService, never()).matching(eq("$.artemis.internal.sf.cluster"), anyString(), anyInt());
 
         assertEquals(2, service().search("count = 1", true).queuesSearched());
     }
 
     @Test
-    @DisplayName("more matches than the per-queue cap is reported as a partial result")
-    void reportsATruncatedSearch()
+    @DisplayName("counting-only mode is for export, and still uses the cheap count")
+    void countsOnlyForExport()
     {
         given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
-        counts("orders", 500);
-        given(browseService.page("orders", "count = 1", 1, 50)).willReturn(page("orders", 50));
+        given(management.invoke("queue.orders", "countMessages", "count = 1")).willReturn(7L);
 
-        SearchResult result = service().search("count = 1", false);
+        SearchResult result = service().counts("count = 1", false);
 
-        assertTrue(result.truncated());
-        assertTrue(result.matches().get(0).partial());
-        assertEquals(500, result.totalMatches());
-    }
-
-    @Test
-    @DisplayName("a complete result is not flagged partial")
-    void doesNotFlagACompleteResult()
-    {
-        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
-        counts("orders", 3);
-        given(browseService.page("orders", "count = 1", 1, 3)).willReturn(page("orders", 3));
-
-        SearchResult result = service().search("count = 1", false);
-
-        assertFalse(result.truncated());
-        assertFalse(result.matches().get(0).partial());
+        assertEquals(7, result.totalMatches());
+        assertTrue(result.matches().get(0).messages().isEmpty(), "counting mode fetches no messages");
+        verify(browseService, never()).matching(anyString(), anyString(), anyInt());
     }
 
     @Test
@@ -125,9 +142,9 @@ class MessageSearchServiceTest
         assertThrows(BrokerException.class, () -> service().search(null, false));
 
         given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
-        counts("orders", 0);
 
         assertEquals("count = 1", service().search("  count = 1  ", false).filter());
+        verify(browseService).matching("orders", "count = 1", 50);
     }
 
     private MessageSearchService service()
@@ -135,18 +152,10 @@ class MessageSearchServiceTest
         return new MessageSearchService(brokerSession, queueDirectory, browseService, 50);
     }
 
-    private void counts(String queueName, long matches)
+    private List<MessageSummary> messages(int howMany)
     {
-        given(management.invoke(ResourceNames.QUEUE + queueName, "countMessages", "count = 1")).willReturn(matches);
-    }
-
-    private MessagePage page(String queueName, int messages)
-    {
-        List<MessageSummary> summaries = java.util.stream.IntStream.range(0, messages)
-                .mapToObj(i -> new MessageSummary(i + 1, "ID:" + i, String.valueOf(i), "Text", 0L, "", 4, true, false,
-                        10, "CORE", false, Map.of(), "body", false))
-                .toList();
-        return new MessagePage(queueName, "count = 1", 1, messages, messages, summaries);
+        return IntStream.range(0, howMany).mapToObj(i -> new MessageSummary(i + 1, "ID:" + i, String.valueOf(i), "Text",
+                0L, "", 4, true, false, 10, "CORE", false, Map.of(), "body", false)).toList();
     }
 
     private QueueOverview queue(String name, boolean internal)

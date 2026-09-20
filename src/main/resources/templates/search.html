@@ -60,14 +60,19 @@
         </p>
 
         <p class="note" th:if="${result.truncated()}">
-            Some queues had more matches than are shown. Open a queue to page through all of them.
+            Some queues filled the per-queue limit, so there are more matches than are shown and the
+            counts for those queues are a floor rather than a total. Open a queue to page through
+            the rest &mdash; the broker will not tell us how many there are without scanning, and a
+            filtered count stops after its first few hundred messages.
         </p>
 
         <div th:each="m : ${result.matches()}" style="margin-top:1.25rem">
             <h3 style="margin:0 0 .5rem">
                 <a th:href="@{/queues(name=${m.queueName()},filter=${result.filter()})}"
                    th:text="${m.queueName()}">queue</a>
-                <span class="muted" th:text="'— ' + ${m.matchCount()} + ' match(es)'">— 0 matches</span>
+                <span class="muted"
+                      th:text="${m.partial()} ? '— at least ' + ${m.matchCount()} + ' match(es)'
+                               : '— ' + ${m.matchCount()} + ' match(es)'">— 0 matches</span>
                 <a class="badge-link" th:if="${m.partial()}"
                    th:href="@{/queues(name=${m.queueName()},filter=${result.filter()})}"
                    th:text="'showing first ' + ${m.messages().size()} + ' — page through the rest'">showing first 50</a>

@@ -273,6 +273,36 @@ public class QueueBrowseService
     }
 
     /**
+     * Messages matching a filter, without asking how many there are in total.
+     *
+     * <p>
+     * Deliberately no {@code countMessages}: Artemis only examines the first {@code management-browse-page-size}
+     * messages (200 by default) when counting with a filter, so a queue whose match sits at position 50,000 counts as
+     * zero. A filtered {@code browse} scans the whole queue and finds it. Using the count to decide whether a queue is
+     * worth browsing — which is what searching used to do — therefore made search silently blind past the first 200
+     * messages of every queue.
+     *
+     * <p>
+     * The cost of being right is that the broker scans each queue rather than answering from a counter. That work
+     * happens broker-side and returns at most {@code limit} rows.
+     */
+    public List<MessageSummary> matching(String queueName, String filter, int limit)
+    {
+        ManagementChannel management = brokerSession.requireManagement();
+        String effectiveFilter = filter == null ? "" : filter.trim();
+        Object result = effectiveFilter.isEmpty()
+                ? management.invoke(ResourceNames.QUEUE + queueName, "browse", 1, limit)
+                : management.invoke(ResourceNames.QUEUE + queueName, "browse", 1, limit, effectiveFilter);
+
+        List<MessageSummary> messages = new ArrayList<>();
+        for (CompositeData entry : compositeData(result))
+        {
+            messages.add(toSummary(entry, messages.size() + 1L, bodyPreviewChars));
+        }
+        return messages;
+    }
+
+    /**
      * Messages the broker is holding back until their delivery time.
      *
      * <p>

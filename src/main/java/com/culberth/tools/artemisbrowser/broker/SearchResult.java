@@ -13,13 +13,15 @@ public record SearchResult(String filter, int queuesSearched, long totalMatches,
         List<QueueMatches> matches)
 {
 
-    /** The hits in one queue. */
-    public record QueueMatches(String queueName, long matchCount, List<MessageSummary> messages)
+    /**
+     * The hits in one queue.
+     *
+     * @param matchCount how many were found, which is a floor rather than a total when {@code partial} is set
+     * @param partial    true when the per-queue limit was reached, so there are more than were looked at. Told by the
+     *                   service rather than inferred from the count: a filtered count stops after the broker's
+     *                   management-browse-page-size, so it cannot be compared against anything
+     */
+    public record QueueMatches(String queueName, long matchCount, boolean partial, List<MessageSummary> messages)
     {
-
-        public boolean partial()
-        {
-            return matchCount > messages.size();
-        }
     }
 }

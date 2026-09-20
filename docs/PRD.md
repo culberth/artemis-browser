@@ -1,8 +1,9 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–6 shipped and on `main`. Phase 7 in progress on `phase07`: it answers the three
-questions that were left open — authentication so the tool can run on a jump host, a measured
-answer to how large a queue it stays usable on, and a "why is this stuck" page.
+Status: Phases 1–6 shipped and on `main`. Phase 7 complete on `phase07`: it answers the three
+questions that were left open — authentication so the tool can run on a jump host, a measured answer
+to how large a queue it stays usable on (which turned up a correctness bug rather than a
+performance ceiling), and a "why is this stuck" page.
 Last updated: 2026-09-19.
 
 ## What this is
@@ -172,9 +173,20 @@ the line suggested, which is noted below rather than quietly folded in.
    own so it can sit on a jump host. This is the conversation the constraint was holding open, and
    it has now been had deliberately rather than by erosion — see *Reachability* under Constraints,
    which replaces the old loopback-only entry.
-3. ~~**How large is the largest queue this must stay usable on?**~~ **Being measured** rather than
-   guessed: Phase 7 seeds progressively larger queues and finds where paging, counting, search and
-   export actually degrade. The answer, and what breaks first, are recorded here when it lands.
+3. ~~**How large is the largest queue this must stay usable on?**~~ **Measured 2026-09-19, and the
+   answer was not about size.** At ~197,000 messages across ~52 queues, nothing degraded: the
+   overview, a queue's first page, its **two-thousandth** page, the diagnose page and a cross-queue
+   search all landed in 280–400ms, and an export of 5,000 messages took 1.7s. Deep paging is flat,
+   which is what the server-side paging design was for, and search costs about 3ms per queue.
+   Producing the test messages took far longer than reading them ever did.
+
+   What broke instead was correctness, at about **200** messages rather than a million. Artemis
+   examines only the first `management-browse-page-size` messages when counting *with a filter*, so
+   cross-queue search — which used the count to decide which queues were worth browsing — reported
+   "0 matches" for a message at position 99,999 that the queue view could find perfectly well. That
+   is the exact failure the search feature exists to prevent, and it was invisible at every size
+   this project had tested before. Search now browses every queue and reports a floor rather than a
+   total; the fix is in the same phase as the measurement that found it.
 4. ~~**Is there an appetite for a non-destructive "why is this stuck" view**~~ **Settled
    2026-09-19: yes, as its own page.** Delivery counts, redelivery, DLQ origin and consumer state
    in one place, for the person holding the pager.

@@ -172,7 +172,9 @@ public class SearchController
                     // error for a read-only tool, it is just nothing to export.
                     continue;
                 }
-                int take = (int) Math.min(remaining, match.matchCount());
+                // Not bounded by matchCount: a filtered count stops after the broker's
+                // management-browse-page-size, so using it as a ceiling would export 200 of 100,000.
+                int take = remaining;
                 List<MessageSummary> messages = browseService
                         .pageForExport(match.queueName(), stats.browseName(), matched.filter(), 1, take).messages();
                 export.write(match.queueName(), messages);
