@@ -42,6 +42,23 @@ public class MessageSearchService
      */
     public SearchResult search(String filter, boolean includeInternal)
     {
+        return search(filter, includeInternal, maxPerQueue);
+    }
+
+    /**
+     * The same search without fetching any messages — just which queues match and how many.
+     *
+     * <p>
+     * Export uses this: it is going to fetch each matching queue's messages itself, with full bodies and its own limit,
+     * so browsing previews here first would be work thrown away on every queue that matched.
+     */
+    public SearchResult counts(String filter, boolean includeInternal)
+    {
+        return search(filter, includeInternal, 0);
+    }
+
+    private SearchResult search(String filter, boolean includeInternal, int perQueue)
+    {
         String effectiveFilter = filter == null ? "" : filter.trim();
         if (effectiveFilter.isEmpty())
         {
@@ -69,7 +86,12 @@ public class MessageSearchService
             }
             total += count;
 
-            int take = (int) Math.min(count, maxPerQueue);
+            if (perQueue <= 0)
+            {
+                matches.add(new SearchResult.QueueMatches(queue.name(), count, List.of()));
+                continue;
+            }
+            int take = (int) Math.min(count, perQueue);
             MessagePage page = browseService.page(queue.name(), effectiveFilter, 1, take);
             truncated = truncated || count > page.messages().size();
             matches.add(new SearchResult.QueueMatches(queue.name(), count, page.messages()));

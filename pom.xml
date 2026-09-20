@@ -78,6 +78,22 @@
             <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+          Integration tests only (the "integration" profile). These start a real Artemis in Docker,
+          because the request/reply plumbing and the non-destructive guarantee are the two things a
+          mock cannot honestly check: a mock replies however it is told to, and a mock cannot be
+          consumed from by accident. Version is managed by spring-boot-dependencies (2.0.5).
+
+          Core artifact only: the container lifecycle is driven from @BeforeAll rather than the
+          @Testcontainers extension, so the separate junit-jupiter module — which Boot's BOM does
+          not manage — is not needed.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -116,4 +132,32 @@
 			</plugin>
         </plugins>
     </build>
+
+    <!--
+      Integration tests are named *IT and run only here, so `mvn clean install` stays a build that
+      needs nothing but Maven: `mvn verify -Pintegration` is the one command that starts a real
+      broker in Docker and checks the things a mock cannot. Surefire ignores *IT by default, so no
+      exclusion is needed on the normal path.
+    -->
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

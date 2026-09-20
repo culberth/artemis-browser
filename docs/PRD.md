@@ -1,6 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–4 shipped. Phase 5 proposed below, not started.
+Status: Phases 1–4 shipped and on `main`. Phase 5 complete on `phase05` — every P0, P1 and P2 item
+below is done; P3 is untouched.
 Last updated: 2026-09-19.
 
 ## What this is
@@ -81,71 +82,59 @@ can be checked rather than argued about.
 
 ### P0 — risk introduced or carried
 
-- [ ] **Bound what an export holds in memory.**
-      Export now fills bodies from the JMS pass, which raised the per-body ceiling from the broker's
-      256 characters to `artemis.body-detail-chars` (200,000). `pageForExport` builds the entire
-      page before a byte is written, so a 5,000-message export of large bodies can hold far more in
-      memory than it used to — the old ceiling was hiding this. Either give the export a total
-      character budget (rows past it keep a truncated body, flagged) or stream rows to the response
-      as they are read.
-      *Done when:* an export of 5,000 large-bodied messages has a stated, tested upper bound on
-      memory, and the user can tell from the file which rows were cut.
+- [x] **Bound what an export holds in memory.** Done 2026-09-19: `artemis.export-body-total-chars`
+      (20M characters, ~40MB) caps what the JMS pass keeps, and the pass stops reading once the
+      budget is spent — rows past it keep their management body, flagged truncated, so the file says
+      which rows were cut. Both writers now stream to the response instead of building the document
+      in memory first, which the JSON path was doing.
 
-- [ ] **Land Phase 4 on `main`.**
-      `phase04` was merged into `Milestone002` by PR #5, and the two commits since — the export fix
-      and the README — sit on `phase04` alone. `main` is still at the Milestone001 merge, so it does
-      not reflect Phases 3 or 4 at all.
-      *Done when:* `main` contains everything shipped, and the branch that carries it is the one the
-      next phase starts from.
+- [x] **Land Phase 4 on `main`.** ~~`main` was still at the Milestone001 merge and did not reflect
+      Phases 3 or 4 at all.~~ Done 2026-09-19: PR #6 `phase04` → `Milestone002`, then PR #7
+      `Milestone002` → `main`. Phase 5 branches from there.
 
-- [ ] **Flag large messages in the list.**
-      `browse` reports `largeMessage` and nothing surfaces it. A large message is exactly the one
-      where the body shown is least representative and where reading it costs the most, so it is
-      worth a badge before someone exports 5,000 of them.
-      *Done when:* the list and the detail view both say when a message is a large message.
+- [x] **Flag large messages in the list.** Done 2026-09-19: a `large` badge on the queue list, the
+      search results and the message detail, plus a `largeMessage` column in CSV/JSON export. The
+      two read paths disagree on how a large message announces itself, so both are read — see
+      `.claude/memory.md`. Verified against a broker holding 250KB messages.
 
 ### P1 — the gap the last two bugs came through
 
-- [ ] **Test `ManagementChannel` against a real broker.**
-      Every other service in `broker/` now has tests; the request/reply plumbing every one of them
-      depends on has none, because it needs a live JMS session rather than a fixture — the timeout
-      path, the rejected-`manage`-permission path and the reply-correlation are all untested. This
-      is a Testcontainers job, not a mocking one.
-      *Done when:* a tagged integration test starts a broker, exercises a successful call, a timeout
-      and a permission rejection, and is excluded from the default `mvn test` run.
+- [x] **Test `ManagementChannel` against a real broker.** Done 2026-09-19: `ManagementChannelIT`
+      covers the successful round trip, a typed attribute read, a refused operation and a timeout,
+      against a real broker started by Testcontainers under `mvn verify -Pintegration`. It turned
+      out to be more than a preference: `JMSManagementHelper` refuses to build a request from a
+      non-Artemis message, so the send path *cannot* be mocked at all. The refusal case is a real
+      one the broker rejects rather than a permission denial — a user without `manage` fails at
+      connect time instead, which is a different path.
 
-- [ ] **Keep the live verification repeatable.**
-      The broker recipe lives in `.claude/memory.md` and is run by hand. The non-destructive
-      guarantee — the product's central claim — is checked by remembering to check it.
-      *Done when:* one command seeds a broker with text, bytes and multicast messages and asserts
-      counters are unchanged after browsing, searching and exporting.
+- [x] **Keep the live verification repeatable.** Done 2026-09-19: `mvn verify -Pintegration` seeds
+      a broker with long text, bytes and multicast messages, drives every read path three times over
+      (list, detail, export, search, broker info) and asserts messageCount, delivering, acked and
+      added are all unchanged. `ReadOnlyGuaranteeIT` also pins the things that were only ever
+      checked by hand: whole bodies over JMS, bytes bodies, FQQN browsing, and JMS-style filter
+      names silently matching nothing.
 
 ### P2 — product gaps a user will actually hit
 
-- [ ] **Export a search result.**
-      `/export` takes one queue name. A cross-queue search — the feature for "I have the ID but not
-      the queue" — cannot be exported at all, which is the moment someone most wants the evidence in
-      a file.
-      *Done when:* a search result exports to one CSV/JSON carrying the queue name per row.
+- [x] **Export a search result.** Done 2026-09-19: `/export` without a `name` exports everything a
+      search matched. Each matching queue is re-read with export bodies and written before the next
+      is fetched, so the memory ceiling is one queue's worth however many matched. CSV names the
+      queue per row; JSON groups messages under their queue.
 
-- [ ] **Sort and filter the overview.**
-      The all-queues table is static. On a broker with 200 queues, "which ones are stalled" and
-      "which is biggest" are the two questions it exists to answer, and neither is answerable
-      without reading every row.
-      *Done when:* the overview can be sorted by any counter and narrowed by name, without breaking
-      auto-refresh.
+- [x] **Sort and filter the overview.** Done 2026-09-19: every column sorts (click again to
+      reverse, arrow shows which way), and a box narrows by queue *or* address name. Name breaks
+      every tie so a refresh cannot shuffle equal rows. The shared refresh control now carries the
+      view's own parameters, which it previously would have dropped.
 
-- [ ] **Say which filter dialect the box wants, where the box is.**
-      Filters are Artemis *core* syntax. A JMS-style `JMSPriority = 4` is not rejected — it silently
-      matches nothing, which reads as "the message isn't there". The error path names the dialect;
-      the success path, where the damage is done, does not.
-      *Done when:* every filter input carries the dialect and a couple of working examples inline.
+- [x] **Say which filter dialect the box wants, where the box is.** Already true when the item was
+      written — both filter inputs carry the note and worked examples inline, and the queue page's
+      placeholder shows two. Checked rather than rebuilt. `ReadOnlyGuaranteeIT` now also pins the
+      underlying behaviour: a JMS-style name matches nothing while the core equivalent matches.
 
-- [ ] **Page a search result.**
-      Search stops at `artemis.search-max-per-queue` (50) per queue and flags the result partial.
-      There is no way to see message 51.
-      *Done when:* a partial result can be continued, or links to the queue view with the filter
-      already applied.
+- [x] **Page a search result.** Met by the existing per-queue links, which already carried the
+      filter through to the queue view; verified against a queue of 60 matches paging correctly from
+      the search page. The "showing first 50" badge is now the link itself and says what it does,
+      which is the part that was actually missing.
 
 ### P3 — worth doing, nothing breaks without it
 
@@ -159,10 +148,9 @@ can be checked rather than argued about.
 
 ## Open questions
 
-1. **Does Phase 5 have a theme, or is it a cleanup phase?** The P0/P1 items are consolidation — the
-   export bound, `main`, the untested channel. The P2 items are features. Doing both makes a large
-   phase; doing P0/P1 alone makes a short, dull, valuable one. *Recommendation: P0 and P1 as Phase
-   5, P2 as Phase 6.*
+1. ~~**Does Phase 5 have a theme, or is it a cleanup phase?**~~ **Settled 2026-09-19: Phase 5 is
+   everything listed above — P0, P1 and P2.** Consolidation and the four user-facing gaps ship
+   together rather than splitting across two phases.
 2. **Is a read-only tool that can be *pointed* at production also allowed to be run *in*
    production?** Today loopback-only answers this by making it impossible. If anyone wants it on a
    jump host, that is the authentication conversation, and it should be had deliberately.
