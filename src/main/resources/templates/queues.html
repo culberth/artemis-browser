@@ -109,7 +109,17 @@
         </div>
 
         <p class="muted" th:if="${messages.messages().isEmpty()}">
-            <span th:if="${#strings.isEmpty(messages.filter())}">This queue is empty.</span>
+            <span th:if="${#strings.isEmpty(messages.filter())}">
+                <span th:if="${scheduled == null}">This queue is empty.</span>
+                <!--
+                  The broker counts scheduled messages but does not return them from a browse, so an
+                  empty table on a queue that reports messages is expected rather than a failure.
+                -->
+                <span th:unless="${scheduled == null}">
+                    Nothing is available to deliver yet &mdash; everything on this queue is scheduled
+                    for later, and listed below.
+                </span>
+            </span>
             <span th:unless="${#strings.isEmpty(messages.filter())}">No messages match that filter.</span>
         </p>
 
@@ -122,6 +132,7 @@
                     <th>Timestamp</th>
                     <th class="num">Priority</th>
                     <th class="num">Size</th>
+                    <th>Properties</th>
                     <th>Flags</th>
                     <th>Body</th>
                     <th></th>
@@ -134,6 +145,12 @@
                     <td th:text="${m.timestampText()}">&mdash;</td>
                     <td class="num" th:text="${m.priority()}">4</td>
                     <td class="num muted" th:text="${m.sizeBytes()}">0</td>
+                    <td class="props-cell">
+                        <span th:if="${m.properties().isEmpty()}" class="muted">&mdash;</span>
+                        <span th:each="p : ${m.properties()}" class="badge"
+                              th:title="${p.key} + ' = ' + ${p.value}"
+                              th:text="${p.key} + '=' + ${p.value}">k=v</span>
+                    </td>
                     <td>
                         <span class="badge" th:if="${m.persistent()}">persistent</span>
                         <span class="badge" th:if="${m.redelivered()}">redelivered</span>
@@ -149,6 +166,52 @@
                 </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div th:if="${scheduled != null and !scheduled.isEmpty()}" style="margin-top:1.5rem">
+            <h3 style="margin:0 0 .5rem">
+                Scheduled
+                <span class="muted" th:text="'(' + ${scheduled.size()} + ')'">(0)</span>
+                <span class="muted" style="font-weight:normal">&mdash; held back by the broker until
+                    their delivery time, and not part of the list above</span>
+            </h3>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Deliver at</th>
+                        <th>Type</th>
+                        <th>Produced</th>
+                        <th class="num">Priority</th>
+                        <th>Properties</th>
+                        <th>Message ID</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="s : ${scheduled}" th:classappend="${s.overdue()} ? 'row-warn' : ''">
+                        <td>
+                            <span th:text="${s.scheduledForText()}">2026-01-01 00:00:00</span>
+                            <span class="badge warn" th:if="${s.overdue()}"
+                                  title="Its delivery time has passed and it is still here">overdue</span>
+                        </td>
+                        <td th:text="${s.type()}">Text</td>
+                        <td class="muted" th:text="${s.timestampText()}">&mdash;</td>
+                        <td class="num" th:text="${s.priority()}">4</td>
+                        <td class="props-cell">
+                            <span th:if="${s.properties().isEmpty()}" class="muted">&mdash;</span>
+                            <span th:each="p : ${s.properties()}" class="badge"
+                                  th:title="${p.key} + ' = ' + ${p.value}"
+                                  th:text="${p.key} + '=' + ${p.value}">k=v</span>
+                        </td>
+                        <td><code class="muted" th:text="${s.messageId()}">ID</code></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note">
+                Scheduled messages have no body here: the broker does not return one for them. They
+                appear in the list above once their delivery time arrives.
+            </p>
         </div>
     </div>
 </div>

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.util.List;
+import java.util.Map;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -143,7 +144,7 @@ class MessageSearchServiceTest
     {
         List<MessageSummary> summaries = java.util.stream.IntStream.range(0, messages)
                 .mapToObj(i -> new MessageSummary(i + 1, "ID:" + i, String.valueOf(i), "Text", 0L, "", 4, true, false,
-                        10, "CORE", false, "body", false))
+                        10, "CORE", false, Map.of(), "body", false))
                 .toList();
         return new MessagePage(queueName, "count = 1", 1, messages, messages, summaries);
     }

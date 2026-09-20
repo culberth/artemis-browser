@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -87,7 +88,7 @@ class MessagePageTest
 
     private List<MessageSummary> rows(int count)
     {
-        return Collections.nCopies(count,
-                new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", false, "", false));
+        return Collections.nCopies(count, new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0,
+                "CORE", false, Map.of(), "", false));
     }
 }

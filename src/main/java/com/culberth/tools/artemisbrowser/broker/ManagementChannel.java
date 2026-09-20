@@ -102,6 +102,14 @@ public class ManagementChannel implements AutoCloseable
         {
             throw e;
         }
+        catch (JMSException e)
+        {
+            // The channel is built on one session; a JMS-level failure on it means the session is
+            // gone, not that this particular call was bad. Everything else on this connection will
+            // fail the same way until the user connects again, so say so once, clearly.
+            throw new ConnectionLostException(
+                    "The connection to the broker was lost while running " + what + ": " + e.getMessage(), e);
+        }
         catch (Exception e)
         {
             throw new BrokerException("Management call " + what + " failed: " + e.getMessage(), e);

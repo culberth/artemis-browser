@@ -77,6 +77,7 @@ never persisted). From there:
 | `/overview` | All queues, optional auto-refresh, paged and filtered |
 | `/queues` | One queue's messages (paged, filtered) |
 | `/message` | Single message detail (full body, any message type) |
+| `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
 | `/search` | Cross-queue search |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |

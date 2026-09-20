@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringWriter;
 import java.util.List;
+import java.util.Map;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -63,8 +64,8 @@ class MessageExporterTest
     @DisplayName("a null body exports as an empty field rather than the text 'null'")
     void handlesNullBody() throws Exception
     {
-        String csv = csv(
-                new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", false, null, false));
+        String csv = csv(new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", false,
+                Map.of(), null, false));
 
         assertTrue(csv.contains("\"\""), csv);
         assertTrue(!csv.contains("null"), csv);
@@ -75,7 +76,7 @@ class MessageExporterTest
     void csvExposesTruncation() throws Exception
     {
         MessageSummary truncated = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false,
-                "partial", true);
+                Map.of(), "partial", true);
         String row = csv(truncated).lines().skip(1).findFirst().orElseThrow();
 
         assertTrue(row.endsWith(",true"), row);
@@ -161,6 +162,32 @@ class MessageExporterTest
         assertEquals("a \"filter\"", json.get("filter").asString());
     }
 
+    @Test
+    @DisplayName("properties travel with the export, flattened into one cell")
+    void csvCarriesProperties() throws Exception
+    {
+        MessageSummary message = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false,
+                Map.of("orderRef", "A-17"), "body", false);
+
+        String csv = csv(message);
+
+        assertTrue(csv.lines().findFirst().orElseThrow().contains("properties"), csv);
+        assertTrue(csv.contains("\"orderRef=A-17\""), csv);
+    }
+
+    @Test
+    @DisplayName("a property value containing a comma cannot shift the columns")
+    void csvQuotesAwkwardPropertyValues() throws Exception
+    {
+        MessageSummary message = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false,
+                Map.of("note", "a,b"), "body", false);
+
+        String csv = csv(message);
+
+        assertTrue(csv.contains("\"note=a,b\""), csv);
+        assertEquals(2, csv.lines().count(), csv);
+    }
+
     private String csv(MessageSummary message) throws Exception
     {
         StringWriter writer = new StringWriter();
@@ -170,6 +197,7 @@ class MessageExporterTest
 
     private MessageSummary message(String body)
     {
-        return new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, body, false);
+        return new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, Map.of(), body,
+                false);
     }
 }

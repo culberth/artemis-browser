@@ -25,6 +25,9 @@ import javax.management.openmbean.CompositeDataSupport;
 import javax.management.openmbean.CompositeType;
 import javax.management.openmbean.OpenType;
 import javax.management.openmbean.SimpleType;
+import javax.management.openmbean.TabularData;
+import javax.management.openmbean.TabularDataSupport;
+import javax.management.openmbean.TabularType;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -243,6 +246,78 @@ class QueueBrowseServiceTest
     }
 
     @Test
+    @DisplayName("scheduled messages come from their own call, because browse does not return them")
+    void readsScheduledMessages()
+    {
+        long soon = System.currentTimeMillis() + 3_600_000L;
+        given(management.invoke(QUEUE, "listScheduledMessagesAsJSON"))
+                .willReturn("[{\"address\":\"orders\",\"messageID\":66,\"type\":3,\"priority\":4,"
+                        + "\"userID\":\"ID:9\",\"durable\":true,\"orderRef\":\"A-17\",\"attempt\":2,"
+                        + "\"__AMQ_CID\":\"abc\",\"_AMQ_ROUTING_TYPE\":1,\"expiration\":0," + "\"_AMQ_SCHED_DELIVERY\":"
+                        + soon + ",\"timestamp\":1789867473832}]");
+
+        ScheduledMessage message = service().scheduled("orders").get(0);
+
+        assertEquals("ID:9", message.messageId());
+        assertEquals("Text", message.type());
+        assertEquals(4, message.priority());
+        assertTrue(message.durable());
+        assertFalse(message.scheduledForText().isBlank());
+        assertFalse(message.overdue());
+        // The message's own properties sit at the top level beside the headers; only the former
+        // belong to the producer, and Artemis's internal two belong to nobody.
+        assertEquals(Map.of("orderRef", "A-17", "attempt", "2"), message.properties());
+    }
+
+    @Test
+    @DisplayName("a delivery time already past is called out rather than shown as pending")
+    void flagsOverdueScheduledMessages()
+    {
+        given(management.invoke(QUEUE, "listScheduledMessagesAsJSON"))
+                .willReturn("[{\"messageID\":1,\"type\":3,\"userID\":\"ID:1\","
+                        + "\"_AMQ_SCHED_DELIVERY\":1000,\"timestamp\":900}]");
+
+        assertTrue(service().scheduled("orders").get(0).overdue());
+    }
+
+    @Test
+    @DisplayName("a queue with nothing scheduled is empty, not an error")
+    void handlesNoScheduledMessages()
+    {
+        given(management.invoke(QUEUE, "listScheduledMessagesAsJSON")).willReturn("[]");
+
+        assertTrue(service().scheduled("orders").isEmpty());
+    }
+
+    @Test
+    @DisplayName("properties are read from the typed tables, not parsed out of PropertiesText")
+    void readsPropertiesFromTypedTables()
+    {
+        Map<String, Object> values = new LinkedHashMap<>(message("ID:1", "body"));
+        values.put("StringProperties", propertyTable("String", Map.of("orderRef", "A-17")));
+        values.put("IntProperties", propertyTable("Integer", Map.of("attempt", "3")));
+        // Artemis's own, which a producer did not set and a filter is not written against.
+        values.put("ByteProperties", propertyTable("Byte", Map.of("_AMQ_ROUTING_TYPE", "1")));
+        values.put("PropertiesText", "{orderRef=A-17, attempt=3, _AMQ_ROUTING_TYPE=1}");
+        browseReturns(values);
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(1L);
+
+        MessageSummary summary = service().page("orders", null, 1, 50).messages().get(0);
+
+        assertEquals(Map.of("orderRef", "A-17", "attempt", "3"), summary.properties());
+    }
+
+    @Test
+    @DisplayName("a message with no properties has an empty map, not a null")
+    void handlesMessagesWithoutProperties()
+    {
+        browseReturns(message("ID:1", "body"));
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(1L);
+
+        assertTrue(service().page("orders", null, 1, 50).messages().get(0).properties().isEmpty());
+    }
+
+    @Test
     @DisplayName("a large message is flagged from the browse attribute")
     void flagsLargeMessages()
     {
@@ -359,6 +434,39 @@ class QueueBrowseServiceTest
         return values;
     }
 
+    /** A property table as browse reports one: rows of key/value, typed per Java type. */
+    private TabularData propertyTable(String type, Map<String, String> entries)
+    {
+        try
+        {
+            CompositeType rowType = new CompositeType("java.util.Map<java.lang.String, java.lang." + type + ">", "row",
+                    new String[]
+                    { "key", "value"
+                    }, new String[]
+                    { "key", "value"
+                    }, new OpenType<?>[]
+                    { SimpleType.STRING, SimpleType.STRING
+                    });
+            TabularDataSupport table = new TabularDataSupport(
+                    new TabularType("properties", "properties", rowType, new String[]
+                    { "key"
+                    }));
+            for (Map.Entry<String, String> entry : entries.entrySet())
+            {
+                table.put(new CompositeDataSupport(rowType, new String[]
+                { "key", "value"
+                }, new Object[]
+                { entry.getKey(), entry.getValue()
+                }));
+            }
+            return table;
+        }
+        catch (Exception e)
+        {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private CompositeData composite(Map<String, Object> values)
     {
         try
@@ -380,6 +488,10 @@ class QueueBrowseServiceTest
 
     private OpenType<?> openType(Object value)
     {
+        if (value instanceof TabularData tabular)
+        {
+            return tabular.getTabularType();
+        }
         if (value instanceof Long)
         {
             return SimpleType.LONG;
