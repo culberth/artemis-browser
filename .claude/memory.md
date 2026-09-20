@@ -192,3 +192,32 @@ Read this at the start of every session. Consolidate when it gets repetitive.
   `QueueBrowser` detail path, which reads the real body. Export inherits this ceiling for any queue
   with large text messages; it is not something `pageForExport` can work around, only the JMS detail
   path can.
+
+- **2026-09-19 — Export now reads bodies over JMS, not management browse.** `pageForExport` takes a
+  `browseName` and, for any message whose management body was truncated or missing, fills the real
+  body in from ONE `QueueBrowser` pass (`QueueBrowseService.bodies`). Deliberately not a
+  `JMSMessageID` selector per message the way `detail()` does — a selector makes the broker scan, so
+  per-message would be n scans per export. Bounded by `artemis.export-body-scan-limit` (20000);
+  unreached messages keep the management body with `bodyTruncated=true` instead of a silent lie.
+
+- **2026-09-19 — The broker's truncation marker is parsed off, not displayed.** Artemis's
+  `JsonUtil.truncate` appends `", + N more"` to the value; `QueueBrowseService` strips a matching
+  suffix and sets `bodyTruncated`. Guarded by a 64-char minimum, because the marker is ordinary text
+  a real body could end with.
+
+- **2026-09-19 — Verified live end to end**: 1000-char text bodies export whole (was 256 + marker),
+  `--message-size` bytes messages export with a real body (was the "no text body" placeholder), and
+  a multicast `events::sub-a` subscription exports through its FQQN. Five exports left messageCount,
+  delivering and acked unchanged — the JMS pass is still non-destructive.
+
+- **2026-09-19 — The test broker's CLI lives at `/var/lib/artemis-instance/bin/artemis`**, not
+  `./broker/bin/artemis`, in `apache/activemq-artemis:latest-alpine`. `--text-size N` makes text
+  messages; `--message-size N` makes *bytes* messages, which is the quick way to exercise the
+  non-text body path.
+
+- **2026-09-19 — Management-JSON parsing now has tests** (`QueueDirectoryTest`,
+  `BrokerInfoServiceTest`, `AddressDirectoryTest`, `MessageSearchServiceTest`,
+  `QueueBrowseServiceTest`): mock `BrokerSession` + `ManagementChannel`, feed the captured reply
+  shapes from this file. 116 tests. Both bugs found by review in phase 4 were in this layer, which
+  had none. `ManagementChannel` mocks fine despite its package-private constructor; tests must sit
+  in the same package to stub `requireManagement()`/`requireSession()`.

@@ -22,6 +22,7 @@ import com.culberth.tools.artemisbrowser.broker.MessageSummary;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
+import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,8 @@ class SearchControllerTest
         given(brokerSession.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(queueDirectory.overview()).willReturn(
                 List.of(new QueueOverview("orders", "orders", "ANYCAST", 0, 0, 0, 0, 0, 0, true, false, false)));
+        given(queueDirectory.stats("orders"))
+                .willReturn(new QueueStats("orders", "orders", "ANYCAST", 0, 0, 0, 0, 0, 0, true, false));
     }
 
     @Test
@@ -93,14 +96,14 @@ class SearchControllerTest
         mockMvc.perform(get("/export").param("name", "secrets").header("Host", "localhost"))
                 .andExpect(status().isNotFound());
 
-        verify(browseService, never()).pageForExport(anyString(), any(), anyInt(), anyInt());
+        verify(browseService, never()).pageForExport(anyString(), anyString(), any(), anyInt(), anyInt());
     }
 
     @Test
     @DisplayName("CSV export is served as an attachment with a safe filename")
     void exportsCsv() throws Exception
     {
-        given(browseService.pageForExport(anyString(), any(), anyInt(), anyInt()))
+        given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "", 1, 5000, 1, List.of(new MessageSummary(1, "ID:1", "1", "Text",
                         0L, "", 4, true, false, 10, "CORE", "body", false))));
 
@@ -115,7 +118,7 @@ class SearchControllerTest
     @DisplayName("JSON export is served as JSON")
     void exportsJson() throws Exception
     {
-        given(browseService.pageForExport(anyString(), any(), anyInt(), anyInt()))
+        given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "", 1, 5000, 0, List.of()));
 
         mockMvc.perform(get("/export").param("name", "orders").param("format", "json").header("Host", "localhost"))

@@ -16,4 +16,14 @@ public record MessageSummary(long position, String messageId, String coreId, Str
         String timestampText, int priority, boolean persistent, boolean redelivered, long sizeBytes, String protocol,
         String bodyPreview, boolean bodyTruncated)
 {
+
+    /**
+     * The same row with a body read somewhere other than management browse — the JMS browser, for export, which is the
+     * only route that sees a whole body or a non-text one.
+     */
+    public MessageSummary withBody(String body, boolean truncated)
+    {
+        return new MessageSummary(position, messageId, coreId, type, timestamp, timestampText, priority, persistent,
+                redelivered, sizeBytes, protocol, body, truncated);
+    }
 }

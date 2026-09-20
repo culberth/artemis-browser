@@ -16,8 +16,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.management.openmbean.CompositeData;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,17 +57,36 @@ public class QueueBrowseService
     private static final Map<Integer, String> TYPE_NAMES = Map.of(0, "Bytes", 2, "Object", 3, "Text", 4, "Bytes", 5,
             "Map", 6, "Stream");
 
+    /** What a row shows when management browse had no {@code text} for it, which is every non-text message. */
+    static final String NO_TEXT_BODY = "(no text body — open the message to read it)";
+
+    /**
+     * How Artemis signals that it truncated a browsed attribute: it appends {@code ", + N more"} to the value itself
+     * rather than reporting the truncation out of band. See {@code JsonUtil.truncate}.
+     */
+    private static final Pattern BROKER_TRUNCATION = Pattern.compile(", \\+ \\d+ more$");
+
+    /**
+     * Shortest body we will accept as broker-truncated. The suffix is ordinary text, so a body that genuinely ends "…,
+     * + 3 more" would otherwise be mistaken for a truncated one; the broker's limit
+     * ({@code management-message-attribute-size-limit}, 256 by default) is never this small in practice.
+     */
+    private static final int MIN_BROKER_TRUNCATION_LENGTH = 64;
+
     private final BrokerSession brokerSession;
     private final int bodyPreviewChars;
     private final int bodyDetailChars;
+    private final int exportBodyScanLimit;
 
     public QueueBrowseService(BrokerSession brokerSession,
             @Value("${artemis.body-preview-chars:200}") int bodyPreviewChars,
-            @Value("${artemis.body-detail-chars:200000}") int bodyDetailChars)
+            @Value("${artemis.body-detail-chars:200000}") int bodyDetailChars,
+            @Value("${artemis.export-body-scan-limit:20000}") int exportBodyScanLimit)
     {
         this.brokerSession = brokerSession;
         this.bodyPreviewChars = bodyPreviewChars;
         this.bodyDetailChars = bodyDetailChars;
+        this.exportBodyScanLimit = exportBodyScanLimit;
     }
 
     /**
@@ -76,13 +101,96 @@ public class QueueBrowseService
     }
 
     /**
-     * Like {@link #page}, but keeps the body up to {@code artemis.body-detail-chars} instead of the UI's short list
-     * preview. Used by export: truncating every row to a length meant for a table cell would silently drop most of the
-     * message from a CSV/JSON download.
+     * Like {@link #page}, but with bodies a download can actually use.
+     *
+     * <p>
+     * Two ceilings sit between a message and a CSV file. Ours is {@code artemis.body-preview-chars}, meant for a table
+     * cell — using it here would drop most of every message. The broker's is
+     * {@code management-message-attribute-size-limit} (256 characters by default), which truncates the {@code text} of
+     * a browse result and appends a literal {@code ", + N more"} <em>to the value</em>; raising our own limit does
+     * nothing about it, and an export built on those values ships 256-character bodies carrying that suffix as if they
+     * were whole. Management browse also has no body at all for bytes, map or stream messages.
+     *
+     * <p>
+     * So the listing still comes from management browse — the broker does the paging and the core filtering — and then
+     * the bodies that need it are filled in from a single JMS browser pass, which reads real bodies of any type. That
+     * pass is bounded by {@code artemis.export-body-scan-limit}; anything it does not reach keeps its management body,
+     * marked truncated.
+     *
+     * @param browseName the queue's FQQN where it differs from its name; see {@link QueueStats#browseName()}
      */
-    public MessagePage pageForExport(String queueName, String filter, int page, int pageSize)
+    public MessagePage pageForExport(String queueName, String browseName, String filter, int page, int pageSize)
     {
-        return page(queueName, filter, page, pageSize, bodyDetailChars);
+        MessagePage listing = page(queueName, filter, page, pageSize, bodyDetailChars);
+
+        Set<String> wanted = listing.messages().stream().filter(this::needsFullBody).map(MessageSummary::messageId)
+                .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        if (wanted.isEmpty())
+        {
+            return listing;
+        }
+
+        Map<String, String> bodies = bodies(browseName, wanted);
+        List<MessageSummary> filled = new ArrayList<>(listing.messages().size());
+        for (MessageSummary message : listing.messages())
+        {
+            String body = message.messageId() == null ? null : bodies.get(message.messageId());
+            filled.add(body == null ? message : withBody(message, body));
+        }
+        return new MessagePage(listing.queueName(), listing.filter(), listing.page(), listing.pageSize(),
+                listing.totalMatching(), filled);
+    }
+
+    /** A body management browse either cut short or never had. */
+    private boolean needsFullBody(MessageSummary message)
+    {
+        return message.bodyTruncated() || NO_TEXT_BODY.equals(message.bodyPreview());
+    }
+
+    private MessageSummary withBody(MessageSummary message, String body)
+    {
+        boolean truncated = body.length() > bodyDetailChars;
+        return message.withBody(truncated ? body.substring(0, bodyDetailChars) : body, truncated);
+    }
+
+    /**
+     * Real bodies for a known set of messages, in one browser pass.
+     *
+     * <p>
+     * Deliberately not one {@code JMSMessageID} selector per message the way {@link #detail} does: a selector makes the
+     * broker scan the queue, so doing it per message turns an export of n messages into n scans. One pass collects them
+     * all, and stops as soon as the last one is found — which for an unfiltered export is within the first page, since
+     * those messages are the head of the queue.
+     */
+    private Map<String, String> bodies(String browseName, Set<String> messageIds)
+    {
+        Map<String, String> bodies = new LinkedHashMap<>();
+        Session session = brokerSession.requireSession();
+        synchronized (this)
+        {
+            try (QueueBrowser browser = session.createBrowser(session.createQueue(browseName)))
+            {
+                Enumeration<?> enumeration = browser.getEnumeration();
+                int scanned = 0;
+                while (enumeration.hasMoreElements() && bodies.size() < messageIds.size()
+                        && scanned < exportBodyScanLimit)
+                {
+                    Message message = (Message) enumeration.nextElement();
+                    scanned++;
+                    String id = message.getJMSMessageID();
+                    if (id != null && messageIds.contains(id))
+                    {
+                        bodies.put(id, bodyOf(message));
+                    }
+                }
+            }
+            catch (JMSException e)
+            {
+                throw new BrokerException("Could not read message bodies from '" + browseName + "': " + e.getMessage(),
+                        e);
+            }
+        }
+        return bodies;
     }
 
     private MessagePage page(String queueName, String filter, int page, int pageSize, int previewChars)
@@ -156,19 +264,33 @@ public class QueueBrowseService
     private MessageSummary toSummary(CompositeData data, long position, int previewChars)
     {
         Long timestamp = asLongOrNull(get(data, "timestamp"));
-        String body = asString(get(data, "text"));
-        if (body == null)
+        String text = asString(get(data, "text"));
+        boolean truncated = false;
+        if (text == null)
         {
-            body = "(no text body — open the message to read it)";
+            text = NO_TEXT_BODY;
         }
-        boolean truncated = body.length() > previewChars;
+        else
+        {
+            // The broker's own truncation, which arrives as part of the value: drop the marker and
+            // remember that what is left is not the whole body, rather than reporting a 256-character
+            // body ending in ", + 4096 more" as complete.
+            Matcher marker = BROKER_TRUNCATION.matcher(text);
+            if (marker.find() && marker.start() >= MIN_BROKER_TRUNCATION_LENGTH)
+            {
+                text = text.substring(0, marker.start());
+                truncated = true;
+            }
+        }
+        String body = text.length() > previewChars ? text.substring(0, previewChars) : text;
+        truncated = truncated || text.length() > previewChars;
 
         return new MessageSummary(position, asString(get(data, "userID")), asString(get(data, "messageID")),
                 TYPE_NAMES.getOrDefault((int) asLong(get(data, "type")), "Message"), timestamp,
                 timestamp == null ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
                 (int) asLong(get(data, "priority")), asBoolean(get(data, "durable")),
                 asBoolean(get(data, "redelivered")), asLong(get(data, "persistentSize")),
-                asString(get(data, "protocol")), truncated ? body.substring(0, previewChars) : body, truncated);
+                asString(get(data, "protocol")), body, truncated);
     }
 
     private MessageDetail toDetail(String queueName, Message message) throws JMSException

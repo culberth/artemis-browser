@@ -7,6 +7,7 @@ import com.culberth.tools.artemisbrowser.broker.MessagePage;
 import com.culberth.tools.artemisbrowser.broker.MessageSearchService;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
+import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -87,15 +88,18 @@ public class SearchController
             response.sendRedirect("/");
             return;
         }
-        // Same rule as browsing: only a name the broker itself just listed.
-        if (queueDirectory.overview().stream().noneMatch(queue -> queue.name().equals(name)))
+        // Same rule as browsing: only a name the broker itself just listed. The stats also carry the
+        // FQQN the bodies have to be browsed under, which is not the queue name for a multicast
+        // subscription.
+        QueueStats stats = queueDirectory.stats(name);
+        if (stats == null)
         {
             response.sendError(HttpServletResponse.SC_NOT_FOUND, "No such queue on this broker.");
             return;
         }
 
         boolean json = "json".equalsIgnoreCase(format);
-        MessagePage page = browseService.pageForExport(name, filter, 1, exportMax);
+        MessagePage page = browseService.pageForExport(name, stats.browseName(), filter, 1, exportMax);
 
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(json ? "application/json" : "text/csv");

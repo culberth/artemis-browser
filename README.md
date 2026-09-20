@@ -91,6 +91,7 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.connections-file` | *(blank)* | Where remembered broker locations (host/port/username, never passwords) are stored; blank defaults to `${user.home}/.artemis-browser/connections.json` |
 | `artemis.search-max-per-queue` | `50` | Messages fetched per matching queue during cross-queue search |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
+| `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
 
 ## Security posture
 
@@ -109,6 +110,19 @@ selector syntax applies only to the single-message detail path.
 CSV/JSON exports treat message bodies as untrusted content: every field is quoted, and a leading
 `=`, `+`, `-` or `@` is prefixed with an apostrophe so a downloaded file isn't evaluated as
 spreadsheet formulas (`MessageExporterTest` covers it).
+
+## Exports and message bodies
+
+The message *list* is read through Artemis management `browse`, which truncates a body at the
+broker's `management-message-attribute-size-limit` (256 characters by default) and appends a literal
+`", + N more"` to the value itself — and which has no body at all for bytes, map or stream messages.
+That is fine for a table cell and wrong for a download, so `/export` builds its list from management
+browse (the broker still does the paging and the core filtering) and then fills in the bodies that
+need it from a single JMS browser pass, which reads real bodies of any type. `bodyTruncated` says
+whether what you got is the whole body. The pass is bounded by `artemis.export-body-scan-limit`;
+anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
+complete. Like every other read here, it consumes nothing — verified against a live broker with
+counters unchanged after repeated exports.
 
 ## Layout
 
