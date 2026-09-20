@@ -38,13 +38,19 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
 
 ## Security posture
 
-Loopback only: `server.address=127.0.0.1` **and** `LoopbackHostFilter` (Host-header check). Both are
-needed — binding loopback does not stop DNS rebinding, and this app has no login of its own while
-holding an authenticated broker connection. The broker password is never retained.
+Loopback **by default**, and reachable further only with a login and TLS. Three controls, each
+load-bearing:
 
-If it is ever made network-reachable, that filter is not the thing to relax; real authentication is
-what would have to be built. Details and the traps already fixed:
-[docs/architecture.md](docs/architecture.md).
+- `server.address` — 127.0.0.1 unless deliberately changed.
+- `AllowedHostFilter` — the Host header must be loopback or named in `artemis.allowed-hosts`.
+  Binding an address does not stop DNS rebinding; checking the host does.
+- `ReachabilityGuard` — **refuses to start** bound beyond loopback without both a configured login
+  and TLS. Authentication over cleartext would put this tool's password and the broker's on the
+  wire while looking protected.
+
+The app's own login is one configured account (`artemis.auth.username` + a bcrypt
+`artemis.auth.password-hash`; generate one with `--hash-password=`). The broker password is still
+never retained. Details and the traps already fixed: [docs/architecture.md](docs/architecture.md).
 
 ## Build and test
 

@@ -22,8 +22,15 @@
            th:href="@{/queues}">Browse</a>
         <a class="tab" th:classappend="${active == 'search'} ? 'current' : ''"
            th:href="@{/search}">Search</a>
+        <a class="tab" th:classappend="${active == 'diagnose'} ? 'current' : ''"
+           th:href="@{/diagnose}">Diagnose</a>
         <form method="post" th:action="@{/disconnect}">
             <button class="secondary" type="submit">Disconnect</button>
+        </form>
+        <form method="post" th:action="@{/logout}">
+            <button class="secondary" type="submit"
+                    th:title="${currentUser} != null ? 'Signed in as ' + ${currentUser} : 'Sign out'">
+                Sign out</button>
         </form>
     </div>
 </div>

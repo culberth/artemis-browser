@@ -25,7 +25,8 @@ There are two ways to read messages here, and the split is deliberate.
 **The paged, filtered list** goes through Artemis management `browse(page, pageSize, filter)`. The
 broker does the paging, so opening a deep page of a 50,000-message dead-letter queue does not stream
 the preceding pages through this process — which is exactly what a client-side `QueueBrowser` that
-skips would do. `countMessages(filter)` gives the accurate total for a filtered result.
+skips would do. An unfiltered `countMessages()` gives the total; a filtered one does not, for the
+reason under *A filtered count is a sample* below.
 
 **The single-message detail** uses a JMS `QueueBrowser` with a `JMSMessageID` selector. Management
 `browse` only exposes a `text` body, so bytes, map and stream messages would otherwise show nothing.
@@ -88,6 +89,19 @@ A JMS-style `JMSPriority = 4` is *not* rejected by the core parser — it return
 queue where every message is priority 4. Any UI that exposes a filter has to name its dialect, or
 users get confidently wrong answers.
 
+### A filtered count is a sample, not a count
+
+Artemis examines only the first `management-browse-page-size` messages (200 by default) when
+counting with a filter. On a 100,000-message queue, `countMessages("AMQPriority=4")` answers 200,
+and for a message at position 99,999 it answers 0. A filtered `browse` has no such window — it scans
+the whole queue and finds that message in about 300ms.
+
+Cross-queue search was originally built two-phase on the opposite assumption: count every queue
+cheaply, then browse only the ones that matched. That made it silently blind past the first 200
+messages of every queue, which is the precise failure the feature exists to prevent. It now browses
+every queue with the filter and reports how many it *found* — a floor, not a total. The cost is a
+broker-side scan per queue instead of a counter read, and the benefit is that the answer is true.
+
 ## The session model
 
 `BrokerSession` is `@SessionScope`: one live connection per HTTP session, so session expiry is
@@ -101,16 +115,43 @@ thread-safe, and a browser with two tabs open makes concurrent requests happily.
 
 ## Security posture
 
-Loopback only: `server.address=127.0.0.1` **and** `LoopbackHostFilter`, which rejects any request
-whose `Host` header is not a loopback literal. Both are needed — binding loopback does not stop DNS
-rebinding, and this app has no login of its own while holding an authenticated broker connection.
+Three controls, and each one is load-bearing on its own.
+
+**The bind address.** `server.address` is 127.0.0.1 by default, which is how the tool ran for its
+first six phases and is still the right answer for a laptop.
+
+**`AllowedHostFilter`.** Every request's `Host` header must be a loopback literal or a name in
+`artemis.allowed-hosts`. Binding an address does not decide who reaches it: a page on any website
+can point a hostname it controls at this app and drive the UI through the victim's own browser — DNS
+rebinding — and the browser sends the attacker's hostname in `Host`, which is what makes checking it
+work. This filter runs ahead of authentication on purpose, because a rebinding attack rides a
+session that is already signed in.
 
 The host check parses octets individually. `startsWith("127.")` is not a loopback check: it accepts
 `127.0.0.1.attacker.com`, a hostname an attacker owns, which defeats the entire filter. A test
 covers it; don't simplify it back.
 
-If this is ever made network-reachable, the filter is not the thing to relax — real authentication
-is what would have to be built first.
+**`ReachabilityGuard`.** Refuses to start when bound beyond loopback without both a configured login
+and TLS, and fails at startup rather than warning — a warning in a log is read after the incident,
+and this is exactly the misconfiguration nobody notices while it is working fine. An unset bind
+address counts as exposed, because Spring Boot's default is every interface and that is the easiest
+way to be reachable without deciding to be.
+
+TLS is not optional up there because both passwords that matter cross the wire: the tool's own, and
+the broker's, which the connect form asks for on every connection. Authentication over cleartext
+would be worse than the loopback-only arrangement it replaced, since it looks protected.
+
+## The login
+
+One configured account — `artemis.auth.username` and a bcrypt `artemis.auth.password-hash` — with
+no sign-up, no reset and no user list, because a tool one person runs on a jump host does not need
+them and each would be another thing to get wrong. `--hash-password=` generates the hash with the
+bcrypt already on the classpath, printing and exiting so the password never reaches a running server
+or a log. An unconfigured login means nobody can sign in rather than everybody.
+
+Everything behind the login is still read-only, so this is not protecting the broker's data from
+modification. It is protecting a live, authenticated broker connection from whoever can reach the
+port.
 
 ## Exports are untrusted content
 

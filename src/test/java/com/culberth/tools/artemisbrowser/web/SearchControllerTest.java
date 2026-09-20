@@ -135,8 +135,8 @@ class SearchControllerTest
         given(queueDirectory.stats("payments"))
                 .willReturn(new QueueStats("payments", "payments", "ANYCAST", 0, 0, 0, 0, 0, 0, true, false));
         given(searchService.counts("count = 1", false)).willReturn(new SearchResult("count = 1", 5, 3, false,
-                List.of(new SearchResult.QueueMatches("orders", 2, List.of()),
-                        new SearchResult.QueueMatches("payments", 1, List.of()))));
+                List.of(new SearchResult.QueueMatches("orders", 2, false, List.of()),
+                        new SearchResult.QueueMatches("payments", 1, false, List.of()))));
         given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "count = 1", 1, 5000, 1, List.of(new MessageSummary(1, "ID:1",
                         "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, Map.of(), "body", false))));

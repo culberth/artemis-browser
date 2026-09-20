@@ -5,37 +5,72 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Rejects any request whose {@code Host} header is not a loopback host, on every path.
+ * Rejects any request whose {@code Host} header is not one this app expects to be reached by.
  *
  * <p>
- * The connector is already bound to 127.0.0.1, but that alone does not make this app private: a page on any website can
- * point a hostname it controls at 127.0.0.1 and have the victim's own browser drive this UI — DNS rebinding. Since this
- * app holds a live, authenticated broker connection and has no login of its own, that would hand a remote page a read
- * of every queue. Validating the Host header closes it, because the attacker's hostname is what the browser sends.
+ * Binding an address is not the same as controlling who reaches it: a page on any website can point a hostname it
+ * controls at this app's address and have the victim's own browser drive the UI — DNS rebinding. The browser sends the
+ * attacker's hostname in {@code Host}, which is what makes checking it work. Since this app holds a live, authenticated
+ * broker connection, that would otherwise hand a remote page a read of every queue.
  *
  * <p>
- * If this app is ever made reachable beyond the local machine, this filter is not the control to relax — it is the
- * thing standing in for authentication that would then have to be built.
+ * Loopback hosts are always allowed. Anything else has to be named in {@code artemis.allowed-hosts}, which is what a
+ * deployment on a jump host sets to its own hostname. Empty means loopback only, which is the default and what every
+ * install had before Phase 7.
+ *
+ * <p>
+ * This runs ahead of authentication on purpose. A rebinding attack rides a session that is already signed in, so
+ * checking the host only after the login has been accepted would be checking it too late.
  */
 @Component
-public class LoopbackHostFilter extends OncePerRequestFilter
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class AllowedHostFilter extends OncePerRequestFilter
 {
+
+    private final Set<String> allowedHosts;
+
+    public AllowedHostFilter(@Value("${artemis.allowed-hosts:}") List<String> allowedHosts)
+    {
+        this.allowedHosts = allowedHosts.stream().map(host -> host.trim().toLowerCase(Locale.ROOT))
+                .filter(host -> !host.isEmpty()).collect(Collectors.toUnmodifiableSet());
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException
     {
-        if (!isLoopbackHost(request.getHeader("Host")))
+        if (!isAllowed(request.getHeader("Host")))
         {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "artemis-browser only serves loopback hosts.");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    "artemis-browser does not serve that host. Add it to artemis.allowed-hosts if it is expected.");
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    /** Loopback always, plus whatever the deployment named. */
+    boolean isAllowed(String host)
+    {
+        if (isLoopbackHost(host))
+        {
+            return true;
+        }
+        if (host == null || allowedHosts.isEmpty())
+        {
+            return false;
+        }
+        return allowedHosts.contains(stripPort(host.trim().toLowerCase(Locale.ROOT)));
     }
 
     static boolean isLoopbackHost(String host)

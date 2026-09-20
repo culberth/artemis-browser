@@ -62,11 +62,30 @@ sibling projects use, because 0.8.12 can't instrument class files built by the J
 mvn spring-boot:run
 ```
 
-Starts the app on `http://localhost:8080`. It binds `server.address=127.0.0.1` and rejects any
-request whose `Host` header isn't a loopback literal (`LoopbackHostFilter`) — it has no login of its
-own and holds a live authenticated broker connection instead, so it must not be reachable from the
-network. Both the bind address and the filter are load-bearing; binding loopback alone doesn't stop
-DNS rebinding.
+Starts the app on `http://localhost:8080`, bound to `127.0.0.1`. In that default arrangement it
+needs no login: nothing but this machine can reach it, and `AllowedHostFilter` rejects any request
+whose `Host` header isn't a loopback literal, which is what stops a remote page driving the UI
+through your own browser (DNS rebinding).
+
+To run it anywhere else — a jump host, say — set a login and TLS as well:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments=--hash-password=yourpassword   # prints a bcrypt hash
+```
+
+```properties
+server.address=0.0.0.0
+artemis.auth.username=you
+artemis.auth.password-hash=$2a$10$...
+artemis.allowed-hosts=jump.example.com
+server.ssl.key-store=file:/etc/artemis-browser.p12
+server.ssl.key-store-password=...
+```
+
+`ReachabilityGuard` refuses to start if the app is bound beyond loopback without both of those, so
+the unsafe arrangement fails immediately rather than working until someone notices. With a login
+configured, every page requires signing in; the sign-in is the tool's own and is not the broker's,
+whose credentials are still asked for per connection and never stored.
 
 Once running, open `/` to connect to a broker (host, port, username, password — the password is
 never persisted). From there:
@@ -79,9 +98,10 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
-| `/search` | Cross-queue search |
+| `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
+| `/diagnose` | Why is this stuck: what on the broker is not moving, and what that usually means |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
 (note it maps host port 62616, not 61616, because 61616 is already taken in this environment).
@@ -122,6 +142,17 @@ selector syntax applies only to the single-message detail path.
 CSV/JSON exports treat message bodies as untrusted content: every field is quoted, and a leading
 `=`, `+`, `-` or `@` is prefixed with an apostrophe so a downloaded file isn't evaluated as
 spreadsheet formulas (`MessageExporterTest` covers it).
+
+## Searching, and why the counts are a floor
+
+Cross-queue search browses every queue with the filter rather than asking each one how many messages
+match. Artemis examines only the first `management-browse-page-size` messages (200 by default) when
+counting *with a filter*, so on a 100,000-message queue a filtered count answers 200 — or 0 for a
+message sitting at position 99,999 that is definitely there. A filtered browse has no such window.
+
+So the number shown per queue is how many were **found**, capped at `artemis.search-max-per-queue`,
+and the page says "at least N" when that cap was reached. The broker will not tell us the true total
+without scanning, and a number that looks exact and isn't is worse than one that admits its limits.
 
 ## Exports and message bodies
 
