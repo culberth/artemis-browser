@@ -1,6 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–4 shipped. Phase 5 proposed below, not started.
+Status: Phases 1–4 shipped and on `main`. Phase 5 in progress on `phase05`, scoped to all of
+P0, P1 and P2 below.
 Last updated: 2026-09-19.
 
 ## What this is
@@ -91,12 +92,9 @@ can be checked rather than argued about.
       *Done when:* an export of 5,000 large-bodied messages has a stated, tested upper bound on
       memory, and the user can tell from the file which rows were cut.
 
-- [ ] **Land Phase 4 on `main`.**
-      `phase04` was merged into `Milestone002` by PR #5, and the two commits since — the export fix
-      and the README — sit on `phase04` alone. `main` is still at the Milestone001 merge, so it does
-      not reflect Phases 3 or 4 at all.
-      *Done when:* `main` contains everything shipped, and the branch that carries it is the one the
-      next phase starts from.
+- [x] **Land Phase 4 on `main`.** ~~`main` was still at the Milestone001 merge and did not reflect
+      Phases 3 or 4 at all.~~ Done 2026-09-19: PR #6 `phase04` → `Milestone002`, then PR #7
+      `Milestone002` → `main`. Phase 5 branches from there.
 
 - [ ] **Flag large messages in the list.**
       `browse` reports `largeMessage` and nothing surfaces it. A large message is exactly the one
@@ -159,10 +157,9 @@ can be checked rather than argued about.
 
 ## Open questions
 
-1. **Does Phase 5 have a theme, or is it a cleanup phase?** The P0/P1 items are consolidation — the
-   export bound, `main`, the untested channel. The P2 items are features. Doing both makes a large
-   phase; doing P0/P1 alone makes a short, dull, valuable one. *Recommendation: P0 and P1 as Phase
-   5, P2 as Phase 6.*
+1. ~~**Does Phase 5 have a theme, or is it a cleanup phase?**~~ **Settled 2026-09-19: Phase 5 is
+   everything listed above — P0, P1 and P2.** Consolidation and the four user-facing gaps ship
+   together rather than splitting across two phases.
 2. **Is a read-only tool that can be *pointed* at production also allowed to be run *in*
    production?** Today loopback-only answers this by making it impossible. If anyone wants it on a
    jump host, that is the authentication conversation, and it should be had deliberately.

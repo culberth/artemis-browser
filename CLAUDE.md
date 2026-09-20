@@ -110,4 +110,5 @@ individual files only when relevant.
 ## Git
 
 Read, branch, and edit freely. Ask before `git push`, force-push, merge, rebasing shared history, or
-deleting a branch. `main` is the branch to target for PRs; current work is on `phase04`.
+deleting a branch. `main` is the branch to target for PRs; current work is on `phase05`, which
+merges up through `Milestone003`.
