@@ -1,0 +1,64 @@
+# artemis-browser runs with a login and TLS, because it refuses to run any other way once it is
+# bound to anything but loopback. See the README's security posture for why.
+
+image:
+  repository: artemis-browser
+  tag: ""            # defaults to .Chart.AppVersion
+  # There is no registry: the image is put on the nodes with `kind load`, so never pull.
+  pullPolicy: IfNotPresent
+
+# One, and not a default to be raised casually. The broker connection lives in the HTTP session and
+# sessions are in-memory, so a second replica serves requests that have no connection and sends the
+# user back to the connect form at random. Scaling would need sticky sessions at the ingress.
+replicaCount: 1
+
+# The tool's own login, not the broker's. Generate the hash once:
+#     java -jar artemis-browser.jar --hash-password=yourpassword
+# and pass it in: --set auth.passwordHash='$2a$10$...'   (single quotes: it contains $)
+auth:
+  username: admin
+  passwordHash: ""
+  # Or point at a Secret you made yourself, with keys `username` and `password-hash`.
+  existingSecret: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  # Must resolve to the ingress controller. On this KinD setup that means a hosts-file entry:
+  #     127.0.0.1 artemis-browser.claude.local
+  host: artemis-browser.claude.local
+
+tls:
+  # A self-signed certificate generated at install time and kept across upgrades. The pod has to
+  # serve HTTPS for ReachabilityGuard to let it start at all; the ingress talks HTTPS to it.
+  existingSecret: ""
+  # Days of validity for the generated certificate.
+  validityDays: 3650
+
+# The broker to pre-fill on the connect page. Host, port and username only — the saved-connection
+# format has no password field, by design, so the password is typed per session.
+broker:
+  seedConnection: true
+  label: In-cluster Artemis
+  host: artemis.jms.svc.cluster.local
+  port: 61616
+  username: artemis
+
+# Saved connections live here. Seeded from a ConfigMap into a writable volume so that saving a new
+# one from the UI works; without persistence they last as long as the pod.
+persistence:
+  enabled: false
+  size: 64Mi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Anything else from application.properties, verbatim, as SPRING_APPLICATION_JSON would be overkill.
+# Example:  extraEnv: [{name: ARTEMIS_SEARCH_MAX_PER_QUEUE, value: "100"}]
+extraEnv: []

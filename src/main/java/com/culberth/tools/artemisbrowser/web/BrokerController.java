@@ -5,6 +5,7 @@ import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +40,10 @@ public class BrokerController
         model.addAttribute("connection", brokerSession.info());
         model.addAttribute("refresh", REFRESH_CHOICES.contains(refresh) ? refresh : 0);
         model.addAttribute("refreshChoices", REFRESH_CHOICES);
+        // The refresh control keeps whatever else describes the view; this page has nothing else
+        // to keep. Supplied from here rather than written as an empty literal in the template,
+        // because Thymeleaf's fragment-expression parser cannot read SpEL's `{:}`.
+        model.addAttribute("viewParams", Map.of());
         try
         {
             model.addAttribute("health", brokerInfo.health());

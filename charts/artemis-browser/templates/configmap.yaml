@@ -1,0 +1,20 @@
+{{- if .Values.broker.seedConnection }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-connections
+  labels:
+    app: {{ .Release.Name }}
+data:
+  {{- /*
+    The saved-connections format, which deliberately has no password field: host, port and username
+    only. This is a seed, copied to a writable volume at startup so the UI can still add to it.
+  */}}
+  connections.json: |
+    [ {
+      "label" : {{ .Values.broker.label | quote }},
+      "host" : {{ .Values.broker.host | quote }},
+      "port" : {{ .Values.broker.port | int }},
+      "username" : {{ .Values.broker.username | quote }}
+    } ]
+{{- end }}

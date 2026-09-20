@@ -191,6 +191,35 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
   `overview.html` is `queue`, not `q` — `q` is the search box, and naming the loop variable `q`
   silently shadows it.
 
+## Cluster deployment (KinD `claude-local`)
+
+- **Helm on PATH is 4.2.2**, not 3.x; `genSelfSignedCert` and `lookup` are both present. Three
+  nodes, so `kind load docker-image` pushes to all of them and takes 30–60s.
+- **No registry.** `imagePullPolicy` must be `IfNotPresent` and the tag must never be `latest`.
+  Rebuilding on the same tag changes nothing in the pod spec, so nothing restarts — `kubectl
+  rollout restart` is part of the loop, not an afterthought.
+- **Maven cannot run inside a build container here**: Nexus lives at `localhost:8081` via Maven's
+  own `conf/settings.xml`. The jar is built on the host and only copied into the image.
+- **`server.ssl.enabled=true` must be explicit.** Boot's own `Ssl.enabled` already defaults to
+  true, so PEM certs alone serve HTTPS — but `ReachabilityGuard` reads `${server.ssl.enabled:false}`
+  and refuses to start with TLS visibly working. Highest confusion per character in the chart.
+- **Boot 4.1.1 takes PEM directly** — `server.ssl.certificate` / `server.ssl.certificate-private-key`
+  live in `spring-boot-web-server-4.1.1.jar`, so a `kubernetes.io/tls` Secret mounts with no PKCS12
+  conversion.
+- **`server.forward-headers-strategy=native` is load-bearing** wherever the pod serves TLS behind an
+  ingress that does not. Tomcat marks `JSESSIONID` `Secure` for a request that arrived over TLS, a
+  browser on `http://` discards it, and the login loops with nothing in any log. `framework` does
+  not work: it wraps the request rather than mutating the one the cookie flag is read from.
+  Verified: through the ingress the cookie comes back `Path=/; HttpOnly` with no `Secure`.
+- **Probes**: `/app.css` with `Host: localhost`. `/login` creates a session per probe (30m timeout);
+  the kubelet's default Host is the pod IP, which `AllowedHostFilter` 403s — the pod then never goes
+  Ready and the log shows only access denials.
+- **The cluster's own conventions**: ingress-nginx v1.15.1, class `nginx`, `<app>.claude.local` with
+  a hosts-file line each (no wildcard); node maps host :80/:443 straight through. Artemis lives in
+  **both** `jms` and `claude-app` as Service `artemis` (61616/8161, artemis/artemis). Do not label
+  a namespace for Istio injection — a sidecar in front of a pod terminating its own TLS is a second
+  interception point nobody designed.
+
 ## Conventions
 
 - **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at

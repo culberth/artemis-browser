@@ -1,0 +1,4 @@
+# The build context is one jar. Everything else is noise that would be shipped to the daemon on
+# every build, and src/ in particular is large enough to notice.
+*
+!target/artemis-browser-*.jar

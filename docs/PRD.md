@@ -164,6 +164,15 @@ the line suggested, which is noted below rather than quietly folded in.
       swallowed it — which closes the dead session and returns to the connect form saying what
       happened and that nothing on the broker was changed.
 
+## Shipped since
+
+- **Phase 8** — a container image and a Helm chart, so it runs in the local Kubernetes cluster and
+  reaches a broker by cluster DNS. The pod terminates TLS itself because that is what
+  `ReachabilityGuard` requires of anything not bound to loopback; the certificate is self-signed and
+  the browser→ingress hop is plaintext, which makes this a **local-cluster arrangement**. Making it
+  more than that needs a real certificate on the ingress, browsing over HTTPS, and an external
+  session store before more than one replica is possible.
+
 ## Open questions
 
 1. ~~**Does Phase 5 have a theme, or is it a cleanup phase?**~~ **Settled 2026-09-19: Phase 5 is

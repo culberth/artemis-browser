@@ -1,0 +1,7 @@
+apiVersion: v2
+name: artemis-browser
+description: A read-only web browser for ActiveMQ Artemis queues
+type: application
+# The chart's own version. appVersion tracks the app, and is also the default image tag.
+version: 0.1.0
+appVersion: "0.1.0"

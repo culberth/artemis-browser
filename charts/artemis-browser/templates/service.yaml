@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    # Named https because it is: the pod terminates TLS itself, so anything talking to this Service
+    # — the Ingress included — has to speak HTTPS to it.
+    - name: https
+      port: 8443
+      targetPort: https

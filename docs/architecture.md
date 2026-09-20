@@ -113,6 +113,12 @@ disk store the same three fields, and a test asserts the file contains no "passw
 Everything on the session and the management channel is synchronized: a JMS `Session` is not
 thread-safe, and a browser with two tabs open makes concurrent requests happily.
 
+This is also what pins the deployment to a single replica. The session holds a live JMS connection —
+an open socket, not a serialisable token — so a second pod serves requests that have never heard of
+the user's broker connection, and the failure is immediate rather than gradual. Sticky sessions at
+the ingress would be a mitigation, not a fix: the connection still dies with its pod. An HPA would
+make the app unusable, not faster.
+
 ## Security posture
 
 Three controls, and each one is load-bearing on its own.
@@ -152,6 +158,35 @@ or a log. An unconfigured login means nobody can sign in rather than everybody.
 Everything behind the login is still read-only, so this is not protecting the broker's data from
 modification. It is protecting a live, authenticated broker connection from whoever can reach the
 port.
+
+## Running it behind an ingress
+
+The cluster deployment satisfies the reachability rules rather than working around them, and that
+shaped it more than anything else.
+
+A pod has to bind `0.0.0.0` to be reachable by a Service, which is exactly the case `ReachabilityGuard`
+refuses without a login and TLS. So **the pod terminates TLS itself**: the chart generates a
+self-signed certificate, mounts it as a `kubernetes.io/tls` Secret, and the ingress is told to speak
+HTTPS to the backend. The alternative — letting the ingress terminate TLS and serving plain HTTP from
+the pod — would have required defeating the guard, which is a strange thing to do to a control this
+project deliberately built two phases earlier.
+
+What that leaves is a plaintext browser→ingress hop on a single-machine cluster. That is a real
+compromise and worth naming rather than glossing: on a shared cluster it would want a certificate on
+the ingress and browsing over HTTPS.
+
+Splitting the scheme across the hop has one consequence that is architectural rather than
+operational. Tomcat marks the session cookie `Secure` for any request that arrived over TLS, and a
+browser on `http://` silently discards a `Secure` cookie — so the login accepts the password and
+bounces straight back to the form, forever, with nothing in any log to say why.
+`server.forward-headers-strategy=native` installs Tomcat's `RemoteIpValve`, which reads the
+ingress's `X-Forwarded-Proto` and mutates the internal request the flag is taken from. The
+`framework` strategy looks equivalent and is not: it wraps the request instead.
+
+`artemis.allowed-hosts` has to name the ingress hostname, because that is the `Host` the pod
+actually sees. The probes deliberately do not appear in it — they present `Host: localhost`, which
+`AllowedHostFilter` allows unconditionally, so the probes cannot be broken by a configuration change
+and the allowlist stays a short, reviewable list rather than something that varies per pod.
 
 ## Exports are untrusted content
 
