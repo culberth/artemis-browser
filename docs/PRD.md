@@ -99,19 +99,20 @@ can be checked rather than argued about.
 
 ### P1 — the gap the last two bugs came through
 
-- [ ] **Test `ManagementChannel` against a real broker.**
-      Every other service in `broker/` now has tests; the request/reply plumbing every one of them
-      depends on has none, because it needs a live JMS session rather than a fixture — the timeout
-      path, the rejected-`manage`-permission path and the reply-correlation are all untested. This
-      is a Testcontainers job, not a mocking one.
-      *Done when:* a tagged integration test starts a broker, exercises a successful call, a timeout
-      and a permission rejection, and is excluded from the default `mvn test` run.
+- [x] **Test `ManagementChannel` against a real broker.** Done 2026-09-19: `ManagementChannelIT`
+      covers the successful round trip, a typed attribute read, a refused operation and a timeout,
+      against a real broker started by Testcontainers under `mvn verify -Pintegration`. It turned
+      out to be more than a preference: `JMSManagementHelper` refuses to build a request from a
+      non-Artemis message, so the send path *cannot* be mocked at all. The refusal case is a real
+      one the broker rejects rather than a permission denial — a user without `manage` fails at
+      connect time instead, which is a different path.
 
-- [ ] **Keep the live verification repeatable.**
-      The broker recipe lives in `.claude/memory.md` and is run by hand. The non-destructive
-      guarantee — the product's central claim — is checked by remembering to check it.
-      *Done when:* one command seeds a broker with text, bytes and multicast messages and asserts
-      counters are unchanged after browsing, searching and exporting.
+- [x] **Keep the live verification repeatable.** Done 2026-09-19: `mvn verify -Pintegration` seeds
+      a broker with long text, bytes and multicast messages, drives every read path three times over
+      (list, detail, export, search, broker info) and asserts messageCount, delivering, acked and
+      added are all unchanged. `ReadOnlyGuaranteeIT` also pins the things that were only ever
+      checked by hand: whole bodies over JMS, bytes bodies, FQQN browsing, and JMS-style filter
+      names silently matching nothing.
 
 ### P2 — product gaps a user will actually hit
 

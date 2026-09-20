@@ -56,7 +56,11 @@ mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
 mvn test -Dtest=OneTest,TwoTest       # several (comma, not +)
 mvn spring-boot:run                   # run the app on http://localhost:8080
+mvn verify -Pintegration              # + integration tests: starts a real broker in Docker
 ```
+
+- `*IT` tests run only under `-Pintegration`, so `mvn clean install` needs nothing but Maven. They
+  cover what a mock cannot: the management round trip, and that reading consumes nothing.
 
 - Dependency resolution goes through a local Nexus (`mirrorOf *`), configured in Maven's own
   `conf/settings.xml` rather than `~/.m2`. If Nexus is down, nothing resolves.

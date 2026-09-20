@@ -115,6 +115,24 @@ from — a wrong parse here yields a believable number rather than an error.
   for a record accessor that exists in the source. Kill by port, not by task:
   `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process -Force`.
 
+## Testing
+
+- **`JMSManagementHelper` refuses a foreign message**: "Cannot send a foreign message as a
+  management message". It requires a real `ActiveMQMessage`, so a mocked `Session` cannot get as far
+  as sending a request — every management round trip has to be tested against a real broker, not
+  mocked. `ManagementChannelTest` is therefore small on purpose; `ManagementChannelIT` carries the
+  rest.
+- **A timeout is produced deterministically by addressing a non-management address.** Nothing is
+  listening there, so the receive runs out. Asking a healthy broker for a slow reply is the flaky
+  alternative.
+- **Spring Boot 4.1.1 manages `org.testcontainers:testcontainers` (2.0.5) but not its
+  `junit-jupiter` module.** Drive the container from `@BeforeAll` and the extra artifact is not
+  needed.
+- **A JMS durable subscription's queue is named `clientId.subscriptionName`** — `it-client.it-sub`
+  for client id `it-client` and subscription `it-sub` — bound to the topic's address. That is the
+  cheapest way to create the address != queue name case the FQQN path needs. The subscription must
+  exist *before* anything is published, or the publication is dropped with nowhere to route.
+
 ## Conventions
 
 - **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at

@@ -39,7 +39,15 @@ mvn clean install    # full build
 mvn test              # all tests
 mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
+mvn verify -Pintegration              # unit tests + integration tests (needs Docker)
 ```
+
+Integration tests are named `*IT` and run only under the `integration` profile, so a normal build
+needs nothing but Maven. They start a real Artemis in a container (Testcontainers) and check the two
+things a mock cannot: that the management request/reply plumbing works against a real broker, and
+that browsing, searching and exporting leave every counter exactly where they found it. That second
+one is the product's central claim, and `ReadOnlyGuaranteeIT` is what stops it being merely
+believed.
 
 `java-formatter-maven-plugin` reformats all Java sources on every build (Allman braces, its own
 wrapping), bound to the default lifecycle — expect `git status` to show modified source files after
