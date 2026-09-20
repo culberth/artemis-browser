@@ -115,5 +115,11 @@ individual files only when relevant.
 ## Git
 
 Read, branch, and edit freely. Ask before `git push`, force-push, merge, rebasing shared history, or
-deleting a branch. `main` is the branch to target for PRs; current work is on `phase05`, which
-merges up through `Milestone003`.
+deleting a branch.
+
+**One branch per phase, branched from `main` and merged back into `main` by a PR.** Phases 1–6 went
+through an intermediate `Milestone00N` branch as well; that layer is gone, and the branches with it.
+It bought nothing a PR into `main` does not, and cost a second merge every time — plus a standing
+chance of `main` sitting several phases behind reality, which it did.
+
+Phases 1–6 are all merged. The next one branches from `main` as `phase07`.
