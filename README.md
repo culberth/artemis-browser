@@ -1,9 +1,14 @@
 # artemis-browser
 
 A read-only web browser for ActiveMQ Artemis queues: connect to a broker, list its queues and
-addresses, inspect a queue's counters and messages, search across queues, export results, and check
-broker health, connections and producers — all without ever consuming, acknowledging, moving or
-deleting a message. Spring Boot, Thymeleaf server-rendered, no npm and no frontend build step.
+addresses, inspect a queue's counters and messages, search across queues, export results, check
+broker health and producers, and ask why something is not moving — all without ever consuming,
+acknowledging, moving or deleting a message. Spring Boot, Thymeleaf server-rendered, no npm and no
+frontend build step.
+
+It runs on localhost with no login by default. It can also run on a shared host, behind its own
+login and TLS, and refuses to start in the half-configured arrangement between the two — see
+**Run** below.
 
 Shipped so far:
 
@@ -15,6 +20,17 @@ Shipped so far:
   address view showing multicast fan-out.
 - **Phase 4** — a producers panel on the broker health page, and exports that carry whole message
   bodies of any type rather than the broker's truncated preview.
+- **Phase 5** — a bounded export that says which rows it cut, large-message flags, integration tests
+  against a real broker in Docker (including one that proves reading consumes nothing), exporting a
+  whole cross-queue search, and a sortable, filterable overview.
+- **Phase 6** — scheduled messages, which a browse does not return at all and which therefore made a
+  queue report messages above an empty table; message properties in the list, read from the typed
+  property tables; downloading a single message as `.txt` or `.json`; and a dropped connection that
+  says so instead of looking like a session timeout.
+- **Phase 7** — a login of the tool's own, so it can run somewhere other than localhost; a
+  *Diagnose* page answering "why is this stuck"; and a measured answer to how large a broker this
+  stays usable on — which turned up a correctness bug in cross-queue search rather than a
+  performance ceiling (see **Searching** below).
 
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
@@ -112,7 +128,7 @@ Keys from `src/main/resources/application.properties`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `server.address` | `127.0.0.1` | Loopback-only bind; see Security below |
+| `server.address` | `127.0.0.1` | Where to listen. Anything but loopback requires a login and TLS; see Security below |
 | `server.port` | `8080` | HTTP port |
 | `server.servlet.session.timeout` | `30m` | The broker connection lives in the HTTP session, so session expiry is connection expiry |
 | `artemis.management-timeout-ms` | `10000` | Timeout for a management query to the broker |
@@ -120,19 +136,37 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.body-preview-chars` | `200` | Body characters shown per row in a message list |
 | `artemis.body-detail-chars` | `200000` | Body characters shown in the single-message detail view (and used for export) |
 | `artemis.connections-file` | *(blank)* | Where remembered broker locations (host/port/username, never passwords) are stored; blank defaults to `${user.home}/.artemis-browser/connections.json` |
-| `artemis.search-max-per-queue` | `50` | Messages fetched per matching queue during cross-queue search |
+| `artemis.search-max-per-queue` | `50` | Messages fetched per queue during cross-queue search; reaching it is what makes a count a floor |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
 | `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
+| `artemis.auth.username` | *(blank)* | The tool's own login. Blank means nobody can sign in, which is fine while it is loopback-only |
+| `artemis.auth.password-hash` | *(blank)* | bcrypt hash for that account, with or without a `{bcrypt}` prefix. Generate with `--hash-password=` |
+| `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
 | `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |
 
 ## Security posture
 
 Read-only is the product, not a detail: nothing in this codebase consumes, acknowledges, moves, or
-deletes a message. Loopback-only binding plus `LoopbackHostFilter` are both required, and if this
-app is ever made network-reachable, the filter is not the thing to relax — real authentication would
-have to be built first. See [docs/architecture.md](docs/architecture.md) and `.claude/memory.md`
-for the specific traps already found and fixed (e.g. a naive `startsWith("127.")` check that a hostname like `127.0.0.1.attacker.com`
-would have defeated).
+deletes a message. That is checked rather than asserted — `ReadOnlyGuaranteeIT` drives every read
+path against a real broker and compares the counters before and after.
+
+Reachability is three controls, each load-bearing on its own:
+
+- **`server.address`** decides where it listens, and defaults to loopback.
+- **`AllowedHostFilter`** requires the `Host` header to be a loopback literal or a configured name.
+  Binding an address does not decide who reaches it: a page on any website can point a hostname it
+  controls at this app and drive the UI through your own browser. It runs ahead of authentication,
+  because that attack rides a session that is already signed in.
+- **`ReachabilityGuard`** refuses to start when bound beyond loopback without both a login and TLS,
+  and fails at startup rather than warning — a warning is read after the incident.
+
+Behind the login everything is still read-only, so the login is not protecting the broker's data
+from modification. It is protecting a live, authenticated broker connection from whoever can reach
+the port. The broker's own password is still never stored.
+
+See [docs/architecture.md](docs/architecture.md) and `.claude/memory.md` for the specific traps
+already found and fixed — for instance a naive `startsWith("127.")` check, which accepts
+`127.0.0.1.attacker.com`, a hostname an attacker owns.
 
 Filters exposed to users (overview, queue, search) use Artemis **core** filter syntax
 (`AMQPriority`, `AMQTimestamp`, `AMQDurable`, `AMQSize`, or a property by its bare name) — not JMS
@@ -182,39 +216,46 @@ writers stream to the response rather than building the document in memory first
 
 ```
 com.culberth.tools.artemisbrowser
-├── ArtemisBrowserApplication      Spring Boot entry point
+├── ArtemisBrowserApplication      Spring Boot entry point; --hash-password= prints a bcrypt hash and exits
 ├── broker/                        Everything that talks to Artemis
 │   ├── BrokerSession              @SessionScope: one live connection per HTTP session (never the password)
 │   ├── BrokerCredentials          Password carrier from the connect form to connect(), not retained
 │   ├── ConnectionInfo             What the session keeps after connecting: host/port/username only
 │   ├── ManagementChannel          Request/reply plumbing over the activemq.management address
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
-│   ├── QueueBrowseService         Owns both read paths: management browse (paged list) and JMS QueueBrowser (single-message detail)
+│   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
-│   ├── MessageSearchService       Cross-queue search (countMessages first, then browse only matches)
-│   ├── MessageExporter            CSV/JSON export with formula-injection defusing
+│   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
+│   ├── StuckDiagnosisService      Gathers "why is this not moving" from the cheap reads only
+│   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
-│   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail
+│   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
 │   │                              Queue and message view models, including FQQN browse-name handling
-│   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo / SearchResult
-│   │                              Broker/address/search view models
-│   └── BrokerException / NotConnectedException
-│                                  Broker-facing error types
-├── web/                           Thymeleaf controllers
+│   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
+│   │   / SearchResult / SavedConnection / Finding
+│   │                              Broker, address, search and diagnosis view models
+│   └── BrokerException / NotConnectedException / ConnectionLostException
+│                                  Broker-facing error types; the last is deliberately not a BrokerException
+├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
-│   ├── QueueController            /overview, /queues, /message
+│   ├── QueueController            /overview, /queues, /message, /message/download
 │   ├── BrokerController           /broker, /addresses
-│   ├── SearchController           /search, /export
+│   ├── SearchController           /search, /export (one queue, or a whole search)
+│   ├── DiagnoseController         /diagnose
+│   ├── LoginController            /login (the sign-in itself is Spring Security's)
 │   ├── ConnectForm                Connect page form backing object
-│   ├── LoopbackHostFilter         Rejects any request whose Host header isn't a loopback literal
-│   └── BrokerErrorAdvice          Translates broker errors into user-facing pages
+│   ├── SecurityConfig             The login: one configured account, CSRF on, session fixation handled
+│   ├── ReachabilityGuard          Refuses to start exposed without both a login and TLS
+│   ├── AllowedHostFilter          Host header must be loopback or named; runs ahead of authentication
+│   ├── CurrentUserAdvice          Puts the signed-in name on every page
+│   └── BrokerErrorAdvice          Sends a request that cannot be served back to the connect form
 └── (resources)
     ├── application.properties     See Configuration above
     └── templates/
         ├── fragments/layout.html  Shared nav — edited once when a page is added
-        ├── connect.html, overview.html, queues.html, message.html,
-        │   addresses.html, broker.html, search.html
+        ├── login.html, connect.html, overview.html, queues.html, message.html,
+        │   addresses.html, broker.html, search.html, diagnose.html
         └── static/app.css
 ```
 
