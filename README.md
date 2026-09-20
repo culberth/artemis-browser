@@ -13,10 +13,12 @@ Shipped so far:
   per-message detail view, and remembered broker locations.
 - **Phase 3** — cross-queue search, CSV/JSON export, a broker health and connections view, and an
   address view showing multicast fan-out.
-- **Phase 4** — a producers panel on the broker health page.
+- **Phase 4** — a producers panel on the broker health page, and exports that carry whole message
+  bodies of any type rather than the broker's truncated preview.
 
-For the architectural "why" behind these decisions, see `CLAUDE.md`; day-to-day discoveries and
-environment quirks are logged in `.claude/memory.md`.
+For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
+what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
+and environment quirks are logged in `.claude/memory.md`.
 
 ## Requirements
 
@@ -91,14 +93,15 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.connections-file` | *(blank)* | Where remembered broker locations (host/port/username, never passwords) are stored; blank defaults to `${user.home}/.artemis-browser/connections.json` |
 | `artemis.search-max-per-queue` | `50` | Messages fetched per matching queue during cross-queue search |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
+| `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
 
 ## Security posture
 
 Read-only is the product, not a detail: nothing in this codebase consumes, acknowledges, moves, or
 deletes a message. Loopback-only binding plus `LoopbackHostFilter` are both required, and if this
 app is ever made network-reachable, the filter is not the thing to relax — real authentication would
-have to be built first. See `CLAUDE.md` and `.claude/memory.md` for the specific traps already found
-and fixed (e.g. a naive `startsWith("127.")` check that a hostname like `127.0.0.1.attacker.com`
+have to be built first. See [docs/architecture.md](docs/architecture.md) and `.claude/memory.md`
+for the specific traps already found and fixed (e.g. a naive `startsWith("127.")` check that a hostname like `127.0.0.1.attacker.com`
 would have defeated).
 
 Filters exposed to users (overview, queue, search) use Artemis **core** filter syntax
@@ -109,6 +112,19 @@ selector syntax applies only to the single-message detail path.
 CSV/JSON exports treat message bodies as untrusted content: every field is quoted, and a leading
 `=`, `+`, `-` or `@` is prefixed with an apostrophe so a downloaded file isn't evaluated as
 spreadsheet formulas (`MessageExporterTest` covers it).
+
+## Exports and message bodies
+
+The message *list* is read through Artemis management `browse`, which truncates a body at the
+broker's `management-message-attribute-size-limit` (256 characters by default) and appends a literal
+`", + N more"` to the value itself — and which has no body at all for bytes, map or stream messages.
+That is fine for a table cell and wrong for a download, so `/export` builds its list from management
+browse (the broker still does the paging and the core filtering) and then fills in the bodies that
+need it from a single JMS browser pass, which reads real bodies of any type. `bodyTruncated` says
+whether what you got is the whole body. The pass is bounded by `artemis.export-body-scan-limit`;
+anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
+complete. Like every other read here, it consumes nothing — verified against a live broker with
+counters unchanged after repeated exports.
 
 ## Layout
 
@@ -150,6 +166,6 @@ com.culberth.tools.artemisbrowser
         └── static/app.css
 ```
 
-See `CLAUDE.md` for the deeper rationale behind these boundaries (why there are two read paths, why
-addresses and queues are modeled separately, etc.) and `.claude/memory.md` for verified broker
+See [docs/architecture.md](docs/architecture.md) for the deeper rationale behind these boundaries
+(why there are two read paths, why addresses and queues are modeled separately, etc.) and `.claude/memory.md` for verified broker
 response shapes, environment-specific gotchas, and what's already been fixed.
