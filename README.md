@@ -101,6 +101,7 @@ never persisted). From there:
 | `/search` | Cross-queue search |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
+| `/diagnose` | Why is this stuck: what on the broker is not moving, and what that usually means |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
 (note it maps host port 62616, not 61616, because 61616 is already taken in this environment).

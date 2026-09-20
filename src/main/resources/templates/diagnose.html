@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; diagnose</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('diagnose')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div class="panel">
+        <h2>
+            Why is this stuck?
+            <span class="muted" th:if="${stuckCount > 0}"
+                  th:text="${stuckCount} + ' not moving'">0 not moving</span>
+            <span class="muted" th:if="${stuckCount == 0}">nothing is obviously blocked</span>
+            <span style="float:right;font-size:.8rem;font-weight:normal">
+                <a class="badge-link" th:href="@{/diagnose(internal=${!internal})}"
+                   th:text="${internal} ? 'Hide internal queues' : 'Include internal queues'">Include internal</a>
+            </span>
+        </h2>
+
+        <p class="muted" th:if="${findings.isEmpty()}">
+            Nothing on this broker looks blocked: no paused queues, nothing waiting without a
+            consumer, no unrouted addresses, and the broker is not near its disk or memory limits.
+        </p>
+
+        <div th:each="f : ${findings}" class="panel"
+             th:classappend="${f.isStuck()} ? 'row-warn' : ''" style="margin-top:.75rem">
+            <h3 style="margin:0 0 .35rem">
+                <span class="badge" th:classappend="${f.isStuck()} ? 'warn' : ''"
+                      th:text="${f.isStuck()} ? 'not moving' : 'worth a look'">not moving</span>
+                <span th:text="${f.title()}">title</span>
+            </h3>
+            <p class="muted" style="margin:0 0 .5rem" th:text="${f.detail()}">detail</p>
+            <a class="badge-link" th:if="${f.queue() != null}"
+               th:href="@{/queues(name=${f.queue()})}">Open this queue</a>
+            <a class="badge-link" th:if="${f.address() != null}"
+               th:href="@{/addresses}">See addresses</a>
+        </div>
+
+        <p class="note">
+            These are observations, not verdicts. A queue with no consumer is a problem if something
+            should be reading it and entirely normal if nothing is meant to be running yet &mdash;
+            this page can see the broker's state, not what you intended it to be.
+        </p>
+    </div>
+</div>
+</body>
+</html>
