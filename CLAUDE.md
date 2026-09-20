@@ -7,13 +7,13 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 **artemis-browser** — a read-only web browser for ActiveMQ Artemis queues. Spring Boot 4.1.1 on
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–4 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
-producers, address view. Phase 5 is in progress on `phase05`. 128 unit tests, 11 integration.
+producers, address view. Phase 6 is in progress on `phase06`. 141 unit tests, 12 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
 paths are verified non-destructive against a real broker, not assumed.
 
-## The five things that cause silent bugs here
+## The six things that cause silent bugs here
 
 Silent, meaning a wrong answer rather than an error. Each is one line plus where the reasoning
 lives — read [docs/architecture.md](docs/architecture.md) before changing any of them.
@@ -33,6 +33,8 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
    `.claude/memory.md`; the parsing is tested against them.
 5. **Exports are untrusted content.** Every CSV field is quoted and a leading `=`, `+`, `-` or `@`
    gets an apostrophe, so a body cannot become a spreadsheet formula. Don't "simplify" it.
+6. **`browse` does not return scheduled messages.** They are counted by the queue and read through
+   `listScheduledMessagesAsJSON` instead, so a queue can report messages and browse as empty.
 
 ## Security posture
 

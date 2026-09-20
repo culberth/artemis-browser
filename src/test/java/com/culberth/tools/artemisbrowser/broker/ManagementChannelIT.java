@@ -119,4 +119,25 @@ class ManagementChannelIT
         assertEquals(1, new QueueDirectory(brokerSession).overview().stream()
                 .filter(queue -> queue.name().equals(ArtemisBrokerSupport.TEXT_QUEUE)).count());
     }
+
+    @Test
+    @DisplayName("a call on a connection that has gone says the connection has gone")
+    void reportsALostConnection() throws Exception
+    {
+        // Its own session, closed underneath the channel: the same thing a broker restart does to
+        // every session on it, without taking the container down for the other tests.
+        BrokerSession doomed = ArtemisBrokerSupport.connect();
+        ManagementChannel channel = doomed.requireManagement();
+        doomed.close();
+
+        ConnectionLostException thrown = assertThrows(ConnectionLostException.class,
+                () -> channel.invoke(ResourceNames.BROKER, "listQueues",
+                        "{\"field\":\"\",\"operation\":\"\"," + "\"value\":\"\"}", 1, 200));
+
+        assertTrue(thrown.getMessage().contains("connection to the broker was lost"), thrown.getMessage());
+        // Not a BrokerException: the controllers catch those to show an error beside the page, and
+        // this one has to reach the handler that sends the user back to the connect form.
+        assertFalse(BrokerException.class.isInstance(thrown),
+                "a lost connection must not be catchable as a broker error");
+    }
 }

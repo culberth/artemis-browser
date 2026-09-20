@@ -187,3 +187,20 @@ table th { white-space: nowrap; }
 
 h3 a { text-decoration: none; }
 h3 a:hover { text-decoration: underline; }
+
+/*
+ * Properties are the names a core filter is written against, so they earn a column - but a message
+ * with fifteen of them must not push the body off the screen.
+ */
+.props-cell {
+    max-width: 16rem;
+}
+
+.props-cell .badge {
+    display: inline-block;
+    max-width: 15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}

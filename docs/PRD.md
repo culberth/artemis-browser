@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–4 shipped and on `main`. Phase 5 complete on `phase05` — every P0, P1 and P2 item
-below is done; P3 is untouched.
+Status: Phases 1–5 shipped and on `main`. Phase 6 complete on `phase06` — every item below, P0
+through P3, is now done. What is next is an open question rather than a list; see the end.
 Last updated: 2026-09-19.
 
 ## What this is
@@ -138,13 +138,28 @@ can be checked rather than argued about.
 
 ### P3 — worth doing, nothing breaks without it
 
-- [ ] **Copy or download a single message** from the detail view, body and properties together.
-- [ ] **Show scheduled messages' delivery times** — the counter is on the overview, the times are not
-      anywhere.
-- [ ] **Surface `PropertiesText` in the list**, so filtering by a property does not require opening
-      each message to see what the properties are.
-- [ ] **Make a dropped connection say so.** A broker restart currently redirects to the connect form
-      with no explanation, which looks like a session timeout.
+All four done in Phase 6 on `phase06`. Two of them turned out to be covering something larger than
+the line suggested, which is noted below rather than quietly folded in.
+
+- [x] **Download a single message**, headers, properties and body together, as `.txt` or `.json`
+      from the detail view. Attaching a message to a ticket is most of what someone does after
+      finding one, and doing it from the page meant three selections and a lost format.
+- [x] **Show scheduled messages' delivery times.** Bigger than it read: management `browse` does not
+      return scheduled messages *at all*, so a queue holding one reported a message count of 1 and
+      displayed an empty table with no explanation. Scheduled messages are now read through
+      `listScheduledMessagesAsJSON` and listed in their own panel with delivery times, an *overdue*
+      flag when that time has passed, and a note on the empty table saying where they went.
+- [x] **Surface message properties in the list** — read from the typed property tables the browse
+      reply carries, *not* from `PropertiesText` as the item proposed. `PropertiesText` is a Java
+      map's `toString()` with no escaping, so a value containing `", "` or `"="` would corrupt the
+      row. Artemis's own `__AMQ_CID` and `_AMQ_ROUTING_TYPE` are hidden; exports carry the rest.
+- [x] **Make a dropped connection say so.** The description here was wrong, which the fix depended
+      on noticing: a broker restart did *not* redirect to the connect form. It left the user on the
+      page with "Management call broker.listQueues() failed: Session is closed" and went on
+      believing it was connected. A lost connection is now its own exception — deliberately not a
+      `BrokerException`, since the controllers catch those to show an inline error and would have
+      swallowed it — which closes the dead session and returns to the connect form saying what
+      happened and that nothing on the broker was changed.
 
 ## Open questions
 
