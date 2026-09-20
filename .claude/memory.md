@@ -1,223 +1,108 @@
 # Memory — artemis-browser
 
-Append-only working notes. One or two lines each: date, what, why.
-Read this at the start of every session. Consolidate when it gets repetitive.
+What has been **discovered**: verified broker response shapes, environment quirks, traps already
+hit. Read this at the start of every session; it is not auto-loaded the way `CLAUDE.md` is.
 
----
+Design decisions and their reasoning live in [docs/architecture.md](../docs/architecture.md); what
+the product is and what is next lives in [docs/PRD.md](../docs/PRD.md). Don't re-add either here, and
+don't record what git history or the code already says. Append discoveries as you make them —
+one or two lines, dated, with the why — and consolidate into the sections below when it drifts.
 
-- **2026-09-18 — UI is a web interface, not JavaFX.** Decided explicitly against the pattern of all
-  three sibling projects. Why: they're JavaFX desktop apps, so their scene-graph, FXML, TestFX and
-  ribbon-CSS code is a trap to copy from here.
+Last consolidated 2026-09-19, covering work through Phase 4.
 
-- **2026-09-18 — Domain settled: a read-only browser for ActiveMQ Artemis queues.** Phase 1 is
-  connect (host/port/user/password) -> list queues -> inspect one without consuming.
+## Environment (this machine)
 
-- **2026-09-18 — Frontend settled: Thymeleaf, server-rendered, no build step.** Why: three screens
-  do not justify npm in the dev loop. Dropdowns self-submit with a one-line inline onchange.
-
-- **2026-09-18 — Security settled: loopback-only, no app login.** `server.address=127.0.0.1` plus
-  our own `LoopbackHostFilter`. Why both: binding loopback does not stop DNS rebinding, and this app
-  holds a live authenticated broker connection with no login of its own. If it is ever made
-  network-reachable, that filter is not the thing to relax — real authentication has to be built.
-
-- **2026-09-18 — The broker password is never retained.** `BrokerCredentials` carries it only from
-  the form to `connect()`; the HTTP session keeps `ConnectionInfo` (host/port/user), which has no
-  password field. Reconnecting means retyping it. Don't "improve" this by caching it for reconnects.
-
-- **2026-09-18 — `startsWith("127.")` is not a loopback check.** It accepts
-  `127.0.0.1.attacker.com`, a hostname an attacker owns — which defeats the whole filter. Octets are
-  parsed individually now. A test covers it; don't simplify it back.
-
-- **2026-09-18 — Queue listing is a management call, not JMS.** JMS has no "list queues". We send a
-  message to `activemq.management` naming resource `broker`, operation `getQueueNames`, with a
-  temporary reply queue. Needs the `manage` permission on that address — the failure mode is a
-  rejection, not a hang. Chose this over JMX/Jolokia: no extra port.
-
-- **2026-09-18 — Exclude our own management reply queue from the listing.** It is a real temporary
-  queue, so the broker reports it and the dropdown showed a UUID "queue" that was our own plumbing.
-  `QueueDirectory` filters it by `ManagementChannel.replyQueueName()`.
-
-- **2026-09-18 — Browse by FQQN when address != queue name.** Artemis resolves a bare name against
-  addresses first, so any multicast subscription must be browsed as `address::queue`. Symptom if you
-  get it wrong is "that queue is always empty", not an error. `QueueStats.browseName()` handles it.
-
-- **2026-09-18 — Never call `getObject()` on a browsed ObjectMessage.** That deserializes whatever a
-  producer put on the queue, inside this process. The browser reports the type and stops.
-
-- **2026-09-18 — No `.gitignore` yet.** Add one before the first `mvn` run or `target/` lands in the
-  working tree. If it ignores `.claude/`, carve out `.claude/memory.md` or this file stops being
-  shared.
-
-- **2026-09-18 — Sibling convention differs on memory location.** All three siblings keep `memory.md`
-  at the repo root; this project uses `.claude/memory.md` per the Substack approach Bo is trying out.
-  Why noted: don't "fix" the divergence by moving it back.
-
-- **2026-09-18 — pom trap: do NOT define an `artemis.version` property.** spring-boot-dependencies
-  defines a property by exactly that name and uses it to import `org.apache.artemis:artemis-bom`.
-  Ours silently redirected that import to a non-existent coordinate, and the build failed while
-  resolving the parent — before it ever read our dependency. Declare
-  `org.apache.artemis:artemis-jakarta-client` with no version and let the BOM manage it.
-
-- **2026-09-18 — Artemis moved groupId to `org.apache.artemis`** (was `org.apache.activemq`), and
-  the Jakarta-namespace artifact is `artemis-jakarta-client`. `artemis-jms-client` is the old
-  `javax.jms` one and fails at runtime under Spring Boot 4, not at compile time.
-
-- **2026-09-18 — Spring Boot 4 moved `@WebMvcTest`** out of `spring-boot-test-autoconfigure` into
-  its own `spring-boot-webmvc-test` artifact, package
-  `org.springframework.boot.webmvc.test.autoconfigure`. Also: the MVC starter is now
-  `spring-boot-starter-webmvc`.
-
-- **2026-09-18 — Environment: Maven resolves through a local Nexus.** `mirrorOf *` ->
+- **Maven resolves through a local Nexus.** `mirrorOf *` →
   `http://localhost:8081/repository/maven-public/`, local repo
   `P:/maven_local_repositories/.m2/spring-boot`, both set in Maven's own `conf/settings.xml`, not
   `~/.m2`. If Nexus is down, nothing resolves. It does proxy Maven Central successfully.
+- **The JDK on PATH is 26; the build targets release 21.** JaCoCo 0.8.12 (the sibling projects' pin)
+  cannot instrument Java 26 class files — "Unsupported class file major version 70". Pinned 0.8.15.
+- **Ports 61616 and 8161 are already taken** by a kind Kubernetes cluster
+  (`claude-local-control-plane`), so the test broker maps 62616→61616 and 8162→8161. Connect the app
+  to `localhost:62616`.
+- **Git Bash mangles container-absolute paths.** `docker exec ... /var/lib/...` becomes
+  `C:/Program Files/Git/var/lib/...`; prefix with `MSYS_NO_PATHCONV=1`.
 
-- **2026-09-18 — Environment: JDK on PATH is 26, but we target release 21.** JaCoCo 0.8.12 (the
-  sibling projects' pin) cannot instrument Java 26 class files — "Unsupported class file major
-  version 70". Pinned 0.8.15 here.
+### Test broker recipe
 
-- **2026-09-18 — Environment: ports 61616 and 8161 are already taken** by a kind Kubernetes cluster
-  (`claude-local-control-plane`). The test broker container therefore maps 62616->61616 and
-  8162->8161. Connect the app to `localhost:62616`, not 61616.
+```
+docker run -d --name artemis-test -p 62616:61616 -p 8162:8161 \
+  -e ARTEMIS_USER=artemis -e ARTEMIS_PASSWORD=artemis apache/activemq-artemis:latest-alpine
+```
 
-- **2026-09-18 — Environment: Git Bash mangles container-absolute paths.** `docker exec ... /var/lib/...`
-  becomes `C:/Program Files/Git/var/lib/...`. Prefix commands with `MSYS_NO_PATHCONV=1`.
+- Readiness log line is "Server is now active", not "live".
+- The CLI is at **`/var/lib/artemis-instance/bin/artemis`**, not `./broker/bin/artemis`.
+- `artemis producer --destination queue://orders --message-count 5` seeds a queue. `--text-size N`
+  makes text messages; `--message-size N` makes **bytes** messages, which is the quick way to
+  exercise the non-text body path. `--destination topic://events` publishes to a multicast address.
 
-- **2026-09-18 — Test broker recipe.** `docker run -d --name artemis-test -p 62616:61616 -p 8162:8161
-  -e ARTEMIS_USER=artemis -e ARTEMIS_PASSWORD=artemis apache/activemq-artemis:latest-alpine`, then
-  seed with the bundled CLI (`artemis producer --destination queue://orders --message-count 5`).
-  Readiness log line is "Server is now active", not "live".
+## Build traps
 
-- **2026-09-18 — `java-formatter-maven-plugin` rewrites sources during the build.** It is bound to
-  run on every `mvn` invocation and restyles Java to Allman braces with its own wrapping. Write code
-  normally and let it run; don't hand-match the style, and don't be surprised when `git status` shows
-  source files modified after a build you thought was read-only.
-
-- **2026-09-18 — Phase 1 shipped.** PR #1 merged into `Milestone001`; work continues on `phase02`.
-
-- **2026-09-18 — Two filter dialects exist, and mixing them fails SILENTLY.** Management operations
-  (`countMessages`, `browse`) take Artemis *core* filter syntax: `AMQPriority`, `AMQTimestamp`,
-  `AMQDurable`, `AMQSize`, `AMQUserID`, custom properties by bare name. A JMS-style
-  `JMSPriority = 4` is not an error — it returns 0 matches on a queue where all 5 messages are
-  priority 4. JMS selector syntax belongs only on `session.createBrowser(queue, selector)`.
-  Whatever the UI exposes must name its dialect, or users get confidently wrong answers.
-
-- **2026-09-18 — `broker.listQueues(filterJson, page, pageSize)` returns a JSON String**
-  `{"data":[...],"count":N}`, every value quoted as a string (`"messageCount":"0"`). One call gets
-  every queue with all counters — far cheaper than per-queue attribute reads. Field is
-  `messagesAcked`, not `messagesAcknowledged`. Filter arg is JSON:
-  `{"field":"","operation":"","value":""}`.
-
-- **2026-09-18 — `queue.<n>.browse(page, pageSize[, filter])` returns a Map** keyed by the literal
-  string `javax.management.openmbean.CompositeData` whose value is a `CompositeData[]`. Each entry
-  carries messageID, userID, address, durable, expiration, largeMessage, persistentSize, priority,
-  protocol, redelivered, timestamp, type, `text` (for text bodies) and `PropertiesText`. Verified
-  non-destructive: counts and delivering/acked were unchanged after browsing.
-
-- **2026-09-18 — Phase 2 architecture: two read paths, deliberately.** The paged/filtered LIST uses
-  management `browse` (server-side paging, so a 50k DLQ does not stream through the client, plus
-  `countMessages` for accurate filtered totals). The single-message DETAIL uses a JMS `QueueBrowser`
-  with a `JMSMessageID` selector, because management browse only exposes `text` bodies and we want
-  full fidelity for bytes/map messages. Both are non-destructive.
-
-- **2026-09-18 — Spring Boot 4.1.1 ships Jackson 3.** Package root is `tools.jackson.*`
-  (`tools.jackson.databind.ObjectMapper`, `tools.jackson.core.type.TypeReference`), not
-  `com.fasterxml.jackson.*`. It arrives transitively via `spring-boot-starter-jackson`, so no extra
-  dependency is needed — only the right import. The 2.x `jackson-annotations` is also on the
+- **Do NOT define an `artemis.version` property.** spring-boot-dependencies defines one by exactly
+  that name and uses it to import `org.apache.artemis:artemis-bom`. Ours silently redirected that
+  import to a non-existent coordinate, and the build failed while resolving the parent — before it
+  ever read our dependency. Declare `artemis-jakarta-client` with no version and let the BOM manage
+  it.
+- **Artemis moved groupId to `org.apache.artemis`** (was `org.apache.activemq`), and the
+  Jakarta-namespace artifact is `artemis-jakarta-client`. `artemis-jms-client` is the old `javax.jms`
+  one and fails at runtime under Spring Boot 4, not at compile time.
+- **Spring Boot 4 moved `@WebMvcTest`** into its own `spring-boot-webmvc-test` artifact, package
+  `org.springframework.boot.webmvc.test.autoconfigure`. The MVC starter is now
+  `spring-boot-starter-webmvc`.
+- **Jackson 3 arrives transitively** via `spring-boot-starter-jackson`, so only the import changes:
+  `tools.jackson.*`, not `com.fasterxml.jackson.*`. The 2.x `jackson-annotations` is also on the
   classpath, which makes a wrong import look plausible until it fails to resolve.
 
-- **2026-09-18 — Phase 2 shipped**: overview page with auto-refresh, server-side pagination,
-  core-syntax filtering, per-message detail, and saved connections (host/port/username, never
-  passwords — a test asserts the file contains no "password" string). 52 tests.
+## Verified broker API shapes
 
-- **2026-09-18 — Broker-level management shapes.** `listAddresses(filter,page,pageSize)` returns
-  `{"data":[...]}` with every value string-quoted, and `routingTypes` is a JSON array encoded
-  *inside* a JSON string (`"[\"ANYCAST\"]"`) — it needs unwrapping or it renders as escaped
-  brackets. `getAcceptorsAsJSON`, `listConnectionsAsJSON` and `listAllConsumersAsJSON` return plain
-  JSON arrays. Health attributes come back with mixed types: `version`/`uptime` String,
-  `connectionCount` Long (despite an int getter), `diskStoreUsage` Double, and `status` is a JSON
-  String holding `server.state` and `server.nodeId`.
+All confirmed against a live broker, not read from docs. These are what the parsing tests are built
+from — a wrong parse here yields a believable number rather than an error.
 
-- **2026-09-18 — There is no "which connection am I" management call.** Our own connection is
-  identified by finding the consumer sitting on our management reply queue and reading its
-  connectionID. Both the connections and consumers views label ours rather than hiding it, so the
-  consumer count on an idle broker still adds up.
+- **`broker.listQueues(filterJson, page, pageSize)`** → JSON String `{"data":[...],"count":N}`, every
+  value quoted including counters (`"messageCount":"0"`). Field is `messagesAcked`, **not**
+  `messagesAcknowledged`. The filter argument is itself JSON:
+  `{"field":"","operation":"","value":""}`. One call gets every queue with all counters, far cheaper
+  than per-queue attribute reads.
+- **`queue.<name>.browse(page, pageSize[, filter])`** → a Map keyed by the literal string
+  `javax.management.openmbean.CompositeData`, whose value is a `CompositeData[]`. Entries carry
+  messageID, userID, address, durable, expiration, largeMessage, persistentSize, priority, protocol,
+  redelivered, timestamp, type, `text` (text bodies only) and `PropertiesText`.
+- **`browse()` truncates `text` broker-side** at `management-message-attribute-size-limit` (default
+  256) and appends a literal `", + N more"` **to the value itself** rather than signalling out of
+  band. Verified: a 250-char body came back whole, a 500-char body came back as 256 chars plus that
+  suffix. Raising `artemis.body-detail-chars` past it does nothing — only the JMS `QueueBrowser`
+  path reads the real body. `QueueBrowseService` strips the marker and sets `bodyTruncated`, guarded
+  by a 64-char minimum because the marker is ordinary text a real body could end with.
+- **`listAddresses(filter, page, pageSize)`** → `{"data":[...]}`, every value string-quoted, and
+  `routingTypes` is a JSON array encoded *inside* a JSON string (`"[\"ANYCAST\"]"`) — unwrap it or it
+  renders as escaped brackets.
+- **`getAcceptorsAsJSON`, `listConnectionsAsJSON`, `listAllConsumersAsJSON`** → plain JSON arrays.
+- **`listProducersInfoAsJSON()`** → `{"id","name","connectionID","sessionID","creationTime",
+  "destination","lastProducedMessageID","msgSent","msgSizeSent"}`. Unlike most management JSON here,
+  `msgSent`/`msgSizeSent` are bare numbers while `creationTime` is quoted epoch millis.
+  `destination` is the address it sends to.
+- **Health attributes are mixed types**: `version`/`uptime` String, `connectionCount` Long (despite
+  an int getter), `diskStoreUsage` Double, `status` a JSON String holding `server.state` and
+  `server.nodeId`. **`diskStoreUsage` is a 0..1 ratio, not a percentage** — reading it straight
+  showed "0.10%" for an 85%-full disk and meant `diskPressure()` could never trip;
+  `BrokerInfoService.health()` multiplies by 100.
+- **There is no "which connection am I" call.** Our own connection is identified by finding the
+  consumer sitting on our management reply queue and reading its `connectionID`.
 
-- **2026-09-18 — Cross-queue search is two-phase on purpose.** `countMessages(filter)` on every
-  queue first (cheap, returns a number), then browse only the queues that matched. Browsing every
-  queue speculatively pulls message bodies from the whole broker to answer a question that is
-  usually "it is in exactly one of these".
+## Verified behaviour
 
-- **2026-09-18 — CSV export must defuse formula injection.** Message bodies are attacker-controlled
-  as far as this tool is concerned, and exports get opened in Excel. Every field is quoted and a
-  leading `=`, `+`, `-` or `@` gets an apostrophe. Don't "simplify" the quoting to only-when-needed.
+- **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
+  through a 1200-message queue, and after five exports of text, bytes and multicast queues.
+- **Export carries whole bodies** (2026-09-19): 1000-char text bodies export intact where they were
+  previously 256 chars plus the marker; `--message-size` bytes messages export with a real body where
+  they were previously the "no text body" placeholder; a multicast `events::sub-a` subscription
+  exports through its FQQN.
+- **The `events` address with `sub-a`/`sub-b`** is what exercises the FQQN browse path end to end.
+  Worth recreating whenever that path changes — a bare name fails silently, not loudly.
 
-- **2026-09-18 — Phase 3 shipped**: cross-queue search, CSV/JSON export, broker health/connections
-  view, address view with multicast fan-out. 68 tests. The `events` address with `sub-a`/`sub-b`
-  finally exercised the FQQN browse path end to end.
+## Conventions
 
-- **2026-09-19 — `broker.listProducersInfoAsJSON()` shape**, verified against a live broker with an
-  active producer: `{"id","name","connectionID","sessionID","creationTime","destination",
-  "lastProducedMessageID","msgSent","msgSizeSent"}`. Unlike most other management JSON here,
-  `msgSent`/`msgSizeSent` are bare numbers, not string-quoted — `creationTime` still is (epoch
-  millis as a string). `destination` is the address it sends to. This tool's own `ManagementChannel`
-  producer shows up in the list (sending to `activemq.management`), exactly like its reply consumer
-  shows up in `listAllConsumersAsJSON()` — labelled "this tool" via the existing `ourConnectionId()`
-  match, not filtered out.
-
-- **2026-09-19 — Phase 4 (in progress): producers view**, added to the existing `/broker` health
-  page rather than a new page — same "who's touching the broker" picture the Connections/Consumers
-  panels already give, from the producer side. `BrokerProducer`, `BrokerInfoService.producers()`.
-
-- **2026-09-19 — `diskStoreUsage` is a 0..1 ratio, not a percentage.** `BrokerHealth.diskUsedPercent()`
-  and `diskPressure()` both work in 0..100 like `maxDiskUsage` does. Reading `diskStoreUsage` straight
-  into `BrokerHealth` displayed "0.10%" for an actually-85%-full disk and meant `diskPressure()` could
-  never trip. `BrokerInfoService.health()` now multiplies by 100. Caught by Codex review, confirmed
-  against a live broker (showed 10.34% correctly after the fix).
-
-- **2026-09-19 — Export must not reuse the UI list's preview truncation.** `QueueBrowseService.page()`
-  cuts each message body to `artemis.body-preview-chars` (200) for the table view — CSV/JSON export
-  called the same method, so any body over 200 chars was silently cut in a downloaded file despite
-  `export-max-messages` allowing up to 5,000 messages. Added `pageForExport(...)`, which uses
-  `artemis.body-detail-chars` (200000, the same cap the single-message detail view already uses)
-  instead. CSV now also has a `bodyTruncated` column, matching what JSON already got for free from
-  `MessageSummary`. Caught by Codex review.
-
-- **2026-09-19 — Artemis's own `browse()` truncates the `text` attribute independently of this app**,
-  around ~256 chars, and appends a literal `", + N more"` suffix to the value itself rather than
-  signalling truncation out of band. Verified live: a 250-char body came back whole, a 500-char body
-  came back as 256 chars of body text plus that suffix. This is a broker-side limit (Artemis's
-  `management-message-attribute-size-limit`, default 256) on the *browse* read path specifically —
-  raising `artemis.body-detail-chars` past it does nothing, and it does not affect the JMS
-  `QueueBrowser` detail path, which reads the real body. Export inherits this ceiling for any queue
-  with large text messages; it is not something `pageForExport` can work around, only the JMS detail
-  path can.
-
-- **2026-09-19 — Export now reads bodies over JMS, not management browse.** `pageForExport` takes a
-  `browseName` and, for any message whose management body was truncated or missing, fills the real
-  body in from ONE `QueueBrowser` pass (`QueueBrowseService.bodies`). Deliberately not a
-  `JMSMessageID` selector per message the way `detail()` does — a selector makes the broker scan, so
-  per-message would be n scans per export. Bounded by `artemis.export-body-scan-limit` (20000);
-  unreached messages keep the management body with `bodyTruncated=true` instead of a silent lie.
-
-- **2026-09-19 — The broker's truncation marker is parsed off, not displayed.** Artemis's
-  `JsonUtil.truncate` appends `", + N more"` to the value; `QueueBrowseService` strips a matching
-  suffix and sets `bodyTruncated`. Guarded by a 64-char minimum, because the marker is ordinary text
-  a real body could end with.
-
-- **2026-09-19 — Verified live end to end**: 1000-char text bodies export whole (was 256 + marker),
-  `--message-size` bytes messages export with a real body (was the "no text body" placeholder), and
-  a multicast `events::sub-a` subscription exports through its FQQN. Five exports left messageCount,
-  delivering and acked unchanged — the JMS pass is still non-destructive.
-
-- **2026-09-19 — The test broker's CLI lives at `/var/lib/artemis-instance/bin/artemis`**, not
-  `./broker/bin/artemis`, in `apache/activemq-artemis:latest-alpine`. `--text-size N` makes text
-  messages; `--message-size N` makes *bytes* messages, which is the quick way to exercise the
-  non-text body path.
-
-- **2026-09-19 — Management-JSON parsing now has tests** (`QueueDirectoryTest`,
-  `BrokerInfoServiceTest`, `AddressDirectoryTest`, `MessageSearchServiceTest`,
-  `QueueBrowseServiceTest`): mock `BrokerSession` + `ManagementChannel`, feed the captured reply
-  shapes from this file. 116 tests. Both bugs found by review in phase 4 were in this layer, which
-  had none. `ManagementChannel` mocks fine despite its package-private constructor; tests must sit
-  in the same package to stub `requireManagement()`/`requireSession()`.
+- **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at
+  the repo root. Deliberate divergence — don't "fix" it by moving the file back. It is committed on
+  purpose, so it is shared across Claude Code, Desktop and Web.
