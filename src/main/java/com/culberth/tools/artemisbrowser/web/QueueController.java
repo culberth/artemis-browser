@@ -7,7 +7,9 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +20,16 @@ public class QueueController
 {
 
     private static final int MAX_PAGE_SIZE = 500;
+    /** Sortable overview columns. Anything else in the query string falls back to name. */
+    private static final Map<String, Comparator<QueueOverview>> SORTS = Map.of("name",
+            Comparator.comparing(queue -> queue.name().toLowerCase()), "address",
+            Comparator.comparing(queue -> queue.address().toLowerCase()), "messages",
+            Comparator.comparingLong(QueueOverview::messageCount), "delivering",
+            Comparator.comparingLong(QueueOverview::deliveringCount), "scheduled",
+            Comparator.comparingLong(QueueOverview::scheduledCount), "consumers",
+            Comparator.comparingInt(QueueOverview::consumerCount), "added",
+            Comparator.comparingLong(QueueOverview::messagesAdded), "acked",
+            Comparator.comparingLong(QueueOverview::messagesAcked));
     private static final List<Integer> PAGE_SIZE_CHOICES = List.of(10, 25, 50, 100, 250, 500);
     /** Auto-refresh intervals in seconds; 0 is off. */
     private static final List<Integer> REFRESH_CHOICES = List.of(0, 5, 15, 30, 60);
@@ -35,26 +47,66 @@ public class QueueController
 
     /** All queues and their counters at a glance, optionally refreshing on a timer. */
     @GetMapping("/overview")
-    public String overview(@RequestParam(name = "refresh", defaultValue = "0") int refresh, Model model)
+    public String overview(@RequestParam(name = "refresh", defaultValue = "0") int refresh,
+            @RequestParam(name = "sort", defaultValue = "name") String sort,
+            @RequestParam(name = "dir", defaultValue = "asc") String dir,
+            @RequestParam(name = "q", required = false) String q, Model model)
     {
 
         if (!brokerSession.isConnected())
         {
             return "redirect:/";
         }
+        String sortKey = SORTS.containsKey(sort) ? sort : "name";
+        boolean descending = "desc".equalsIgnoreCase(dir);
+        String search = q == null ? "" : q.trim();
+
         model.addAttribute("connection", brokerSession.info());
         model.addAttribute("refresh", normaliseRefresh(refresh));
         model.addAttribute("refreshChoices", REFRESH_CHOICES);
+        model.addAttribute("sort", sortKey);
+        model.addAttribute("dir", descending ? "desc" : "asc");
+        model.addAttribute("q", search);
+        // Auto-refresh re-requests the current URL and keeps these for free; the refresh form has
+        // to carry them itself, or changing the interval would silently reset the view.
+        model.addAttribute("viewParams", Map.of("sort", sortKey, "dir", descending ? "desc" : "asc", "q", search));
+
         try
         {
-            model.addAttribute("queues", queueDirectory.overview());
+            List<QueueOverview> all = queueDirectory.overview();
+            List<QueueOverview> shown = all.stream().filter(queue -> matches(queue, search))
+                    .sorted(order(sortKey, descending)).toList();
+            model.addAttribute("queues", shown);
+            model.addAttribute("totalQueues", all.size());
         }
         catch (BrokerException e)
         {
             model.addAttribute("queues", List.of());
+            model.addAttribute("totalQueues", 0);
             model.addAttribute("error", e.getMessage());
         }
         return "overview";
+    }
+
+    /**
+     * Narrowing is on name and address together, because "which queues belong to this address" and "which queue was
+     * that" are the same question asked two ways, and a broker with 200 queues makes both unanswerable by eye.
+     */
+    private boolean matches(QueueOverview queue, String search)
+    {
+        if (search.isEmpty())
+        {
+            return true;
+        }
+        String needle = search.toLowerCase();
+        return queue.name().toLowerCase().contains(needle) || queue.address().toLowerCase().contains(needle);
+    }
+
+    /** Name breaks every tie, so a refresh cannot shuffle rows that sort equal. */
+    private Comparator<QueueOverview> order(String sortKey, boolean descending)
+    {
+        Comparator<QueueOverview> comparator = SORTS.get(sortKey);
+        return (descending ? comparator.reversed() : comparator).thenComparing(queue -> queue.name().toLowerCase());
     }
 
     @GetMapping("/queues")

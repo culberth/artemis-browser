@@ -79,7 +79,7 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
 | `/search` | Cross-queue search |
-| `/export` | CSV/JSON download of a search or queue result |
+| `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
@@ -134,6 +134,11 @@ whether what you got is the whole body. The pass is bounded by `artemis.export-b
 anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
 complete. Like every other read here, it consumes nothing — verified against a live broker with
 counters unchanged after repeated exports.
+
+A cross-queue search exports the same way, one queue at a time: each matching queue is re-read with
+export bodies and written out before the next is fetched, so a search that matched in thirty queues
+never holds thirty queues' worth of bodies at once. CSV names the queue on every row; JSON groups
+messages under their queue.
 
 That pass is the one place in the app that holds real message bodies in memory, so it is bounded
 twice: `artemis.export-body-scan-limit` caps how far it walks, and `artemis.export-body-total-chars`

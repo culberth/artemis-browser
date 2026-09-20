@@ -133,6 +133,17 @@ from — a wrong parse here yields a believable number rather than an error.
   cheapest way to create the address != queue name case the FQQN path needs. The subscription must
   exist *before* anything is published, or the publication is dropped with nowhere to route.
 
+## Verified UI behaviour
+
+- **Export of a cross-queue search** (2026-09-19): 9 messages across 3 queues came out with whole
+  400-character bodies in both CSV and JSON, where the search page itself shows 200-character
+  previews. The search page's "showing first 50" links through to the queue view with the filter
+  applied, which pages correctly through 60 matches.
+- **The overview sorts and filters server-side**, no JavaScript: column headings are links, and the
+  refresh control carries `sort`/`dir`/`q` as hidden inputs. Note the row loop variable in
+  `overview.html` is `queue`, not `q` — `q` is the search box, and naming the loop variable `q`
+  silently shadows it.
+
 ## Conventions
 
 - **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringWriter;
 import java.util.List;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -90,6 +92,73 @@ class MessageExporterTest
         assertTrue(json.contains("\"queue\" : \"orders\""), json);
         assertTrue(json.contains("\"filter\" : \"AMQPriority > 4\""), json);
         assertTrue(json.contains("\"count\" : 1"), json);
+    }
+
+    @Test
+    @DisplayName("a cross-queue CSV names each row's queue, so the rows stay tellable apart")
+    void crossQueueCsvKeepsTheQueuePerRow() throws Exception
+    {
+        StringWriter writer = new StringWriter();
+        try (MessageExporter.CrossQueueExport export = exporter.openCrossQueueExport(writer, false, "count = 1"))
+        {
+            export.write("orders", List.of(message("first")));
+            export.write("payments", List.of(message("second")));
+        }
+        String csv = writer.toString();
+
+        assertEquals(3, csv.lines().count(), csv);
+        assertTrue(csv.lines().skip(1).findFirst().orElseThrow().startsWith("\"orders\""), csv);
+        assertTrue(csv.lines().skip(2).findFirst().orElseThrow().startsWith("\"payments\""), csv);
+        // One header, however many queues were written.
+        assertEquals(1, csv.lines().filter(line -> line.startsWith("queue,")).count(), csv);
+    }
+
+    @Test
+    @DisplayName("a cross-queue JSON groups messages under their queue and counts the lot")
+    void crossQueueJsonGroupsByQueue() throws Exception
+    {
+        StringWriter writer = new StringWriter();
+        try (MessageExporter.CrossQueueExport export = exporter.openCrossQueueExport(writer, true, "count = 1"))
+        {
+            export.write("orders", List.of(message("first"), message("second")));
+            export.write("payments", List.of(message("third")));
+        }
+        JsonNode json = new ObjectMapper().readTree(writer.toString());
+
+        assertEquals("count = 1", json.get("filter").asString());
+        assertEquals(2, json.get("queues").size());
+        assertEquals("orders", json.get("queues").get(0).get("queue").asString());
+        assertEquals(2, json.get("queues").get(0).get("messages").size());
+        assertEquals(3, json.get("count").asInt());
+    }
+
+    @Test
+    @DisplayName("a cross-queue export that matched nothing is still a readable document")
+    void crossQueueExportOfNothingIsStillValid() throws Exception
+    {
+        StringWriter csv = new StringWriter();
+        exporter.openCrossQueueExport(csv, false, "nope = 1").close();
+
+        StringWriter json = new StringWriter();
+        exporter.openCrossQueueExport(json, true, "nope = 1").close();
+
+        assertEquals(1, csv.toString().lines().count(), csv.toString());
+        assertEquals(0, new ObjectMapper().readTree(json.toString()).get("count").asInt());
+    }
+
+    @Test
+    @DisplayName("a queue name with a quote in it cannot break out of the JSON")
+    void crossQueueJsonEscapesTheQueueName() throws Exception
+    {
+        StringWriter writer = new StringWriter();
+        try (MessageExporter.CrossQueueExport export = exporter.openCrossQueueExport(writer, true, "a \"filter\""))
+        {
+            export.write("odd\"name", List.of(message("body")));
+        }
+        JsonNode json = new ObjectMapper().readTree(writer.toString());
+
+        assertEquals("odd\"name", json.get("queues").get(0).get("queue").asString());
+        assertEquals("a \"filter\"", json.get("filter").asString());
     }
 
     private String csv(MessageSummary message) throws Exception

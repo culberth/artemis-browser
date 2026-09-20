@@ -28,8 +28,13 @@
     </div>
 </div>
 
-<div th:fragment="refresh(action, active)" class="panel field-row">
+<div th:fragment="refresh(action, active, keep)" class="panel field-row">
     <form method="get" th:action="${action}" class="field-row" style="width:100%">
+        <!--
+          Whatever else describes the current view. Auto-refresh re-requests the URL and keeps it
+          for free; this form would otherwise drop it when the interval changes.
+        -->
+        <input type="hidden" th:each="k : ${keep}" th:name="${k.key}" th:value="${k.value}">
         <div>
             <label for="refresh">Auto-refresh</label>
             <select id="refresh" name="refresh" onchange="this.form.submit()">

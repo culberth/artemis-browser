@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–4 shipped and on `main`. Phase 5 in progress on `phase05`, scoped to all of
-P0, P1 and P2 below.
+Status: Phases 1–4 shipped and on `main`. Phase 5 complete on `phase05` — every P0, P1 and P2 item
+below is done; P3 is untouched.
 Last updated: 2026-09-19.
 
 ## What this is
@@ -116,30 +116,25 @@ can be checked rather than argued about.
 
 ### P2 — product gaps a user will actually hit
 
-- [ ] **Export a search result.**
-      `/export` takes one queue name. A cross-queue search — the feature for "I have the ID but not
-      the queue" — cannot be exported at all, which is the moment someone most wants the evidence in
-      a file.
-      *Done when:* a search result exports to one CSV/JSON carrying the queue name per row.
+- [x] **Export a search result.** Done 2026-09-19: `/export` without a `name` exports everything a
+      search matched. Each matching queue is re-read with export bodies and written before the next
+      is fetched, so the memory ceiling is one queue's worth however many matched. CSV names the
+      queue per row; JSON groups messages under their queue.
 
-- [ ] **Sort and filter the overview.**
-      The all-queues table is static. On a broker with 200 queues, "which ones are stalled" and
-      "which is biggest" are the two questions it exists to answer, and neither is answerable
-      without reading every row.
-      *Done when:* the overview can be sorted by any counter and narrowed by name, without breaking
-      auto-refresh.
+- [x] **Sort and filter the overview.** Done 2026-09-19: every column sorts (click again to
+      reverse, arrow shows which way), and a box narrows by queue *or* address name. Name breaks
+      every tie so a refresh cannot shuffle equal rows. The shared refresh control now carries the
+      view's own parameters, which it previously would have dropped.
 
-- [ ] **Say which filter dialect the box wants, where the box is.**
-      Filters are Artemis *core* syntax. A JMS-style `JMSPriority = 4` is not rejected — it silently
-      matches nothing, which reads as "the message isn't there". The error path names the dialect;
-      the success path, where the damage is done, does not.
-      *Done when:* every filter input carries the dialect and a couple of working examples inline.
+- [x] **Say which filter dialect the box wants, where the box is.** Already true when the item was
+      written — both filter inputs carry the note and worked examples inline, and the queue page's
+      placeholder shows two. Checked rather than rebuilt. `ReadOnlyGuaranteeIT` now also pins the
+      underlying behaviour: a JMS-style name matches nothing while the core equivalent matches.
 
-- [ ] **Page a search result.**
-      Search stops at `artemis.search-max-per-queue` (50) per queue and flags the result partial.
-      There is no way to see message 51.
-      *Done when:* a partial result can be continued, or links to the queue view with the filter
-      already applied.
+- [x] **Page a search result.** Met by the existing per-queue links, which already carried the
+      filter through to the queue view; verified against a queue of 60 matches paging correctly from
+      the search page. The "showing first 50" badge is now the link itself and says what it does,
+      which is the part that was actually missing.
 
 ### P3 — worth doing, nothing breaks without it
 
