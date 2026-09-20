@@ -222,7 +222,7 @@ class QueueBrowseServiceTest
         given(management.invoke(QUEUE, "countMessages", "")).willReturn(1L);
         browserHolds(text("ID:1", "first"), text("ID:2", "the one we wanted"));
 
-        QueueBrowseService service = new QueueBrowseService(brokerSession, 200, 200000, 1);
+        QueueBrowseService service = new QueueBrowseService(brokerSession, 200, 200000, 1, 20_000_000L);
         MessageSummary summary = service.pageForExport("orders", "orders", null, 1, 5000).messages().get(0);
 
         assertEquals("w".repeat(256), summary.bodyPreview());
@@ -242,6 +242,56 @@ class QueueBrowseServiceTest
         verify(jmsSession).createQueue("events::sub-a");
     }
 
+    @Test
+    @DisplayName("a large message is flagged from the browse attribute")
+    void flagsLargeMessages()
+    {
+        Map<String, Object> large = new LinkedHashMap<>(message("ID:1", "preview"));
+        large.put("largeMessage", Boolean.TRUE);
+        browseReturns(large, message("ID:2", "ordinary"));
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(2L);
+
+        List<MessageSummary> messages = service().page("orders", null, 1, 50).messages();
+
+        assertTrue(messages.get(0).largeMessage());
+        assertFalse(messages.get(1).largeMessage());
+    }
+
+    @Test
+    @DisplayName("the export body budget cuts a body rather than holding all of it")
+    void exportCutsABodyThatExceedsTheBudget() throws Exception
+    {
+        browseReturns(message("ID:1", "q".repeat(256) + ", + 744 more"));
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(1L);
+        browserHolds(text("ID:1", "q".repeat(1000)));
+
+        QueueBrowseService service = new QueueBrowseService(brokerSession, 200, 200000, 20000, 400L);
+        MessageSummary summary = service.pageForExport("orders", "orders", null, 1, 5000).messages().get(0);
+
+        assertEquals(400, summary.bodyPreview().length());
+        assertTrue(summary.bodyTruncated());
+    }
+
+    @Test
+    @DisplayName("once the budget is spent the pass stops reading, and later rows say so")
+    void exportStopsReadingWhenTheBudgetIsSpent() throws Exception
+    {
+        browseReturns(message("ID:1", "a".repeat(256) + ", + 744 more"),
+                message("ID:2", "b".repeat(256) + ", + 744 more"));
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(2L);
+        TextMessage first = text("ID:1", "a".repeat(300));
+        TextMessage second = text("ID:2", "b".repeat(300));
+        browserHolds(first, second);
+
+        QueueBrowseService service = new QueueBrowseService(brokerSession, 200, 200000, 20000, 300L);
+        List<MessageSummary> messages = service.pageForExport("orders", "orders", null, 1, 5000).messages();
+
+        assertEquals(300, messages.get(0).bodyPreview().length());
+        assertEquals("b".repeat(256), messages.get(1).bodyPreview());
+        assertTrue(messages.get(1).bodyTruncated());
+        verify(second, never()).getText();
+    }
+
     private QueueBrowseService service()
     {
         return service(200, 200000);
@@ -249,7 +299,7 @@ class QueueBrowseServiceTest
 
     private QueueBrowseService service(int previewChars, int detailChars)
     {
-        return new QueueBrowseService(brokerSession, previewChars, detailChars, 20000);
+        return new QueueBrowseService(brokerSession, previewChars, detailChars, 20000, 20_000_000L);
     }
 
     private TextMessage text(String messageId, String body) throws Exception
@@ -305,6 +355,7 @@ class QueueBrowseServiceTest
         values.put("redelivered", Boolean.FALSE);
         values.put("persistentSize", 128L);
         values.put("protocol", "CORE");
+        values.put("largeMessage", Boolean.FALSE);
         return values;
     }
 

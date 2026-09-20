@@ -137,6 +137,8 @@
                     <td>
                         <span class="badge" th:if="${m.persistent()}">persistent</span>
                         <span class="badge" th:if="${m.redelivered()}">redelivered</span>
+                        <span class="badge" th:if="${m.largeMessage()}"
+                              title="Held in the broker's large-message store; the body shown here is a preview">large</span>
                     </td>
                     <td class="body-cell">
                         <code th:text="${m.bodyPreview()}">body</code><span th:if="${m.bodyTruncated()}" class="muted">&hellip;</span>

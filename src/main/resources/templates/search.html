@@ -71,7 +71,11 @@
                     </thead>
                     <tbody>
                     <tr th:each="msg : ${m.messages()}">
-                        <td th:text="${msg.type()}">Text</td>
+                        <td>
+                            <span th:text="${msg.type()}">Text</span>
+                            <span class="badge" th:if="${msg.largeMessage()}"
+                                  title="Held in the broker's large-message store">large</span>
+                        </td>
                         <td th:text="${msg.timestampText()}">&mdash;</td>
                         <td class="num" th:text="${msg.priority()}">4</td>
                         <td class="body-cell"><code th:text="${msg.bodyPreview()}">body</code></td>

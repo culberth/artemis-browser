@@ -105,7 +105,7 @@ class SearchControllerTest
     {
         given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "", 1, 5000, 1, List.of(new MessageSummary(1, "ID:1", "1", "Text",
-                        0L, "", 4, true, false, 10, "CORE", "body", false))));
+                        0L, "", 4, true, false, 10, "CORE", false, "body", false))));
 
         mockMvc.perform(get("/export").param("name", "orders").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))

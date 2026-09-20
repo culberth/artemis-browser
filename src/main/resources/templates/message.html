@@ -19,6 +19,8 @@
                 <span class="badge" th:text="${message.type()}">Text</span>
                 <span class="badge" th:if="${message.persistent()}">persistent</span>
                 <span class="badge" th:if="${message.redelivered()}">redelivered</span>
+                <span class="badge" th:if="${message.largeMessage()}"
+                      title="Held in the broker's large-message store; _AMQ_LARGE_SIZE below is the real body size">large</span>
             </h2>
             <div class="table-scroll">
                 <table>

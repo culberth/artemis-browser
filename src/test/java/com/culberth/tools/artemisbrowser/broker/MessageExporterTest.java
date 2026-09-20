@@ -61,7 +61,8 @@ class MessageExporterTest
     @DisplayName("a null body exports as an empty field rather than the text 'null'")
     void handlesNullBody() throws Exception
     {
-        String csv = csv(new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", null, false));
+        String csv = csv(
+                new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", false, null, false));
 
         assertTrue(csv.contains("\"\""), csv);
         assertTrue(!csv.contains("null"), csv);
@@ -71,7 +72,7 @@ class MessageExporterTest
     @DisplayName("CSV exposes whether the body was truncated, same as JSON does")
     void csvExposesTruncation() throws Exception
     {
-        MessageSummary truncated = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE",
+        MessageSummary truncated = new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false,
                 "partial", true);
         String row = csv(truncated).lines().skip(1).findFirst().orElseThrow();
 
@@ -100,6 +101,6 @@ class MessageExporterTest
 
     private MessageSummary message(String body)
     {
-        return new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", body, false);
+        return new MessageSummary(1, "ID:1", "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, body, false);
     }
 }

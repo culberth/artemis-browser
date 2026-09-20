@@ -87,6 +87,12 @@ from — a wrong parse here yields a believable number rather than an error.
   `server.nodeId`. **`diskStoreUsage` is a 0..1 ratio, not a percentage** — reading it straight
   showed "0.10%" for an 85%-full disk and meant `diskPressure()` could never trip;
   `BrokerInfoService.health()` multiplies by 100.
+- **A large message is announced differently on each read path.** Management `browse` has a
+  `largeMessage` boolean attribute; the JMS read path has no such API and instead carries the
+  property **`_AMQ_LARGE_SIZE`** (Artemis's `Message.HDR_LARGE_BODY_SIZE`), whose value is the real
+  body size. Both are read, because neither path can see the other's. Verified against a broker
+  holding 250KB messages — the default `min-large-message-size` is 100KB, so `--message-size 250000`
+  produces one.
 - **There is no "which connection am I" call.** Our own connection is identified by finding the
   consumer sitting on our management reply queue and reading its `connectionID`.
 
@@ -100,6 +106,14 @@ from — a wrong parse here yields a believable number rather than an error.
   exports through its FQQN.
 - **The `events` address with `sub-a`/`sub-b`** is what exercises the FQQN browse path end to end.
   Worth recreating whenever that path changes — a bare name fails silently, not loudly.
+
+## Traps hit while working
+
+- **`mvn spring-boot:run` forks a JVM, and stopping the Maven process does not stop it.** The
+  orphan keeps port 8080, so the next run fails with "Port 8080 was already in use" while the stale
+  app keeps serving — against *old* classes and *new* templates, which shows up as a SpringEL error
+  for a record accessor that exists in the source. Kill by port, not by task:
+  `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process -Force`.
 
 ## Conventions
 

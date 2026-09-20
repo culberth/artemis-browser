@@ -88,6 +88,6 @@ class MessagePageTest
     private List<MessageSummary> rows(int count)
     {
         return Collections.nCopies(count,
-                new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", "", false));
+                new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0, "CORE", false, "", false));
     }
 }

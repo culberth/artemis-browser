@@ -94,6 +94,7 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.search-max-per-queue` | `50` | Messages fetched per matching queue during cross-queue search |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
 | `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
+| `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |
 
 ## Security posture
 
@@ -125,6 +126,12 @@ whether what you got is the whole body. The pass is bounded by `artemis.export-b
 anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
 complete. Like every other read here, it consumes nothing — verified against a live broker with
 counters unchanged after repeated exports.
+
+That pass is the one place in the app that holds real message bodies in memory, so it is bounded
+twice: `artemis.export-body-scan-limit` caps how far it walks, and `artemis.export-body-total-chars`
+caps what it keeps. Once the character budget is spent, remaining rows keep their management body
+and are flagged truncated, so the file always says which rows were cut. Both the CSV and the JSON
+writers stream to the response rather than building the document in memory first.
 
 ## Layout
 

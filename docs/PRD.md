@@ -82,25 +82,20 @@ can be checked rather than argued about.
 
 ### P0 — risk introduced or carried
 
-- [ ] **Bound what an export holds in memory.**
-      Export now fills bodies from the JMS pass, which raised the per-body ceiling from the broker's
-      256 characters to `artemis.body-detail-chars` (200,000). `pageForExport` builds the entire
-      page before a byte is written, so a 5,000-message export of large bodies can hold far more in
-      memory than it used to — the old ceiling was hiding this. Either give the export a total
-      character budget (rows past it keep a truncated body, flagged) or stream rows to the response
-      as they are read.
-      *Done when:* an export of 5,000 large-bodied messages has a stated, tested upper bound on
-      memory, and the user can tell from the file which rows were cut.
+- [x] **Bound what an export holds in memory.** Done 2026-09-19: `artemis.export-body-total-chars`
+      (20M characters, ~40MB) caps what the JMS pass keeps, and the pass stops reading once the
+      budget is spent — rows past it keep their management body, flagged truncated, so the file says
+      which rows were cut. Both writers now stream to the response instead of building the document
+      in memory first, which the JSON path was doing.
 
 - [x] **Land Phase 4 on `main`.** ~~`main` was still at the Milestone001 merge and did not reflect
       Phases 3 or 4 at all.~~ Done 2026-09-19: PR #6 `phase04` → `Milestone002`, then PR #7
       `Milestone002` → `main`. Phase 5 branches from there.
 
-- [ ] **Flag large messages in the list.**
-      `browse` reports `largeMessage` and nothing surfaces it. A large message is exactly the one
-      where the body shown is least representative and where reading it costs the most, so it is
-      worth a badge before someone exports 5,000 of them.
-      *Done when:* the list and the detail view both say when a message is a large message.
+- [x] **Flag large messages in the list.** Done 2026-09-19: a `large` badge on the queue list, the
+      search results and the message detail, plus a `largeMessage` column in CSV/JSON export. The
+      two read paths disagree on how a large message announces itself, so both are read — see
+      `.claude/memory.md`. Verified against a broker holding 250KB messages.
 
 ### P1 — the gap the last two bugs came through
 
