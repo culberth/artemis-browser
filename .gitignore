@@ -25,3 +25,8 @@ nbproject/private/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Helm packaging output
+*.tgz
+charts/*/charts/
+charts/*/Chart.lock

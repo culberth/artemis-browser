@@ -1,0 +1,33 @@
+artemis-browser {{ .Chart.AppVersion }} is installed as "{{ .Release.Name }}" in {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+  1. The hostname has to resolve to your ingress controller. On KinD that means a hosts entry
+     (C:\Windows\System32\drivers\etc\hosts, as Administrator):
+
+         127.0.0.1 {{ .Values.ingress.host }}
+
+  2. Then open:  http://{{ .Values.ingress.host }}/
+
+     That last hop is plain HTTP. The pod itself serves HTTPS — it will not start otherwise — but
+     the ingress terminates TLS for the browser, so on this local cluster the browser-to-ingress
+     hop is not encrypted. Fine for a laptop; not the arrangement for anything shared.
+{{- else }}
+
+  No ingress was installed. Reach it with a port-forward:
+
+      kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }} 8443:8443
+
+  Then open https://localhost:8443/ and accept the self-signed certificate.
+{{- end }}
+
+  Sign in as "{{ .Values.auth.username }}" with the password whose hash you passed in.
+
+{{- if .Values.broker.seedConnection }}
+
+  The connect page already lists "{{ .Values.broker.label }}"
+  ({{ .Values.broker.host }}:{{ .Values.broker.port }} as {{ .Values.broker.username }}).
+  Broker passwords are never stored, so you type that one each session.
+{{- end }}
+
+  Everything it does is read-only: nothing here consumes, acknowledges, moves or deletes a message.

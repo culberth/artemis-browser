@@ -13,7 +13,7 @@
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
-    <div th:replace="~{fragments/layout :: refresh('/broker', 'broker', {:})}"></div>
+    <div th:replace="~{fragments/layout :: refresh('/broker', 'broker', ${viewParams})}"></div>
 
     <div class="panel" th:if="${health}">
         <h2>

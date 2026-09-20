@@ -7,7 +7,8 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 **artemis-browser** — a read-only web browser for ActiveMQ Artemis queues. Spring Boot 4.1.1 on
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–4 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
-producers, address view. Phase 6 is in progress on `phase06`. 141 unit tests, 12 integration.
+producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
+Kubernetes cluster. Phase 8 is in progress on `phase08`. 172 unit tests, 12 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -78,6 +79,27 @@ mvn verify -Pintegration              # + integration tests: starts a real broke
 - To test against a real broker, see the container recipe in `.claude/memory.md` — note it maps
   **62616**, because 61616 is already taken on this machine.
 
+## Running it in the cluster
+
+`charts/artemis-browser` deploys it to the local KinD cluster; `scripts/build-image.ps1` builds and
+`kind load`s the image. Five things that are not obvious and will cost an afternoon each:
+
+1. **The jar is built on the host, never in the image.** Maven resolves through a Nexus on
+   `localhost:8081` configured in Maven's own `conf/settings.xml`, which a build container cannot
+   see — a multi-stage `RUN mvn package` resolves nothing.
+2. **`server.ssl.enabled=true` must be set explicitly.** Boot's own default is already true, so PEM
+   certs alone serve HTTPS perfectly — but `ReachabilityGuard` reads `${server.ssl.enabled:false}`
+   and would refuse to start with TLS visibly working.
+3. **`server.forward-headers-strategy=native`.** The pod serves TLS behind an ingress that does not,
+   so without it Tomcat marks `JSESSIONID` `Secure`, the browser on `http://` discards it, and login
+   loops forever with nothing in any log. `framework` does not work — it wraps the request instead
+   of mutating the one the cookie flag comes from.
+4. **Probes fetch `/app.css` with `Host: localhost`.** `/login` would create a session per probe;
+   the kubelet's default Host is the pod IP, which `AllowedHostFilter` answers with 403, leaving a
+   pod that never goes Ready and a log that only shows access denials.
+5. **Rebuilding on the same tag restarts nothing** — `kubectl rollout restart` is part of the loop,
+   and there is no registry, so `imagePullPolicy` stays `IfNotPresent`.
+
 ## Not JavaFX
 
 The three sibling projects in `P:\ClaudeCowork\Projects` (`data-blaster`,
@@ -128,4 +150,4 @@ through an intermediate `Milestone00N` branch as well; that layer is gone, and t
 It bought nothing a PR into `main` does not, and cost a second merge every time — plus a standing
 chance of `main` sitting several phases behind reality, which it did.
 
-Phases 1–6 are all merged. The next one branches from `main` as `phase07`.
+Phases 1–7 are all merged. Phase 8 is on `phase08`.

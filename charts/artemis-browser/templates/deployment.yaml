@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  # Not a number to raise without reading values.yaml first: sessions are in-memory and hold the
+  # broker connection.
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  strategy:
+    # The old pod holds sessions the new one cannot inherit, so there is nothing to gain from
+    # running both; stopping first also keeps a single-node PVC from blocking the rollout.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+      annotations:
+        # Roll the pod when the certificate or the login changes, not just when the image does.
+        checksum/config: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      {{- if .Values.broker.seedConnection }}
+      initContainers:
+        # A ConfigMap mounts read-only, and ConnectionStore writes to this file when someone saves a
+        # connection from the UI — it would fail silently and they would never know. Copying the
+        # seed into a writable volume keeps saving working.
+        - name: seed-connections
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "cp -n /seed/connections.json /data/connections.json || true"]
+          volumeMounts:
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+            - name: data
+              mountPath: /data
+      {{- end }}
+      containers:
+        - name: artemis-browser
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            # Binding beyond loopback is what makes the two controls below mandatory rather than
+            # optional: ReachabilityGuard refuses to start without both of them.
+            - name: SERVER_ADDRESS
+              value: "0.0.0.0"
+            - name: SERVER_PORT
+              value: "8443"
+            - name: SERVER_SSL_ENABLED
+              value: "true"
+            # Spring Boot 4 reads PEM directly, so a kubernetes.io/tls Secret mounts as-is with no
+            # PKCS12 conversion.
+            - name: SERVER_SSL_CERTIFICATE
+              value: "/tls/tls.crt"
+            - name: SERVER_SSL_CERTIFICATE_PRIVATE_KEY
+              value: "/tls/tls.key"
+            # The browser talks http to the ingress; the ingress talks https to this pod. Tomcat
+            # marks JSESSIONID `Secure` for any request that arrived over TLS, and a browser on
+            # http:// silently discards a Secure cookie — which shows up as a login that accepts
+            # the password and bounces straight back to /login, forever, with nothing in any log.
+            # `native` installs Tomcat's RemoteIpValve, which reads nginx's X-Forwarded-Proto and
+            # mutates the internal request the cookie flag is taken from. `framework` does not: it
+            # wraps the request instead, leaving the flag set.
+            - name: SERVER_FORWARD_HEADERS_STRATEGY
+              value: "native"
+            {{- $authSecret := .Values.auth.existingSecret | default (printf "%s-auth" .Release.Name) }}
+            - name: ARTEMIS_AUTH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: username
+            - name: ARTEMIS_AUTH_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: password-hash
+            # AllowedHostFilter rejects any Host it does not recognise, before authentication and
+            # therefore before anything else. Every name this app can legitimately be reached by has
+            # to be here, including the one the probes present.
+            - name: ARTEMIS_ALLOWED_HOSTS
+              value: "{{ .Values.ingress.host }},{{ .Release.Name }},{{ .Release.Name }}.{{ .Release.Namespace }},{{ .Release.Name }}.{{ .Release.Namespace }}.svc,{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local"
+            # Never ${user.home}: that depends on the UID having a passwd entry, which is not
+            # something to rely on.
+            - name: ARTEMIS_CONNECTIONS_FILE
+              value: "/data/connections.json"
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # /app.css, over HTTPS, with a loopback Host. All three parts carry weight:
+          #  - /app.css rather than /login, because rendering the login page materialises a CSRF
+          #    token and therefore creates a 30-minute HTTP session. One per probe, every ten
+          #    seconds, forever. A static resource creates none, and still proves the connector is
+          #    up, TLS handshakes, the host filter passes and Spring Security's permitAll resolves.
+          #  - Host: localhost because AllowedHostFilter always allows loopback whatever
+          #    artemis.allowed-hosts says, so the probes cannot be broken by changing a value. The
+          #    kubelet's default Host is the pod IP, which the filter answers with 403 — leaving a
+          #    pod that never goes Ready and a log that only shows access denials.
+          #  - scheme HTTPS because the pod serves TLS. The kubelet never verifies the certificate,
+          #    which is what makes a self-signed one workable.
+          startupProbe:
+            httpGet: &probe
+              path: /app.css
+              port: https
+              scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: *probe
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: *probe
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.existingSecret | default (printf "%s-tls" .Release.Name) }}
+        {{- if .Values.broker.seedConnection }}
+        - name: seed
+          configMap:
+            name: {{ .Release.Name }}-connections
+        {{- end }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        # readOnlyRootFilesystem is on, and Tomcat wants somewhere to write.
+        - name: tmp
+          emptyDir: {}

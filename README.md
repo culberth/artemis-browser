@@ -122,6 +122,51 @@ never persisted). From there:
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
 (note it maps host port 62616, not 61616, because 61616 is already taken in this environment).
 
+## Run it in Kubernetes
+
+There is a chart in `charts/artemis-browser` and a Dockerfile at the root. Together they run the app
+as a pod that reaches a broker over cluster DNS.
+
+```powershell
+./scripts/build-image.ps1                                  # jar, image, and `kind load` into the cluster
+docker run --rm artemis-browser:0.1.0 --hash-password=yourpassword   # prints a bcrypt hash
+
+helm upgrade --install artemis-browser charts/artemis-browser `
+  -n artemis-browser --create-namespace `
+  --set-string auth.passwordHash='<the hash>'
+```
+
+Then add the hostname to your hosts file (as Administrator) and open it:
+
+```
+127.0.0.1 artemis-browser.claude.local
+```
+
+**How a request actually travels, and why.** The browser talks HTTP to ingress-nginx, which talks
+**HTTPS** to the pod. The pod terminates TLS itself because it has to: `ReachabilityGuard` refuses to
+start bound to anything but loopback without both a login and TLS, and a pod must bind `0.0.0.0` to
+be reachable at all. So the chart satisfies that requirement rather than working around it. The
+browser→ingress hop is plaintext — acceptable on a single-machine cluster, and not an arrangement to
+copy onto a shared one. For that, put a real certificate on the ingress and browse over HTTPS.
+
+Two consequences worth knowing before changing anything:
+
+- `server.forward-headers-strategy=native` is load-bearing. Tomcat marks `JSESSIONID` `Secure` for a
+  request that arrived over TLS, and a browser on `http://` discards a `Secure` cookie — the symptom
+  is a login that accepts the password and bounces straight back to the form, forever, with nothing
+  in any log. Only `native` (Tomcat's `RemoteIpValve`) clears the flag; `framework` looks equivalent
+  and is not.
+- **One replica, by design.** The broker connection lives in the HTTP session and sessions are in
+  memory, so a second replica serves requests that have never heard of your connection. Scaling would
+  need sticky sessions at the ingress and still loses everything on a restart. Never add an HPA.
+
+The probes fetch `/app.css` with `Host: localhost` — a static resource rather than `/login` because
+rendering the login page creates a session, one per probe, and a loopback Host because
+`AllowedHostFilter` always allows those whatever `artemis.allowed-hosts` says.
+
+Rebuilding on the same tag does not restart anything: `./scripts/build-image.ps1 -Restart`, or
+`kubectl rollout restart deploy/artemis-browser -n artemis-browser`.
+
 ## Configuration
 
 Keys from `src/main/resources/application.properties`:
@@ -250,6 +295,10 @@ com.culberth.tools.artemisbrowser
 │   ├── AllowedHostFilter          Host header must be loopback or named; runs ahead of authentication
 │   ├── CurrentUserAdvice          Puts the signed-in name on every page
 │   └── BrokerErrorAdvice          Sends a request that cannot be served back to the connect form
+├── (deployment)
+│   ├── Dockerfile                 Packages an already-built jar; the build stays on the host (see scripts/)
+│   ├── charts/artemis-browser/    Helm chart: Deployment, Service, Ingress, TLS + auth Secrets, seeded connection
+│   └── scripts/build-image.ps1    jar -> image -> `kind load` into the local cluster
 └── (resources)
     ├── application.properties     See Configuration above
     └── templates/
