@@ -12,6 +12,9 @@
 
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
+    <!-- Set when a live connection dropped, so the connect form does not look like a session timeout. -->
+    <div class="error" th:if="${lostConnection}" th:text="${lostConnection}">connection lost</div>
+
     <div class="panel" th:if="${!saved.isEmpty()}">
         <h2>Saved connections</h2>
         <div class="table-scroll">

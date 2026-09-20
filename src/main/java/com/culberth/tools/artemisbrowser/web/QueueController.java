@@ -7,6 +7,10 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +18,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import tools.jackson.databind.ObjectMapper;
 
 @Controller
 public class QueueController
@@ -161,6 +166,12 @@ public class QueueController
             QueueStats stats = queueDirectory.stats(name);
             model.addAttribute("stats", stats);
             model.addAttribute("messages", browseService.page(name, filter, Math.max(1, page), pageSize));
+            // Scheduled messages are counted by the queue but not returned by browse, so without
+            // this the page can report messages and show an empty table.
+            if (stats != null && stats.scheduledCount() > 0)
+            {
+                model.addAttribute("scheduled", browseService.scheduled(name));
+            }
         }
         catch (BrokerException e)
         {
@@ -212,6 +223,89 @@ public class QueueController
             model.addAttribute("error", e.getMessage());
         }
         return "message";
+    }
+
+    /**
+     * One message as a file: headers, properties and the whole body together.
+     *
+     * <p>
+     * The detail page already shows all three, but getting them out of it means three selections and a lost format.
+     * Attaching a message to a ticket is most of what someone does after finding it.
+     */
+    @GetMapping("/message/download")
+    public void download(@RequestParam(name = "name") String name, @RequestParam(name = "id") String id,
+            @RequestParam(name = "format", defaultValue = "txt") String format, HttpServletResponse response)
+            throws IOException
+    {
+
+        if (!brokerSession.isConnected())
+        {
+            response.sendRedirect("/");
+            return;
+        }
+        QueueStats stats = queueDirectory.stats(name);
+        if (stats == null)
+        {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND, "No such queue on this broker.");
+            return;
+        }
+        MessageDetail detail = browseService.detail(name, stats.browseName(), id);
+        if (detail == null)
+        {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND,
+                    "That message is no longer on this queue. It may have been consumed or expired.");
+            return;
+        }
+
+        boolean json = "json".equalsIgnoreCase(format);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType(json ? "application/json" : "text/plain");
+        response.setHeader("Content-Disposition",
+                "attachment; filename=\"" + fileName(name, detail.messageId(), json ? "json" : "txt") + "\"");
+
+        if (json)
+        {
+            new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(response.getWriter(), detail);
+        }
+        else
+        {
+            writeText(response.getWriter(), detail);
+        }
+        response.getWriter().flush();
+    }
+
+    private void writeText(PrintWriter writer, MessageDetail detail)
+    {
+        writer.println("Queue:         " + detail.queueName());
+        writer.println("Message ID:    " + detail.messageId());
+        writer.println("Correlation:   " + (detail.correlationId() == null ? "-" : detail.correlationId()));
+        writer.println("Type:          " + detail.type());
+        writer.println("Destination:   " + detail.destination());
+        writer.println("Timestamp:     " + detail.timestampText());
+        writer.println("Expires:       " + detail.expirationText());
+        writer.println("Priority:      " + detail.priority());
+        writer.println("Persistent:    " + detail.persistent());
+        writer.println("Redelivered:   " + detail.redelivered());
+        writer.println("Delivery count:" + detail.deliveryCount());
+        writer.println("Group ID:      " + (detail.groupId() == null ? "-" : detail.groupId()));
+        writer.println("Large message: " + detail.largeMessage());
+        writer.println();
+        writer.println("Properties (" + detail.properties().size() + ")");
+        detail.properties().forEach((key, value) -> writer.println("  " + key + " = " + value));
+        writer.println();
+        writer.println("Body" + (detail.bodyTruncated() ? " (truncated)" : ""));
+        writer.println(detail.body());
+    }
+
+    /**
+     * Both halves of the name come from the broker rather than from us, so both are reduced to a safe set: a queue or
+     * message id containing a quote or a path separator would otherwise escape the quoted header value.
+     */
+    private String fileName(String queueName, String messageId, String extension)
+    {
+        String safeQueue = queueName.replaceAll("[^A-Za-z0-9._-]", "_");
+        String safeId = messageId == null ? "message" : messageId.replaceAll("[^A-Za-z0-9._-]", "_");
+        return (safeQueue.isBlank() ? "queue" : safeQueue) + "-" + safeId + "." + extension;
     }
 
     private int normaliseRefresh(int refresh)

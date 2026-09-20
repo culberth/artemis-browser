@@ -87,6 +87,20 @@ from — a wrong parse here yields a believable number rather than an error.
   `server.nodeId`. **`diskStoreUsage` is a 0..1 ratio, not a percentage** — reading it straight
   showed "0.10%" for an 85%-full disk and meant `diskPressure()` could never trip;
   `BrokerInfoService.health()` multiplies by 100.
+- **`browse()` does NOT return scheduled messages.** A queue holding one scheduled message reports
+  `messageCount=1`, `scheduledCount=1` and `countMessages=1`, and browse returns zero entries — so
+  the list looks empty while the counters say otherwise. Scheduled messages have their own
+  operation, `queue.<name>.listScheduledMessagesAsJSON()`.
+- **`listScheduledMessagesAsJSON()`** returns a plain JSON array, values NOT string-quoted (unlike
+  `listQueues`), each entry carrying `address`, `messageID` (number), `type`, `priority`, `userID`,
+  `durable`, `expiration`, `timestamp`, **`_AMQ_SCHED_DELIVERY` as bare epoch millis**, and the
+  message's own properties inline at the top level. There is no body field at all.
+- **Browsed properties come typed, not just as text.** Alongside `PropertiesText` — which is a Java
+  map's `toString()`, `{orderNumber=1, __AMQ_CID=it-client}`, not JSON and not worth parsing — each
+  entry carries `StringProperties`, `IntProperties`, `LongProperties`, `DoubleProperties`,
+  `FloatProperties`, `ShortProperties`, `BooleanProperties` and `ByteProperties` as `TabularData`,
+  null when empty. Each row is a `CompositeData` with exactly `key` and `value`. That is the source
+  to read. `__AMQ_CID` and `_AMQ_ROUTING_TYPE` are Artemis's own and worth hiding.
 - **A large message is announced differently on each read path.** Management `browse` has a
   `largeMessage` boolean attribute; the JMS read path has no such API and instead carries the
   property **`_AMQ_LARGE_SIZE`** (Artemis's `Message.HDR_LARGE_BODY_SIZE`), whose value is the real
@@ -134,6 +148,13 @@ from — a wrong parse here yields a believable number rather than an error.
   exist *before* anything is published, or the publication is dropped with nowhere to route.
 
 ## Verified UI behaviour
+
+- **A dropped broker connection** (2026-09-19, verified by killing the container mid-session): the
+  app does NOT redirect to the connect form on its own. It stays on the page and renders
+  "Management call broker.listQueues() failed: Session is closed", and `isConnected()` still
+  answers true because the JMS objects are non-null. `ConnectionLostException` now carries that
+  case, deliberately **not** extending `BrokerException` — the controllers catch that one to show
+  an inline error, which would swallow it before the advice could redirect.
 
 - **Export of a cross-queue search** (2026-09-19): 9 messages across 3 queues came out with whole
   400-character bodies in both CSV and JSON, where the search page itself shows 200-character

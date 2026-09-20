@@ -27,6 +27,7 @@ import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -107,7 +108,7 @@ class SearchControllerTest
     {
         given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "", 1, 5000, 1, List.of(new MessageSummary(1, "ID:1", "1", "Text",
-                        0L, "", 4, true, false, 10, "CORE", false, "body", false))));
+                        0L, "", 4, true, false, 10, "CORE", false, Map.of(), "body", false))));
 
         mockMvc.perform(get("/export").param("name", "orders").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
@@ -138,7 +139,7 @@ class SearchControllerTest
                         new SearchResult.QueueMatches("payments", 1, List.of()))));
         given(browseService.pageForExport(anyString(), anyString(), any(), anyInt(), anyInt()))
                 .willReturn(new MessagePage("orders", "count = 1", 1, 5000, 1, List.of(new MessageSummary(1, "ID:1",
-                        "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, "body", false))));
+                        "1", "Text", 0L, "", 4, true, false, 10, "CORE", false, Map.of(), "body", false))));
 
         String csv = mockMvc.perform(get("/export").param("filter", "count = 1").header("Host", "localhost"))
                 .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/csv"))

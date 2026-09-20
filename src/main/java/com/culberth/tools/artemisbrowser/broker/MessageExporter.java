@@ -13,7 +13,7 @@ public class MessageExporter
 
     private static final String[] HEADERS =
     { "queue", "position", "messageId", "coreId", "type", "timestamp", "priority", "persistent", "redelivered",
-            "sizeBytes", "protocol", "largeMessage", "body", "bodyTruncated"
+            "sizeBytes", "protocol", "largeMessage", "properties", "body", "bodyTruncated"
     };
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -133,15 +133,31 @@ public class MessageExporter
     {
         for (MessageSummary message : messages)
         {
-            writer.write(
-                    String.join(",", quote(queueName), String.valueOf(message.position()), quote(message.messageId()),
-                            quote(message.coreId()), quote(message.type()), quote(message.timestampText()),
-                            String.valueOf(message.priority()), String.valueOf(message.persistent()),
-                            String.valueOf(message.redelivered()), String.valueOf(message.sizeBytes()),
-                            quote(message.protocol()), String.valueOf(message.largeMessage()),
-                            quote(message.bodyPreview()), String.valueOf(message.bodyTruncated())));
+            writer.write(String.join(",", quote(queueName), String.valueOf(message.position()),
+                    quote(message.messageId()), quote(message.coreId()), quote(message.type()),
+                    quote(message.timestampText()), String.valueOf(message.priority()),
+                    String.valueOf(message.persistent()), String.valueOf(message.redelivered()),
+                    String.valueOf(message.sizeBytes()), quote(message.protocol()),
+                    String.valueOf(message.largeMessage()), quote(properties(message)), quote(message.bodyPreview()),
+                    String.valueOf(message.bodyTruncated())));
             writer.write("\r\n");
         }
+    }
+
+    /**
+     * Properties flattened into one cell, since a spreadsheet column per property is not knowable in advance and would
+     * differ per row anyway. Newline-separated so a value containing a comma cannot be mistaken for a separator.
+     */
+    private String properties(MessageSummary message)
+    {
+        if (message.properties() == null || message.properties().isEmpty())
+        {
+            return "";
+        }
+        StringBuilder flattened = new StringBuilder();
+        message.properties().forEach((name, value) -> flattened.append(flattened.isEmpty() ? "" : "\n").append(name)
+                .append("=").append(value));
+        return flattened.toString();
     }
 
     /**

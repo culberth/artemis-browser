@@ -25,9 +25,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.management.openmbean.CompositeData;
+import javax.management.openmbean.TabularData;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Reads messages off a queue without removing them, by two different routes.
@@ -73,6 +76,23 @@ public class QueueBrowseService
      */
     private static final int MIN_BROKER_TRUNCATION_LENGTH = 64;
 
+    /** Where a browse reply keeps the message's properties, one table per Java type, null when empty. */
+    private static final List<String> PROPERTY_TABLES = List.of("StringProperties", "IntProperties", "LongProperties",
+            "DoubleProperties", "FloatProperties", "ShortProperties", "BooleanProperties", "ByteProperties");
+
+    /** Artemis's own bookkeeping, which is noise in a list of what a producer set. */
+    private static final Set<String> INTERNAL_PROPERTIES = Set.of("__AMQ_CID", "_AMQ_ROUTING_TYPE");
+
+    /** Where a scheduled message keeps its delivery time, as bare epoch millis. */
+    private static final String SCHEDULED_DELIVERY = "_AMQ_SCHED_DELIVERY";
+
+    /**
+     * listScheduledMessagesAsJSON puts the message's own properties at the top level, mixed in with the message's
+     * headers. These are the headers, so what is left is the properties.
+     */
+    private static final Set<String> SCHEDULED_OWN_FIELDS = Set.of("address", "messageID", "type", "priority", "userID",
+            "durable", "expiration", "timestamp", SCHEDULED_DELIVERY);
+
     /**
      * How a large message announces itself on the JMS read path — Artemis's own {@code Message.HDR_LARGE_BODY_SIZE},
      * carrying the real body size. Management browse has a {@code largeMessage} attribute instead; the two paths do not
@@ -80,6 +100,7 @@ public class QueueBrowseService
      */
     private static final String LARGE_BODY_SIZE = "_AMQ_LARGE_SIZE";
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final BrokerSession brokerSession;
     private final int bodyPreviewChars;
     private final int bodyDetailChars;
@@ -251,6 +272,73 @@ public class QueueBrowseService
         return new MessagePage(queueName, effectiveFilter, page, pageSize, total, messages);
     }
 
+    /**
+     * Messages the broker is holding back until their delivery time.
+     *
+     * <p>
+     * A separate read because management {@code browse} does not return them: a queue with one scheduled message
+     * reports {@code messageCount} 1, {@code countMessages} 1 and browses as empty, so without this the page says there
+     * is a message and shows an empty table. {@code listScheduledMessagesAsJSON} is the operation that has them, and
+     * unlike most management JSON here its values are not string-quoted.
+     */
+    public List<ScheduledMessage> scheduled(String queueName)
+    {
+        Object result = brokerSession.requireManagement().invoke(ResourceNames.QUEUE + queueName,
+                "listScheduledMessagesAsJSON");
+        if (result == null)
+        {
+            return List.of();
+        }
+
+        List<ScheduledMessage> scheduled = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        try
+        {
+            JsonNode root = objectMapper.readTree(result.toString());
+            if (!root.isArray())
+            {
+                return List.of();
+            }
+            for (JsonNode node : root)
+            {
+                scheduled.add(toScheduled(node, now));
+            }
+        }
+        catch (BrokerException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new BrokerException("Could not read the scheduled messages on '" + queueName + "': " + e.getMessage(),
+                    e);
+        }
+        return scheduled;
+    }
+
+    private ScheduledMessage toScheduled(JsonNode node, long now)
+    {
+        long deliveryTime = node.path(SCHEDULED_DELIVERY).asLong(0L);
+        long timestamp = node.path("timestamp").asLong(0L);
+
+        Map<String, String> properties = new LinkedHashMap<>();
+        node.propertyStream().forEach(field ->
+        {
+            String name = field.getKey();
+            if (!SCHEDULED_OWN_FIELDS.contains(name) && !INTERNAL_PROPERTIES.contains(name))
+            {
+                properties.put(name, field.getValue().asString());
+            }
+        });
+
+        return new ScheduledMessage(node.path("userID").asString(""), node.path("messageID").asLong(0L),
+                TYPE_NAMES.getOrDefault(node.path("type").asInt(0), "Message"), node.path("priority").asInt(4),
+                node.path("durable").asBoolean(false),
+                timestamp == 0 ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
+                deliveryTime == 0 ? "unknown" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(deliveryTime)),
+                deliveryTime > 0 && deliveryTime < now, properties);
+    }
+
     /** One message in full, or null when it is no longer on the queue. */
     public MessageDetail detail(String queueName, String browseName, String messageId)
     {
@@ -328,7 +416,8 @@ public class QueueBrowseService
                 timestamp == null ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
                 (int) asLong(get(data, "priority")), asBoolean(get(data, "durable")),
                 asBoolean(get(data, "redelivered")), asLong(get(data, "persistentSize")),
-                asString(get(data, "protocol")), asBoolean(get(data, "largeMessage")), body, truncated);
+                asString(get(data, "protocol")), asBoolean(get(data, "largeMessage")), browsedProperties(data), body,
+                truncated);
     }
 
     private MessageDetail toDetail(String queueName, Message message) throws JMSException
@@ -442,6 +531,37 @@ public class QueueBrowseService
             String name = names.nextElement().toString();
             Object value = message.getObjectProperty(name);
             properties.put(name, value == null ? "" : value.toString());
+        }
+        return properties;
+    }
+
+    /**
+     * The message's own properties, out of the typed tables the browse reply carries.
+     *
+     * <p>
+     * Not {@code PropertiesText}, which is a Java map's {@code toString()} — {@code {a=1, b=2}} — and would have to be
+     * parsed back out of a format with no escaping, so a property value containing ", " or "=" would quietly corrupt
+     * the row. The typed tables hold the same values as {@code key}/{@code value} pairs, and are empty rather than
+     * present-but-null when a message has none of that type.
+     */
+    private Map<String, String> browsedProperties(CompositeData data)
+    {
+        Map<String, String> properties = new LinkedHashMap<>();
+        for (String table : PROPERTY_TABLES)
+        {
+            if (!(get(data, table) instanceof TabularData tabular))
+            {
+                continue;
+            }
+            for (Object row : tabular.values())
+            {
+                CompositeData pair = (CompositeData) row;
+                String name = String.valueOf(pair.get("key"));
+                if (!INTERNAL_PROPERTIES.contains(name))
+                {
+                    properties.put(name, String.valueOf(pair.get("value")));
+                }
+            }
         }
         return properties;
     }
