@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; addresses</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('addresses')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div class="panel">
+        <h2>Addresses <span class="muted" th:text="'(' + ${addresses.size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${addresses.isEmpty()}">This broker reported no addresses.</p>
+        <p class="note">
+            Producers send to an <em>address</em>; consumers read from a <em>queue</em>. For
+            point-to-point traffic they line up one to one. Under multicast, one address fans out to
+            a queue per subscriber, each holding its own copy of every message &mdash; which is why
+            a queue named nothing like its address is normal here, not a mistake.
+        </p>
+    </div>
+
+    <div class="panel" th:each="a : ${addresses}">
+        <h2>
+            <span th:text="${a.name()}">address</span>
+            <span class="badge" th:text="${a.routingTypes()}">ANYCAST</span>
+            <span class="badge" th:if="${a.internal()}">internal</span>
+            <span class="badge" th:if="${a.temporary()}">temporary</span>
+            <span class="badge" th:if="${a.paging()}">paging</span>
+            <span class="badge warn" th:if="${a.hasUnrouted()}">unrouted</span>
+        </h2>
+
+        <div class="stats">
+            <div class="stat"><span class="k">Messages</span><span class="v" th:text="${a.messageCount()}">0</span></div>
+            <div class="stat"><span class="k">Queues</span><span class="v" th:text="${a.queues().size()}">0</span></div>
+            <div class="stat"><span class="k">Routed</span><span class="v" th:text="${a.routedMessageCount()}">0</span></div>
+            <div class="stat" th:classappend="${a.hasUnrouted()} ? 'stat-warn' : ''">
+                <span class="k">Unrouted</span><span class="v" th:text="${a.unroutedMessageCount()}">0</span>
+            </div>
+            <div class="stat"><span class="k">Size</span><span class="v" th:text="${a.addressSizeBytes()}">0</span></div>
+        </div>
+
+        <p class="note" th:if="${a.hasUnrouted()}">
+            Messages reached this address and matched no queue. With multicast that usually means
+            they were published before any subscription existed.
+        </p>
+
+        <p class="muted" th:if="${a.queues().isEmpty()}">No queues are bound to this address.</p>
+        <div class="table-scroll" th:unless="${a.queues().isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Queue</th><th class="num">Messages</th><th class="num">Consumers</th>
+                    <th class="num">Added</th><th class="num">Acked</th><th>Flags</th><th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="q : ${a.queues()}" th:classappend="${q.stalled()} ? 'row-warn' : ''">
+                    <td><a th:href="@{/queues(name=${q.name()})}" th:text="${q.name()}">queue</a></td>
+                    <td class="num strong" th:text="${q.messageCount()}">0</td>
+                    <td class="num" th:text="${q.consumerCount()}">0</td>
+                    <td class="num muted" th:text="${q.messagesAdded()}">0</td>
+                    <td class="num muted" th:text="${q.messagesAcked()}">0</td>
+                    <td>
+                        <span class="badge" th:text="${q.routingType()}">ANYCAST</span>
+                        <span class="badge warn" th:if="${q.stalled()}">no consumer</span>
+                    </td>
+                    <td style="width:1%;white-space:nowrap">
+                        <a class="badge-link" th:href="@{/queues(name=${q.name()})}">Browse</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>
