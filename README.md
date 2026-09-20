@@ -62,11 +62,30 @@ sibling projects use, because 0.8.12 can't instrument class files built by the J
 mvn spring-boot:run
 ```
 
-Starts the app on `http://localhost:8080`. It binds `server.address=127.0.0.1` and rejects any
-request whose `Host` header isn't a loopback literal (`LoopbackHostFilter`) — it has no login of its
-own and holds a live authenticated broker connection instead, so it must not be reachable from the
-network. Both the bind address and the filter are load-bearing; binding loopback alone doesn't stop
-DNS rebinding.
+Starts the app on `http://localhost:8080`, bound to `127.0.0.1`. In that default arrangement it
+needs no login: nothing but this machine can reach it, and `AllowedHostFilter` rejects any request
+whose `Host` header isn't a loopback literal, which is what stops a remote page driving the UI
+through your own browser (DNS rebinding).
+
+To run it anywhere else — a jump host, say — set a login and TLS as well:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments=--hash-password=yourpassword   # prints a bcrypt hash
+```
+
+```properties
+server.address=0.0.0.0
+artemis.auth.username=you
+artemis.auth.password-hash=$2a$10$...
+artemis.allowed-hosts=jump.example.com
+server.ssl.key-store=file:/etc/artemis-browser.p12
+server.ssl.key-store-password=...
+```
+
+`ReachabilityGuard` refuses to start if the app is bound beyond loopback without both of those, so
+the unsafe arrangement fails immediately rather than working until someone notices. With a login
+configured, every page requires signing in; the sign-in is the tool's own and is not the broker's,
+whose credentials are still asked for per connection and never stored.
 
 Once running, open `/` to connect to a broker (host, port, username, password — the password is
 never persisted). From there:

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; sign in</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <h1>artemis-browser</h1>
+
+    <div class="error" th:if="${param.failed}">
+        That username and password were not accepted.
+    </div>
+    <div class="note" th:if="${param.signedOut}">
+        Signed out. The broker connection was closed with the session.
+    </div>
+
+    <form class="panel" method="post" th:action="@{/login}">
+        <h2>Sign in</h2>
+        <div class="field-row">
+            <div style="flex:1;min-width:14rem">
+                <label for="username">Username</label>
+                <input id="username" type="text" name="username" style="width:100%" autocomplete="username"
+                       autofocus>
+            </div>
+            <div style="flex:1;min-width:14rem">
+                <label for="password">Password</label>
+                <input id="password" type="password" name="password" style="width:100%"
+                       autocomplete="current-password">
+            </div>
+            <div>
+                <button type="submit">Sign in</button>
+            </div>
+        </div>
+        <p class="note">
+            This is the tool's own login, not the broker's. The broker's credentials are asked for
+            after signing in, and are never stored.
+        </p>
+    </form>
+</div>
+</body>
+</html>

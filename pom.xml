@@ -63,9 +63,25 @@
             <artifactId>artemis-jakarta-client</artifactId>
         </dependency>
 
+        <!--
+          The app has a login of its own as of Phase 7, because it is allowed to be reached from
+          somewhere other than localhost. Everything it protects is read-only, but a broker
+          connection is still an authenticated one, and handing that to whoever can reach the port
+          is not a thing to do by default.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <!--
