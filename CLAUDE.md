@@ -8,7 +8,7 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–8 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
-Kubernetes cluster. Phase 9 is in progress on `phase09`. 172 unit tests, 12 integration.
+Kubernetes cluster. Phase 9 is in progress on `phase09`. 188 unit tests, 12 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read

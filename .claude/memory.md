@@ -220,6 +220,19 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
   a namespace for Istio injection — a sidecar in front of a pod terminating its own TLS is a second
   interception point nobody designed.
 
+## Template rendering
+
+- **A rendering test is only worth what it fails on** (2026-09-20). Every template was broken in
+  turn with `<div th:text="${brokenOnPurpose.nope()}">` before `</body>`, and the failures counted:
+  all 19 `PageRenderingTest` cases failed, one template at a time, none passing for an unrelated
+  reason. Worth repeating rather than trusting — a shallow `containsString` can match markup the
+  layout fragment emits, and would stay green while the page itself was dead.
+- **`@WebMvcTest` takes a list of controllers.** One class covers all nine pages; the mocked beans
+  are the union of what those controllers inject. Cheaper than a context per controller, and the
+  shared `@BeforeEach` "connected, one queue, empty everything else" is what most cases need.
+- **`AllowedHostFilter` runs in `@WebMvcTest`.** Every request needs `.header("Host", "localhost")`
+  or it is 403 before any template renders — which looks exactly like a broken page.
+
 ## Conventions
 
 - **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at

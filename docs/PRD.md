@@ -175,12 +175,13 @@ the line suggested, which is noted below rather than quietly folded in.
 
 ## What's next — Phase 9
 
-- [ ] **Render every page in a test.** `PageRenderingTest` covers `broker` and `addresses`; the
-      other seven templates — `connect`, `diagnose`, `login`, `message`, `overview`, `queues`,
-      `search` — have no test that renders them, and most use the same shared refresh fragment
-      whose parameter list broke `/broker` for three phases without a single test going red. Done
-      looks like: a case per template asserting on rendered HTML, each one checked against a
-      deliberately broken template first to confirm it fails.
+- [x] **Render every page in a test.** Done 2026-09-20: all nine templates have cases in
+      `PageRenderingTest`, and so do the branches — a page's error, empty and populated states are
+      different regions of markup, and only the populated one costs a fixture to reach. 19 cases,
+      up from 2. Each was checked the only way that means anything: every template was broken in
+      turn with an expression that cannot render, and the failures counted. All 19 failed, one
+      template at a time, so no case is passing for a reason other than the page rendering. 188
+      unit tests, up from 172.
 
 Carried, not scheduled — both are scope changes rather than gaps, and both come from the Phase 8
 entry above:
