@@ -1,10 +1,10 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–6 shipped and on `main`. Phase 7 complete on `phase07`: it answers the three
-questions that were left open — authentication so the tool can run on a jump host, a measured answer
-to how large a queue it stays usable on (which turned up a correctness bug rather than a
-performance ceiling), and a "why is this stuck" page.
-Last updated: 2026-09-19.
+Status: Phases 1–8 shipped and on `main`. Phase 8 put the tool in the local Kubernetes cluster,
+which is also what exposed a broker page that had been returning 500 since Phase 5 — no test
+rendered a template, so the controller tests passed while the view blew up. Phase 9 is open on
+`phase09`.
+Last updated: 2026-09-20.
 
 ## What this is
 
@@ -172,6 +172,24 @@ the line suggested, which is noted below rather than quietly folded in.
   the browser→ingress hop is plaintext, which makes this a **local-cluster arrangement**. Making it
   more than that needs a real certificate on the ingress, browsing over HTTPS, and an external
   session store before more than one replica is possible.
+
+## What's next — Phase 9
+
+- [x] **Render every page in a test.** Done 2026-09-20: all nine templates have cases in
+      `PageRenderingTest`, and so do the branches — a page's error, empty and populated states are
+      different regions of markup, and only the populated one costs a fixture to reach. 19 cases,
+      up from 2. Each was checked the only way that means anything: every template was broken in
+      turn with an expression that cannot render, and the failures counted. All 19 failed, one
+      template at a time, so no case is passing for a reason other than the page rendering. 188
+      unit tests, up from 172.
+
+Carried, not scheduled — both are scope changes rather than gaps, and both come from the Phase 8
+entry above:
+
+- **An external session store**, which a second replica needs. "One broker per HTTP session" is a
+  stated constraint, so this changes the model rather than filling a hole in it.
+- **A real certificate on the ingress and browsing over HTTPS**, which only matters if this stops
+  being a local-cluster arrangement.
 
 ## Open questions
 
