@@ -212,7 +212,15 @@ The services that parse management JSON are tested by mocking `BrokerSession` an
 `.claude/memory.md`. Those tests must sit in the `broker` package to reach the package-private
 `requireManagement()` / `requireSession()`.
 
-`ManagementChannel` itself is not yet covered: its timeout, permission-rejection and
-reply-correlation paths need a live JMS session rather than a fixture, which is a Testcontainers job
-and is tracked in the [PRD](PRD.md). The non-destructive guarantee is verified by hand against the
-container recipe in `.claude/memory.md` — making that repeatable is tracked there too.
+`ManagementChannel` itself cannot be mocked at all: `JMSManagementHelper` refuses to build a
+request from a foreign message, so a mocked `Session` never reaches the send. Its round trip, typed
+attribute reads, refusals and timeout live in `ManagementChannelIT`, against a real broker started
+by Testcontainers under `mvn verify -Pintegration`. `ReadOnlyGuaranteeIT` runs there too, driving
+every read path three times over and asserting messageCount, delivering, acked and added are
+unchanged — the non-destructive guarantee is checked by the build rather than by hand.
+
+Neither of those renders a template, and neither do the controller tests, which assert on model
+attributes — those populate perfectly right up until the view fails. That gap let `/broker` return
+500 from Phase 5 until the cluster work in Phase 8 walked every page. `PageRenderingTest` asserts on
+rendered HTML to catch that class of break, and a new page is not covered until it has a case
+there.

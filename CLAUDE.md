@@ -5,10 +5,10 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 ## What this project is
 
 **artemis-browser** — a read-only web browser for ActiveMQ Artemis queues. Spring Boot 4.1.1 on
-Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–4 shipped: connect,
+Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–8 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
-Kubernetes cluster. Phase 8 is in progress on `phase08`. 172 unit tests, 12 integration.
+Kubernetes cluster. Phase 9 is in progress on `phase09`. 172 unit tests, 12 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -150,4 +150,4 @@ through an intermediate `Milestone00N` branch as well; that layer is gone, and t
 It bought nothing a PR into `main` does not, and cost a second merge every time — plus a standing
 chance of `main` sitting several phases behind reality, which it did.
 
-Phases 1–7 are all merged. Phase 8 is on `phase08`.
+Phases 1–8 are all merged. Phase 9 is on `phase09`.
