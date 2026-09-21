@@ -1,9 +1,9 @@
 # artemis-browser — Product Requirements
 
-Status: Phases 1–8 shipped and on `main`. Phase 8 put the tool in the local Kubernetes cluster,
-which is also what exposed a broker page that had been returning 500 since Phase 5 — no test
-rendered a template, so the controller tests passed while the view blew up. Phase 9 is open on
-`phase09`.
+Status: **feature-complete and in maintenance.** Phases 1–9 shipped; Phase 9 is the last one, and
+the backlog is closed rather than paused — see *Closed as won't do* below for the two items that
+were carried and the one question they all turned on. The tool is run by one person, which is what
+settles the open questions about replicas, certificates and multi-user login.
 Last updated: 2026-09-20.
 
 ## What this is
@@ -77,11 +77,25 @@ against them.
 - **Phase 4** — producers panel on the broker health page; disk-usage percentage fix; export now
   reads real bodies over JMS rather than shipping the broker's truncated ones; tests for the
   management-JSON parsing layer. 116 tests.
+- **Phase 5** — the P0, P1 and P2 items below: a bounded export, `ManagementChannel` and the
+  non-destructive guarantee tested against a real broker, search export, a sortable and filterable
+  overview.
+- **Phase 6** — the P3 items below: single-message download, scheduled messages (which `browse`
+  does not return at all), message properties in the list, and a dropped connection that says so.
+- **Phase 7** — a login of its own, so the tool can sit on a jump host rather than only on
+  loopback; a "why is this stuck" diagnose page; and the measured scale answer, which found a
+  correctness bug rather than a ceiling — a filtered count samples only the broker's browse page
+  size, so cross-queue search reported "0 matches" for a message that was definitely there.
+- **Phase 8** — a container image and a Helm chart for the local Kubernetes cluster; see *Shipped
+  since* below for what that arrangement does and does not claim to be.
+- **Phase 9** — every page rendered in a test, after Phase 8 found `/broker` had been returning 500
+  since Phase 5 with no test going red. 188 tests.
 
-## What's next
+## The backlog as it was written — all shipped
 
-Ordered by what it costs to leave undone, not by size. Each task says what "done" looks like so it
-can be checked rather than argued about.
+Kept in full rather than summarised away: each item says what "done" looked like, and several
+turned out to be covering something larger than the line suggested, which is worth more than the
+tidier list it would collapse into. Phases 5 and 6 are what cleared it.
 
 ### P0 — risk introduced or carried
 
@@ -164,16 +178,22 @@ the line suggested, which is noted below rather than quietly folded in.
       swallowed it — which closes the dead session and returns to the connect form saying what
       happened and that nothing on the broker was changed.
 
-## Shipped since
+## What the cluster deployment claims to be
 
-- **Phase 8** — a container image and a Helm chart, so it runs in the local Kubernetes cluster and
-  reaches a broker by cluster DNS. The pod terminates TLS itself because that is what
-  `ReachabilityGuard` requires of anything not bound to loopback; the certificate is self-signed and
-  the browser→ingress hop is plaintext, which makes this a **local-cluster arrangement**. Making it
-  more than that needs a real certificate on the ingress, browsing over HTTPS, and an external
-  session store before more than one replica is possible.
+Worth stating once and plainly, because the gap between "it runs in Kubernetes" and "it is deployed
+properly" is exactly where a read-only tool quietly acquires a production footprint nobody decided
+on.
 
-## What's next — Phase 9
+The pod terminates TLS itself, because that is what `ReachabilityGuard` requires of anything not
+bound to loopback — the alternative was defeating a control this project deliberately built in
+Phase 7. But the certificate is self-signed and the browser→ingress hop is plaintext, which makes
+this a **local-cluster arrangement** and not a deployment. It is a convenient way for one person to
+run the tool on their own cluster, and it is not evidence the tool is ready to be shared.
+
+What it would take to be more than that is answered under *Closed as won't do* below — and the
+answer is that nothing is asking it to be.
+
+## Phase 9, and the end of the backlog
 
 - [x] **Render every page in a test.** Done 2026-09-20: all nine templates have cases in
       `PageRenderingTest`, and so do the branches — a page's error, empty and populated states are
@@ -183,13 +203,36 @@ the line suggested, which is noted below rather than quietly folded in.
       template at a time, so no case is passing for a reason other than the page rendering. 188
       unit tests, up from 172.
 
-Carried, not scheduled — both are scope changes rather than gaps, and both come from the Phase 8
-entry above:
+### Closed as won't do — 2026-09-20
 
-- **An external session store**, which a second replica needs. "One broker per HTTP session" is a
-  stated constraint, so this changes the model rather than filling a hole in it.
-- **A real certificate on the ingress and browsing over HTTPS**, which only matters if this stops
-  being a local-cluster arrangement.
+The two items the Phase 8 entry left open are closed, not deferred. Both were only ever downstream
+of one question — whether anyone other than the author runs this — and the answer is no. They are
+recorded here with the reasoning so they are not rediscovered as gaps and quietly reopened.
+
+- **An external session store.** ~~A second replica needs one.~~ **Won't do.** A single replica is
+  correct for a single user, and "one broker per HTTP session" is a stated constraint rather than a
+  limitation to engineer around. What this would actually buy is surviving a pod restart without
+  dropping the session *and* the broker connection with it — which matters to a team and not to one
+  person who can simply connect again.
+- **A real certificate on the ingress, and browsing over HTTPS.** ~~The browser→ingress hop is
+  plaintext and the pod's certificate is self-signed.~~ **Won't do.** The self-signed certificate
+  is the right answer for a local cluster, and a real one would be ceremony without a threat it
+  addresses on a single-user loopback-adjacent deployment. Worth restating plainly: this is a
+  **local-cluster arrangement**, and the honest reason it stays one is that nothing else is asking
+  it to change.
+
+If that answer ever changes, the **first** thing to decide is not either of the above — it is the
+login. The tool authenticates against one configured account, so a team shares one password: no
+record of who read which queue, and rotating it means telling everyone at once. That is the same
+shape of decision Phase 7 made deliberately rather than by erosion, and it would come before any
+certificate or session store.
+
+### Status: feature-complete
+
+All eight jobs in the table above are shipped, the backlog is empty, and there is no Phase 10
+pending a reason to exist. The project is in maintenance: changes are bug fixes, dependency
+updates, and whatever a real use turns up. Finding nothing left to build is an outcome, not a gap
+in the planning — inventing a Phase 10 to have one would be the actual mistake.
 
 ## Open questions
 
@@ -219,9 +262,15 @@ entry above:
    2026-09-19: yes, as its own page.** Delivery counts, redelivery, DLQ origin and consumer state
    in one place, for the person holding the pager.
 
+5. ~~**Does this become shared infrastructure, or stay a single-user tool?**~~ **Settled
+   2026-09-20: single-user.** It is run by one person, so the self-signed certificate, the single
+   replica and the one shared login are all correct rather than compromises. This is the question
+   both carried Phase 8 items were downstream of, which is why closing it closed them.
+
 ## Not in scope
 
 Consuming, acknowledging, moving, retrying, deleting or expiring messages. Sending messages.
 Creating or deleting queues and addresses. Editing broker configuration. Multi-broker views.
-Alerting. Authentication of the tool's own users — while it is loopback-only, that is the
-constraint, not a gap; if that changes, it becomes a prerequisite rather than a feature.
+Alerting. **Multi-user** authentication — the tool has a login as of Phase 7, but one shared
+account, which is a deliberate fit for a single user rather than an unfinished feature. Per-user
+accounts, roles and an audit trail are out of scope until someone other than the author runs it.
