@@ -248,11 +248,16 @@ Every item is a read. Nothing sends, subscribes, or creates anything.
 
 ### P0 — protect read-only before adding new broker calls
 
-- [ ] **Only allow read operations through `ManagementChannel`.** This phase adds about five new
+- [x] **Only allow read operations through `ManagementChannel`.** Done 2026-09-27: `READ_OPERATIONS`,
+      refused before a request exists; 13 mutating names tested as refused with nothing sent. This phase adds about five new
       management operations, and today nothing stops a mutating one except review. A fixed allowlist
       of operation names, refusing anything else, with a test that every name on it is a getter or a
       `list*`. "Verified, not assumed" then covers code not yet written.
-- [ ] **Check every new response shape against a real broker before parsing it.**
+- [x] **Check every new response shape against a real broker before parsing it.** Done 2026-09-27
+      against 2.44.0 — recorded in `.claude/memory.md`. It changed the plan in three places:
+      management resources take the *bare* queue name (FQQN fails there); diverts have no listing
+      operation, only `getDivertNames` then one read per divert; and consumer client ids come from
+      `listConsumers`, since `listAllConsumersAsJSON` has none.
       `getAddressSettingsAsJSON`, the divert listing, `getFirstMessageAge`, and the `filter` / `user`
       / `exclusive` fields of `listQueues` are all unverified. Every earlier shape surprise — quoted
       counters, JSON inside a string, a 0..1 ratio — parsed into a believable wrong number. Each goes

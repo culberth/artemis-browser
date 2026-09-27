@@ -6,6 +6,7 @@ import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
+import java.util.Set;
 import org.apache.activemq.artemis.api.jms.management.JMSManagementHelper;
 
 /**
@@ -53,9 +54,30 @@ public class ManagementChannel implements AutoCloseable
         return replyQueueName;
     }
 
-    /** Invoke a management operation, e.g. {@code broker.getQueueNames()}. */
+    /**
+     * Every management operation this tool may invoke. Anything else is refused before a request is built.
+     *
+     * <p>
+     * The management address will run whatever the broker user is permitted to — {@code removeAllMessages},
+     * {@code moveMessages}, {@code destroyQueue} — so read-only cannot rest on nobody typing one of those. Adding an
+     * operation here is the deliberate step; {@code ManagementChannelTest} checks each name reads as a query.
+     * Attributes need no such list: an attribute request is a get by construction.
+     */
+    static final Set<String> READ_OPERATIONS = Set.of(
+            // broker.*
+            "listQueues", "listAddresses", "getAcceptorsAsJSON", "listConnectionsAsJSON", "listAllConsumersAsJSON",
+            "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON", "getDivertNames",
+            // queue.*
+            "browse", "countMessages", "listScheduledMessagesAsJSON");
+
+    /** Invoke a read-only management operation, e.g. {@code broker.listQueues(...)}. */
     public synchronized Object invoke(String resource, String operation, Object... params)
     {
+        if (!READ_OPERATIONS.contains(operation))
+        {
+            throw new IllegalArgumentException("Refusing management operation " + resource + "." + operation
+                    + "(): it is not on this tool's read-only allowlist (ManagementChannel.READ_OPERATIONS).");
+        }
         return exchange(resource + "." + operation + "()", request ->
         {
             if (params.length == 0)

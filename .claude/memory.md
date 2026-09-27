@@ -117,6 +117,39 @@ from — a wrong parse here yields a believable number rather than an error.
 - **There is no "which connection am I" call.** Our own connection is identified by finding the
   consumer sitting on our management reply queue and reading its `connectionID`.
 
+### Subscription shapes (2026-09-27, broker 2.44.0, before Phase 10 parsed any of them)
+
+- **Queue-level management resources take the BARE queue name, never the FQQN.**
+  `queue.events::probe-a.sub-a` → "AMQ229067: Cannot find resource"; `queue.probe-a.sub-a` works.
+  FQQN is for the JMS read path only. Mixing them up fails loudly here, unlike the silent JMS case.
+- **Subscription queue names by kind**: durable `clientId.subName`; shared durable with no client
+  id = bare `subName`; shared non-durable `nonDurable.clientId.subName`; plain non-durable = a UUID
+  with `temporary:"true"`, `durable:"false"`. Only the last two are distinguishable by flags alone.
+- **The stored filter is core syntax even when a JMS selector created it**: subscribing with
+  `JMSPriority > 3` stores `AMQPriority > 3`. So a subscription filter can be shown as-is.
+- **`listQueues` already carries `filter`, `user`, `temporary`, `exclusive`, `autoCreated`,
+  `purgeOnNoConsumers`, `maxConsumers`, `messagesExpired`, `messagesKilled`** — all string-quoted
+  like the counters. No per-queue calls needed for subscription identity.
+- **`queue.<name>` attribute `firstMessageAge`** → `Long` millis; **`null` on an empty queue**, not 0
+  or -1. `firstMessageTimestamp` likewise (epoch millis). Per-queue round trip each.
+- **`broker.getAddressSettingsAsJSON(address)`** → a flat JSON object, **numbers bare, not quoted**
+  (`"maxSizeBytes":-1`, `"autoCreateQueues":true`), with `deadLetterAddress`, `expiryAddress`,
+  `addressFullMessagePolicy`, `redeliveryDelay`, `autoCreate/DeleteQueues/Addresses`,
+  `managementBrowsePageSize`. It resolves the `#` match, so defaults show up for any address.
+  **`maxDeliveryAttempts` and `retroactiveMessageCount` were absent** at their defaults — treat a
+  missing key as "default", not as zero.
+- **Diverts have no listing operation**: `listDivertsAsJSON` and `listDiverts` → "AMQ229069: no
+  operation". `broker.getDivertNames()` → `Object[]` of names; then `divert.<name>` attributes:
+  `address`, `forwardingAddress`, `filter`, `routingType` (`PASS`/`STRIP`/`ANYCAST`/`MULTICAST`) all
+  String, `exclusive` **Boolean**, `transformerClassName` null when unset. One round trip each.
+- **`address.<name>.bindingNames` includes diverts** alongside queues (`events-audit` appeared there);
+  `queueNames` does not. `numberOfMessages` (13) is the sum of every queue's copy, while
+  `routedMessageCount` (6) counts messages routed once regardless of fan-out.
+- **`broker.listConsumers(filterJson, page, size)`** carries `clientID`, `user`, `remoteAddress`,
+  `queue`, `address`, `filter`, `queueType` — **`listAllConsumersAsJSON` has no clientID**. Shape is
+  mixed: counters quoted, `lastDeliveredTime` bare, `creationTime` a `Date.toString()` string
+  ("Sun Sep 27 20:20:42 GMT 2026"), not millis.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
