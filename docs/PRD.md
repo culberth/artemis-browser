@@ -1,10 +1,11 @@
 # artemis-browser — Product Requirements
 
-Status: **feature-complete and in maintenance.** Phases 1–9 shipped; Phase 9 is the last one, and
-the backlog is closed rather than paused — see *Closed as won't do* below for the two items that
-were carried and the one question they all turned on. The tool is run by one person, which is what
-settles the open questions about replicas, certificates and multi-user login.
-Last updated: 2026-09-20.
+Status: **Phase 10 in progress — reopened 2026-09-27 for subscription inspection.** Phases 1–9
+shipped and the project was declared feature-complete; it was reopened deliberately, for one theme,
+rather than by a backlog creeping back — see *Phase 10* below. The items closed as won't do stay
+closed. The tool is run by one person, which is what settles the open questions about replicas,
+certificates and multi-user login.
+Last updated: 2026-09-27.
 
 ## What this is
 
@@ -44,6 +45,7 @@ Two consequences worth stating, because they come up every time:
 | Find a message when I know the ID but not the queue | `/search` |
 | Take the evidence away with me | `/export` |
 | See where a multicast address fans out to | `/addresses` |
+| See who is subscribed to one address, what each gets, and who is behind *(Phase 10)* | `/address` |
 | See whether the broker itself is healthy, and who is attached | `/broker` |
 
 ## Constraints
@@ -227,12 +229,90 @@ record of who read which queue, and rotating it means telling everyone at once. 
 shape of decision Phase 7 made deliberately rather than by erosion, and it would come before any
 certificate or session store.
 
-### Status: feature-complete
+### Status: feature-complete — until 2026-09-27
 
-All eight jobs in the table above are shipped, the backlog is empty, and there is no Phase 10
-pending a reason to exist. The project is in maintenance: changes are bug fixes, dependency
-updates, and whatever a real use turns up. Finding nothing left to build is an outcome, not a gap
-in the planning — inventing a Phase 10 to have one would be the actual mistake.
+All eight jobs in the table above were shipped, the backlog was empty, and there was no Phase 10
+pending a reason to exist. Finding nothing left to build was an outcome, not a gap in the planning.
+The reason arrived as a request rather than a gap: see below.
+
+## Phase 10 — Subscriptions: what's listening to an address, and what each listener gets
+
+Reopened 2026-09-27 on the author's request, for one theme. `/addresses` answers "where does this
+fan out to" — counters, routing type, an unrouted warning, and the bound queues. It cannot answer the
+questions that follow once an address has subscribers: who is subscribed and how (durable, shared,
+temporary), what each subscription's filter lets through, which subscriber is behind and by how
+much, whether subscriber B got message X, where messages go when the address fills or delivery
+fails, and whether a divert is taking messages before any subscriber sees them.
+
+Every item is a read. Nothing sends, subscribes, or creates anything.
+
+### P0 — protect read-only before adding new broker calls
+
+- [ ] **Only allow read operations through `ManagementChannel`.** This phase adds about five new
+      management operations, and today nothing stops a mutating one except review. A fixed allowlist
+      of operation names, refusing anything else, with a test that every name on it is a getter or a
+      `list*`. "Verified, not assumed" then covers code not yet written.
+- [ ] **Check every new response shape against a real broker before parsing it.**
+      `getAddressSettingsAsJSON`, the divert listing, `getFirstMessageAge`, and the `filter` / `user`
+      / `exclusive` fields of `listQueues` are all unverified. Every earlier shape surprise — quoted
+      counters, JSON inside a string, a 0..1 ratio — parsed into a believable wrong number. Each goes
+      into `.claude/memory.md` before a parser is written for it.
+
+### P1 — a page for one address
+
+- [ ] **`/address?name=`**, following `/queues?name=`, linked from each heading on `/addresses`, the
+      overview's address column, and diagnose findings. `/addresses` stays as the index.
+- [ ] **A subscriptions table in place of the plain queue list.** Per row: the **kind** (anycast
+      queue, durable subscription, shared durable, non-durable/temporary); the **filter**, labelled as
+      core syntax; the attached **consumers** with client ID, user and remote address from
+      `listAllConsumersAsJSON`; and a **browse link** by FQQN. Client ID and subscription name are
+      split from names like `clientId.subName` — a guess, shown as one, since shared and non-durable
+      queues are named differently.
+- [ ] **Producers sending to this address**, from `BrokerProducer.address`, which today only shows on
+      `/broker`.
+
+### P2 — how far behind each subscriber is
+
+- [ ] **Lag per subscription**: messages waiting, delivering, and the age of the oldest message
+      (`getFirstMessageAge`). One call per queue, so it belongs on the single-address page only,
+      never the index.
+- [ ] **Measure lag by what is waiting, not by differences in `messagesAdded`.** A filtered
+      subscription is *meant* to receive fewer messages; comparing `messagesAdded` against the fullest
+      subscriber would call every filter lag. Recorded in `architecture.md` beside the FQQN note.
+- [ ] **"Which subscriptions still hold message X?"** Search limited to one address's queues,
+      reusing `MessageSearchService` over a subset. Answers "did subscriber B get it" without
+      inferring from counters. Filtered **browse**, never a filtered count, which samples only the
+      first 200 messages.
+
+### P3 — where messages go besides subscribers
+
+- [ ] **Address settings**: dead-letter and expiry addresses (linked), max size and full policy, max
+      delivery attempts, auto-create/delete, retroactive message count.
+- [ ] **Diverts** from and to the address: target, filter, routing type, and whether it is
+      exclusive. **An exclusive divert means the address's own subscribers never receive the diverted
+      messages**, and nothing reports an error — a silent failure of exactly the kind this project
+      keeps a list of.
+- [ ] **Two diagnose findings**: an *abandoned durable subscription* (no consumer, still growing —
+      the classic way a multicast address fills a disk), and an *exclusive divert* on an address that
+      has subscribers.
+
+### Considered and left out
+
+- **Evaluating a filter against a sample message** ("would this reach sub-b?"). It means
+  reimplementing Artemis's filter language here — a new source of silently wrong answers. Filters are
+  shown, not evaluated.
+- **Resolving which concrete addresses a wildcard like `news.#` matches.** The delimiter and wildcard
+  characters are set in `broker.xml`, which management does not appear to expose; matching would run
+  on a guessed grammar.
+- **Sending a test message to see how it routes.** Sending is out of scope.
+
+### Verification
+
+The integration broker gains an `events` address carrying a filtered durable subscription, an
+abandoned durable subscription, a live non-durable subscription, a shared durable subscription, and
+an exclusive divert — created by the test setup, never by the app. `ReadOnlyGuaranteeIT` loads the new
+pages three times and asserts the counters unchanged; `PageRenderingTest` gains the address page's
+empty, populated and broker-error states.
 
 ## Open questions
 
