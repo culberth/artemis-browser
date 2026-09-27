@@ -185,7 +185,15 @@ One configured account — `artemis.auth.username` and a bcrypt `artemis.auth.pa
 no sign-up, no reset and no user list, because a tool one person runs on a jump host does not need
 them and each would be another thing to get wrong. `--hash-password=` generates the hash with the
 bcrypt already on the classpath, printing and exiting so the password never reaches a running server
-or a log. An unconfigured login means nobody can sign in rather than everybody.
+or a log.
+
+With no login configured the answer depends on where the app listens. On loopback there is no
+sign-in at all — the default local run, and how the tool ran for its first six phases, with
+`AllowedHostFilter` still refusing any non-loopback `Host` and CSRF still on. Anywhere else
+`ReachabilityGuard` refuses to start, and the security chain would demand a sign-in nobody can give
+even if it did not. `SecurityConfig` checks both conditions itself rather than trusting the guard
+to have run. Until 2026-09-27 the chain demanded a sign-in on loopback too, which made the default
+run open onto a form nobody could pass while the README said it needed no login.
 
 Everything behind the login is still read-only, so this is not protecting the broker's data from
 modification. It is protecting a live, authenticated broker connection from whoever can reach the

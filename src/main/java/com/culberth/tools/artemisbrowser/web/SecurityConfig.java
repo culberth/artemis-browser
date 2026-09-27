@@ -26,6 +26,14 @@ import org.springframework.security.web.SecurityFilterChain;
  * {@code artemis.auth.password-hash}. There is no sign-up, no password reset and no user list, because a tool one
  * person runs on a jump host does not need them and each would be another thing to get wrong. Start the app with
  * {@code --hash-password=...} to generate the hash.
+ *
+ * <p>
+ * <b>No login configured and bound to loopback: no sign-in.</b> That is the default local run, and how the tool ran for
+ * its first six phases — only this machine can reach it, and {@link AllowedHostFilter} still turns away any request
+ * whose Host is not loopback, which is what stops a web page driving it by DNS rebinding. Requiring sign-in there with
+ * no account to sign in with made the default run unusable, which is how Phase 7 left it. Both conditions are checked
+ * here rather than trusting {@link ReachabilityGuard} to have refused the other arrangements: with no login and any
+ * other bind address, every page still needs a sign-in nobody can give.
  */
 @Configuration
 @EnableWebSecurity
@@ -36,28 +44,45 @@ public class SecurityConfig
     private static final List<String> PUBLIC_PATHS = List.of("/login", "/app.css", "/error");
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception
+    SecurityFilterChain securityFilterChain(HttpSecurity http, @Value("${server.address:}") String bindAddress,
+            @Value("${artemis.auth.username:}") String username,
+            @Value("${artemis.auth.password-hash:}") String passwordHash) throws Exception
     {
-        http.authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS.toArray(new String[0])).permitAll()
-                .anyRequest().authenticated())
-                .formLogin(form -> form.loginPage("/login").defaultSuccessUrl("/", true).failureUrl("/login?failed")
-                        .permitAll())
-                .logout(logout -> logout.logoutSuccessUrl("/login?signedOut").permitAll())
-                // A new session on sign-in, so a session id an attacker planted beforehand is not
-                // the one that ends up authenticated.
-                .sessionManagement(session -> session.sessionFixation().newSession());
-        // CSRF stays on: every form here is a POST that does something (connect, disconnect, forget
-        // a saved broker), and Thymeleaf adds the token to th:action forms without being asked.
+        if (openLocally(bindAddress, username, passwordHash))
+        {
+            http.authorizeHttpRequests(requests -> requests.anyRequest().permitAll());
+        }
+        else
+        {
+            http.authorizeHttpRequests(requests -> requests.requestMatchers(PUBLIC_PATHS.toArray(new String[0]))
+                    .permitAll().anyRequest().authenticated())
+                    .formLogin(form -> form.loginPage("/login").defaultSuccessUrl("/", true).failureUrl("/login?failed")
+                            .permitAll())
+                    .logout(logout -> logout.logoutSuccessUrl("/login?signedOut").permitAll())
+                    // A new session on sign-in, so a session id an attacker planted beforehand is not
+                    // the one that ends up authenticated.
+                    .sessionManagement(session -> session.sessionFixation().newSession());
+        }
+        // CSRF stays on either way: every form here is a POST that does something (connect,
+        // disconnect, forget a saved broker), and Thymeleaf adds the token to th:action forms
+        // without being asked. Without a login it is what stops another local page posting them.
         return http.build();
+    }
+
+    /** No login configured, and only this machine can reach the port. */
+    static boolean openLocally(String bindAddress, String username, String passwordHash)
+    {
+        return (username == null || username.isBlank() || passwordHash == null || passwordHash.isBlank())
+                && ReachabilityGuard.loopbackOnly(bindAddress);
     }
 
     /**
      * The single configured account, or none at all.
      *
      * <p>
-     * An unconfigured login means nobody can sign in, rather than everybody — which pairs with
-     * {@link ReachabilityGuard} refusing to start network-reachable without one. Spring Boot's own generated password
-     * is deliberately not relied on: it changes on every restart and is printed to the log.
+     * Spring Boot's own generated password is deliberately not relied on: it changes on every restart and is printed to
+     * the log. With no account configured the chain above is either open (on loopback) or unpassable (anywhere else,
+     * where {@link ReachabilityGuard} refuses to start in any case).
      */
     @Bean
     UserDetailsService userDetailsService(@Value("${artemis.auth.username:}") String username,

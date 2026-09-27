@@ -78,6 +78,12 @@ import org.springframework.test.web.servlet.MockMvc;
         QueueController.class, SearchController.class
 })
 @WithMockUser
+// A login configured, as on a shared host: the arrangement with a sign-in page and a signed-in user.
+// Without one, on loopback, there is neither — LocalWithoutLoginTest covers that.
+@org.springframework.test.context.TestPropertySource(properties =
+{ "artemis.auth.username=tester",
+        "artemis.auth.password-hash=$2a$10$f8/orV9lQp75eS5gnQUXeOFlMtJNzZ1egoONu7Rik1pltb/uUXgHO"
+})
 class PageRenderingTest
 {
 

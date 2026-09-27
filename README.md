@@ -191,7 +191,7 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.search-max-per-queue` | `50` | Messages fetched per queue during cross-queue search; reaching it is what makes a count a floor |
 | `artemis.export-max-messages` | `5000` | Upper bound on a single export, so a download can't try to pull an entire large queue |
 | `artemis.export-body-scan-limit` | `20000` | How far export's JMS pass will walk a queue to find the bodies it needs (see Exports below) |
-| `artemis.auth.username` | *(blank)* | The tool's own login. Blank means nobody can sign in, which is fine while it is loopback-only |
+| `artemis.auth.username` | *(blank)* | The tool's own login. Blank on loopback means no sign-in; anywhere else it must be set |
 | `artemis.auth.password-hash` | *(blank)* | bcrypt hash for that account, with or without a `{bcrypt}` prefix. Generate with `--hash-password=` |
 | `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
 | `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |

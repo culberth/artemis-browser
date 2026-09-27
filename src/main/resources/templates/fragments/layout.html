@@ -27,10 +27,9 @@
         <form method="post" th:action="@{/disconnect}">
             <button class="secondary" type="submit">Disconnect</button>
         </form>
-        <form method="post" th:action="@{/logout}">
-            <button class="secondary" type="submit"
-                    th:title="${currentUser} != null ? 'Signed in as ' + ${currentUser} : 'Sign out'">
-                Sign out</button>
+        <!-- Only when someone is signed in: on loopback with no login configured there is no one to sign out. -->
+        <form method="post" th:action="@{/logout}" th:if="${currentUser != null}">
+            <button class="secondary" type="submit" th:title="'Signed in as ' + ${currentUser}">Sign out</button>
         </form>
     </div>
 </div>

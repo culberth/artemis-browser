@@ -11,7 +11,7 @@ producers, address view, a diagnose page, a login for shared hosts, and a Helm c
 Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multicast addresses:
 a page per address with its subscriptions, lag, settings and diverts. **Feature-complete again and
 in maintenance** — Phase 10 was reopened for one requested theme, not a backlog; see *Closed as
-won't do* in [docs/PRD.md](docs/PRD.md) before proposing more. 233 unit tests, 21 integration.
+won't do* in [docs/PRD.md](docs/PRD.md) before proposing more. 240 unit tests, 21 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -55,7 +55,8 @@ load-bearing:
   wire while looking protected.
 
 The app's own login is one configured account (`artemis.auth.username` + a bcrypt
-`artemis.auth.password-hash`; generate one with `--hash-password=`). The broker password is still
+`artemis.auth.password-hash`; generate one with `--hash-password=`). With none configured, on
+loopback, there is no sign-in at all. The broker password is still
 never retained. Details and the traps already fixed: [docs/architecture.md](docs/architecture.md).
 
 ## Build and test

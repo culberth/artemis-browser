@@ -14,9 +14,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * That the app is actually protected, which a controller slice does not tell you.
@@ -40,6 +41,9 @@ class SecurityConfigTest
 
     @MockitoBean
     private BrokerSession brokerSession;
+
+    @MockitoBean
+    private com.culberth.tools.artemisbrowser.broker.AddressDirectory addressDirectory;
 
     @Test
     @DisplayName("every page needs a signed-in session")
@@ -82,13 +86,37 @@ class SecurityConfigTest
 
     @Test
     @DisplayName("a POST without a CSRF token is refused even when signed in")
-    @WithMockUser
     void refusesAPostWithoutACsrfToken() throws Exception
     {
         // The forms carry a token; something else posting on a signed-in user's behalf does not.
-        mockMvc.perform(post("/disconnect").header("Host", "localhost")).andExpect(status().isForbidden());
-        mockMvc.perform(post("/disconnect").header("Host", "localhost").with(csrf()))
-                .andExpect(status().is3xxRedirection());
+        // Signed in for real: @WithMockUser does not reach this full-context MockMvc, and with it
+        // this test passed on a redirect to /login — which is any redirect, not the signed-in one.
+        MockHttpSession session = signedIn();
+        mockMvc.perform(post("/disconnect").header("Host", "localhost").session(session))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/disconnect").header("Host", "localhost").session(session).with(csrf()))
+                .andExpect(redirectedUrl("/"));
+    }
+
+    @Test
+    @DisplayName("a signed-in user is named in the nav and offered a sign-out")
+    void offersSignOutWhenSignedIn() throws Exception
+    {
+        org.mockito.BDDMockito.given(brokerSession.isConnected()).willReturn(true);
+        org.mockito.BDDMockito.given(brokerSession.info())
+                .willReturn(new com.culberth.tools.artemisbrowser.broker.ConnectionInfo("localhost", 61616, "artemis"));
+        org.mockito.BDDMockito.given(addressDirectory.overview()).willReturn(java.util.List.of());
+
+        mockMvc.perform(get("/addresses").header("Host", "localhost").session(signedIn())).andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .string(org.hamcrest.Matchers.containsString("Signed in as tester")));
+    }
+
+    /** A session signed in with the configured password, through the real login form. */
+    private MockHttpSession signedIn() throws Exception
+    {
+        MvcResult result = mockMvc.perform(signIn("tester", "correct-horse")).andExpect(authenticated()).andReturn();
+        return (MockHttpSession) result.getRequest().getSession(false);
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder signIn(String user,
