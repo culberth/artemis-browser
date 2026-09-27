@@ -143,16 +143,22 @@ Then add the hostname to your hosts file (as Administrator) and open it:
 127.0.0.1 artemis-browser.claude.local
 ```
 
-**How a request actually travels, and why.** The browser talks HTTP to ingress-nginx, which talks
-**HTTPS** to the pod. The pod terminates TLS itself because it has to: `ReachabilityGuard` refuses to
+For HTTPS in the browser too, trust mkcert's CA once (`winget install FiloSottile.mkcert`, then
+`mkcert -install`), run `./scripts/new-tls-secret.ps1`, and upgrade once with
+`helm upgrade artemis-browser charts/artemis-browser -n artemis-browser --reset-then-reuse-values`.
+The ingress then serves `https://artemis-browser.claude.local` and redirects HTTP to it. It uses
+`ingress.tls.secretName` (`artemis-browser-ingress-tls`) only while that secret exists.
+
+**How a request actually travels, and why.** The browser talks to ingress-nginx (HTTPS once the
+ingress certificate above exists, HTTP otherwise), which talks **HTTPS** to the pod. The pod terminates TLS itself because it has to: `ReachabilityGuard` refuses to
 start bound to anything but loopback without both a login and TLS, and a pod must bind `0.0.0.0` to
-be reachable at all. So the chart satisfies that requirement rather than working around it. The
-browser→ingress hop is plaintext — acceptable on a single-machine cluster, and not an arrangement to
-copy onto a shared one. For that, put a real certificate on the ingress and browse over HTTPS.
+be reachable at all. So the chart satisfies that requirement rather than working around it. Without
+the ingress certificate the browser→ingress hop is plaintext — acceptable on a single-machine
+cluster, and not an arrangement to copy onto a shared one.
 
 Two consequences worth knowing before changing anything:
 
-- `server.forward-headers-strategy=native` is load-bearing. Tomcat marks `JSESSIONID` `Secure` for a
+- `server.forward-headers-strategy=native` is load-bearing whenever the ingress serves plain HTTP. Tomcat marks `JSESSIONID` `Secure` for a
   request that arrived over TLS, and a browser on `http://` discards a `Secure` cookie — the symptom
   is a login that accepts the password and bounces straight back to the form, forever, with nothing
   in any log. Only `native` (Tomcat's `RemoteIpValve`) clears the flag; `framework` looks equivalent

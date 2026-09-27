@@ -92,8 +92,8 @@ mvn verify -Pintegration              # + integration tests: starts a real broke
 2. **`server.ssl.enabled=true` must be set explicitly.** Boot's own default is already true, so PEM
    certs alone serve HTTPS perfectly — but `ReachabilityGuard` reads `${server.ssl.enabled:false}`
    and would refuse to start with TLS visibly working.
-3. **`server.forward-headers-strategy=native`.** The pod serves TLS behind an ingress that does not,
-   so without it Tomcat marks `JSESSIONID` `Secure`, the browser on `http://` discards it, and login
+3. **`server.forward-headers-strategy=native`.** Whenever the ingress serves plain HTTP (no
+   `ingress.tls.secretName` secret; `scripts/new-tls-secret.ps1` makes one), without it Tomcat marks `JSESSIONID` `Secure`, the browser on `http://` discards it, and login
    loops forever with nothing in any log. `framework` does not work — it wraps the request instead
    of mutating the one the cookie flag comes from.
 4. **Probes fetch `/app.css` with `Host: localhost`.** `/login` would create a session per probe;

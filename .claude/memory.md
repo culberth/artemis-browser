@@ -261,6 +261,11 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
   a namespace for Istio injection — a sidecar in front of a pod terminating its own TLS is a second
   interception point nobody designed.
 
+- **Ingress HTTPS (2026-09-27)**: `ingress.tls.secretName` = `artemis-browser-ingress-tls`, an mkcert
+  cert from `scripts/new-tls-secret.ps1` (expires 2028-12-27), used only while the Secret exists
+  (`lookup` in the ingress template). Separate from `artemis-browser-tls`, the pod's own cert. With
+  it, `/login` over HTTPS returns `JSESSIONID ... Secure; HttpOnly` and ingress-nginx adds HSTS.
+  This machine's hosts file had no `artemis-browser.claude.local` line at the time.
 ## Template rendering
 
 - **A rendering test is only worth what it fails on** (2026-09-20). Every template was broken in

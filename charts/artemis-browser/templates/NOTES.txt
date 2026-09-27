@@ -7,11 +7,22 @@ artemis-browser {{ .Chart.AppVersion }} is installed as "{{ .Release.Name }}" in
 
          127.0.0.1 {{ .Values.ingress.host }}
 
+{{- $tlsSecret := .Values.ingress.tls.secretName }}
+{{- if and $tlsSecret (lookup "v1" "Secret" .Release.Namespace $tlsSecret) }}
+
+  2. Then open:  https://{{ .Values.ingress.host }}/
+
+     The ingress serves the certificate in secret {{ $tlsSecret }} and redirects HTTP to HTTPS;
+     it talks HTTPS to the pod as well.
+{{- else }}
+
   2. Then open:  http://{{ .Values.ingress.host }}/
 
-     That last hop is plain HTTP. The pod itself serves HTTPS — it will not start otherwise — but
-     the ingress terminates TLS for the browser, so on this local cluster the browser-to-ingress
-     hop is not encrypted. Fine for a laptop; not the arrangement for anything shared.
+     That last hop is plain HTTP: secret {{ $tlsSecret | default "(ingress.tls.secretName unset)" }}
+     does not exist, so the ingress has no certificate for the browser. The pod itself serves
+     HTTPS; the browser-to-ingress hop is not encrypted. For HTTPS there, run
+     scripts/new-tls-secret.ps1 and upgrade once.
+{{- end }}
 {{- else }}
 
   No ingress was installed. Reach it with a port-forward:
