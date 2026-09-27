@@ -1,10 +1,9 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 10 done on `phase10`, awaiting its PR — reopened 2026-09-27 for subscription
-inspection.** Phases 1–9
-shipped and the project was declared feature-complete; it was reopened deliberately, for one theme,
-rather than by a backlog creeping back — see *Phase 10* below. The items closed as won't do stay
-closed. The tool is run by one person, which is what settles the open questions about replicas,
+Status: **feature-complete again, and in maintenance.** Phases 1–9 shipped and the project was
+declared feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection —
+rather than by a backlog creeping back, and Phase 10 merged the same day (PR #19). See *Phase 10*
+below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
 Last updated: 2026-09-27.
 
@@ -189,8 +188,9 @@ on.
 
 The pod terminates TLS itself, because that is what `ReachabilityGuard` requires of anything not
 bound to loopback — the alternative was defeating a control this project deliberately built in
-Phase 7. But the certificate is self-signed and the browser→ingress hop is plaintext, which makes
-this a **local-cluster arrangement** and not a deployment. It is a convenient way for one person to
+Phase 7. But the pod's certificate is self-signed, and the browser→ingress hop is HTTPS only with
+a certificate from mkcert's local CA, trusted on this machine alone (since 2026-09-27; plaintext
+without it). That makes this a **local-cluster arrangement** and not a deployment. It is a convenient way for one person to
 run the tool on their own cluster, and it is not evidence the tool is ready to be shared.
 
 What it would take to be more than that is answered under *Closed as won't do* below — and the
@@ -223,6 +223,11 @@ recorded here with the reasoning so they are not rediscovered as gaps and quietl
   addresses on a single-user loopback-adjacent deployment. Worth restating plainly: this is a
   **local-cluster arrangement**, and the honest reason it stays one is that nothing else is asking
   it to change.
+
+  *Partly done anyway, 2026-09-27:* the ingress now serves HTTPS when an mkcert certificate exists
+  (`scripts/new-tls-secret.ps1`), so browsing over HTTPS works on this machine. The certificate
+  comes from a CA trusted only here, not a real one, so the arrangement is still local-cluster and
+  the reasoning above for going no further still stands.
 
 If that answer ever changes, the **first** thing to decide is not either of the above — it is the
 login. The tool authenticates against one configured account, so a team shares one password: no

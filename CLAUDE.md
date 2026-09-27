@@ -8,9 +8,10 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–9 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
-Kubernetes cluster. Declared feature-complete at Phase 9, then **reopened 2026-09-27 for Phase 10**
-— subscription inspection on multicast addresses, one theme, planned in [docs/PRD.md](docs/PRD.md).
-The items under *Closed as won't do* there stay closed. 233 unit tests, 21 integration.
+Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multicast addresses:
+a page per address with its subscriptions, lag, settings and diverts. **Feature-complete again and
+in maintenance** — Phase 10 was reopened for one requested theme, not a backlog; see *Closed as
+won't do* in [docs/PRD.md](docs/PRD.md) before proposing more. 233 unit tests, 21 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
