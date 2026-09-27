@@ -185,8 +185,8 @@ table th { white-space: nowrap; }
 .stat-warn { border-color: var(--danger-border); }
 .stat-warn .v { color: var(--danger-text); }
 
-h3 a { text-decoration: none; }
-h3 a:hover { text-decoration: underline; }
+h2 a, h3 a { text-decoration: none; }
+h2 a:hover, h3 a:hover { text-decoration: underline; }
 
 /*
  * Properties are the names a core filter is written against, so they earn a column - but a message

@@ -2,6 +2,7 @@ package com.culberth.tools.artemisbrowser.broker;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
 
@@ -26,14 +27,16 @@ public class StuckDiagnosisService
     private final AddressDirectory addressDirectory;
     private final BrokerInfoService brokerInfo;
     private final QueueBrowseService browseService;
+    private final DivertDirectory divertDirectory;
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
-            BrokerInfoService brokerInfo, QueueBrowseService browseService)
+            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
         this.brokerInfo = brokerInfo;
         this.browseService = browseService;
+        this.divertDirectory = divertDirectory;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
@@ -96,6 +99,16 @@ public class StuckDiagnosisService
                     "A paused queue holds " + queue.messageCount() + " message(s) and delivers nothing until it is"
                             + " resumed. Pausing is done on the broker, not here.",
                     queue.name()));
+        }
+        else if (queue.messageCount() > 0 && queue.consumerCount() == 0 && isDurableSubscription(queue))
+        {
+            findings.add(new Finding(Finding.STUCK,
+                    "Durable subscription '" + queue.name() + "' has no subscriber attached",
+                    queue.messageCount() + " message(s) kept for it. The broker stores a copy of every message sent"
+                            + " to '" + queue.address() + "' for this subscription until its subscriber reconnects"
+                            + " or the subscription is removed — so a subscriber that has gone for good leaves a"
+                            + " queue that only grows, and on a busy address that is how a disk fills.",
+                    queue.name(), queue.address()));
         }
         else if (queue.messageCount() > 0 && queue.consumerCount() == 0)
         {
@@ -177,7 +190,10 @@ public class StuckDiagnosisService
     /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
     private void addressLevel(List<Finding> findings, boolean includeInternal)
     {
-        for (AddressOverview address : addressDirectory.overview())
+        List<AddressOverview> all = addressDirectory.overview();
+        exclusiveDiverts(findings, all.stream()
+                .collect(java.util.stream.Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
+        for (AddressOverview address : all)
         {
             if (isBrokersOwn(address) && !includeInternal)
             {
@@ -212,6 +228,40 @@ public class StuckDiagnosisService
     private boolean isBrokersOwn(AddressOverview address)
     {
         return address.internal() || address.name().startsWith("activemq.");
+    }
+
+    /**
+     * A durable multicast queue not named after its address: a subscription someone made and may have walked away from.
+     * A multicast queue configured on the broker under its address's own name is left to the general finding.
+     */
+    private boolean isDurableSubscription(QueueOverview queue)
+    {
+        return queue.durable() && "MULTICAST".equalsIgnoreCase(queue.routingType())
+                && !queue.name().equals(queue.address());
+    }
+
+    /**
+     * An exclusive divert takes a message instead of letting it route to the source address's own queues. On an address
+     * with subscribers that means they never see what it matches — possibly intended, never reported.
+     */
+    private void exclusiveDiverts(List<Finding> findings, Map<String, AddressOverview> addresses)
+    {
+        for (Divert divert : divertDirectory.all())
+        {
+            AddressOverview source = addresses.get(divert.address());
+            if (!divert.exclusive() || source == null || source.queues().isEmpty())
+            {
+                continue;
+            }
+            String what = divert.filtered() ? "every message matching " + divert.filter() : "every message";
+            findings.add(Finding.atAddress(Finding.WATCH,
+                    "'" + divert.name() + "' takes " + what + " sent to '" + divert.address() + "'",
+                    "It is an exclusive divert to '" + divert.forwardingAddress() + "', so the "
+                            + source.queues().size() + " queue(s) on '" + divert.address() + "' never receive what it"
+                            + " matches, and nothing reports that as an error. Intended if '" + divert.address()
+                            + "' is only an entry point; a mystery if its subscribers are waiting for those messages.",
+                    divert.address()));
+        }
     }
 
     private boolean looksLikeDeadLetter(String name)

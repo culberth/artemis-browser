@@ -25,7 +25,7 @@
 
     <div class="panel" th:each="a : ${addresses}">
         <h2>
-            <span th:text="${a.name()}">address</span>
+            <a th:href="@{/address(name=${a.name()})}" th:text="${a.name()}">address</a>
             <span class="badge" th:text="${a.routingTypes()}">ANYCAST</span>
             <span class="badge" th:if="${a.internal()}">internal</span>
             <span class="badge" th:if="${a.temporary()}">temporary</span>

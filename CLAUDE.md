@@ -8,9 +8,9 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–9 shipped: connect,
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
-Kubernetes cluster. **Feature-complete as of Phase 9 and in maintenance** — the backlog is closed,
-not paused, because the tool has one user; see *Closed as won't do* in [docs/PRD.md](docs/PRD.md)
-before proposing a Phase 10. 188 unit tests, 12 integration.
+Kubernetes cluster. Declared feature-complete at Phase 9, then **reopened 2026-09-27 for Phase 10**
+— subscription inspection on multicast addresses, one theme, planned in [docs/PRD.md](docs/PRD.md).
+The items under *Closed as won't do* there stay closed. 233 unit tests, 21 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -36,8 +36,10 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
    `.claude/memory.md`; the parsing is tested against them.
 5. **Exports are untrusted content.** Every CSV field is quoted and a leading `=`, `+`, `-` or `@`
    gets an apostrophe, so a body cannot become a spreadsheet formula. Don't "simplify" it.
-6. **`browse` does not return scheduled messages.** They are counted by the queue and read through
-   `listScheduledMessagesAsJSON` instead, so a queue can report messages and browse as empty.
+6. **`browse` returns neither scheduled nor in-flight messages.** Scheduled ones are counted by the
+   queue and read through `listScheduledMessagesAsJSON`; ones delivered to a consumer and not yet
+   acked cannot be read at all. Either way a queue can report messages and browse as empty — and a
+   search that finds nothing has not shown the message is gone while `deliveringCount` > 0.
 
 ## Security posture
 
@@ -92,8 +94,8 @@ mvn verify -Pintegration              # + integration tests: starts a real broke
 2. **`server.ssl.enabled=true` must be set explicitly.** Boot's own default is already true, so PEM
    certs alone serve HTTPS perfectly — but `ReachabilityGuard` reads `${server.ssl.enabled:false}`
    and would refuse to start with TLS visibly working.
-3. **`server.forward-headers-strategy=native`.** The pod serves TLS behind an ingress that does not,
-   so without it Tomcat marks `JSESSIONID` `Secure`, the browser on `http://` discards it, and login
+3. **`server.forward-headers-strategy=native`.** Whenever the ingress serves plain HTTP (no
+   `ingress.tls.secretName` secret; `scripts/new-tls-secret.ps1` makes one), without it Tomcat marks `JSESSIONID` `Secure`, the browser on `http://` discards it, and login
    loops forever with nothing in any log. `framework` does not work — it wraps the request instead
    of mutating the one the cookie flag comes from.
 4. **Probes fetch `/app.css` with `Host: localhost`.** `/login` would create a session per probe;

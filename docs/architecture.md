@@ -78,6 +78,38 @@ addresses first, so any multicast subscription must be browsed by its fully-qual
 symptom is "that queue is always empty", not an error, which is the kind of bug that survives a
 demo.
 
+The rule runs the other way for management. A management resource is named by the bare queue —
+`queue.clientId.sub`, never `queue.address::clientId.sub`, which fails with "Cannot find resource".
+So the JMS path takes the FQQN and every management call takes the bare name, and a subscription
+is addressed both ways on the same page.
+
+### Lag is the age of what is waiting, not a difference in counts
+
+The obvious measure of "which subscriber is behind" — compare `messagesAdded` or `messageCount`
+against the busiest subscription — is wrong on any address with a filter. A subscription filtered to
+one region is *meant* to receive a fraction of the messages; comparing counts calls its filter lag.
+`/address` measures lag as the age of each subscription's oldest message not yet handed to a
+consumer (`firstMessageAge`, one read per non-empty queue, which is why it is on the single-address
+page and not the index). Age means the same thing whatever the filter.
+
+What that age cannot see is what browse cannot see: messages delivered to a consumer and not yet
+acknowledged. They leave the browsable list, so `firstMessageAge` is null while they are all that is
+left, and a filtered browse does not find them. The address page's "which subscriptions hold this
+message?" therefore reports three outcomes rather than two — waiting here; not here; and not
+*waiting* here, with N in flight or scheduled that could not be searched — because rounding the
+third into "not here" says a subscriber never got a message it is holding right now.
+
+### An address's messages can go somewhere its subscriptions never see
+
+Two more routes out of an address, both invisible from the queue list. Its **address settings**
+name where messages go after too many delivery attempts or on expiry; the broker leaves a setting
+out of `getAddressSettingsAsJSON` when it is at its default, so a missing key is "not set", never
+zero, and a named dead-letter address that does not exist is where messages go to be dropped. And
+an **exclusive divert** takes a message instead of copying it: what it matches never reaches the
+address's own queues, with no error anywhere. Both are on `/address`, and the exclusive divert on an
+address that has subscribers is a diagnose finding, because "my subscriber is missing messages" is
+exactly the report it produces.
+
 ## Two filter dialects, and mixing them fails silently
 
 Management operations (`countMessages`, `browse`) take Artemis **core** filter syntax:

@@ -27,6 +27,12 @@ ingress:
   # Must resolve to the ingress controller. On this KinD setup that means a hosts-file entry:
   #     127.0.0.1 artemis-browser.claude.local
   host: artemis-browser.claude.local
+  tls:
+    # The certificate the ingress shows the browser: a kubernetes.io/tls Secret covering `host`,
+    # made by scripts/new-tls-secret.ps1 (mkcert). Not the pod's own certificate below (`tls:`),
+    # which only the ingress sees. The ingress serves HTTPS, and redirects HTTP, only while this
+    # Secret exists.
+    secretName: artemis-browser-ingress-tls
 
 tls:
   # A self-signed certificate generated at install time and kept across upgrades. The pod has to

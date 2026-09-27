@@ -30,3 +30,6 @@ Desktop.ini
 *.tgz
 charts/*/charts/
 charts/*/Chart.lock
+
+# TLS key and certificate from scripts/new-tls-secret.ps1. Never commit a private key.
+.tls/

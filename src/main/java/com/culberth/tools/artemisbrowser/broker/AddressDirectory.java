@@ -85,6 +85,37 @@ public class AddressDirectory
         return null;
     }
 
+    /**
+     * The settings the broker resolved for {@code name}. Every value is kept as text: numbers arrive bare and booleans
+     * as JSON booleans here, and nothing on the page does arithmetic with them.
+     */
+    public AddressSettings settings(String name)
+    {
+        Object result = brokerSession.requireManagement().invoke(ResourceNames.BROKER, "getAddressSettingsAsJSON",
+                name);
+        if (result == null)
+        {
+            return AddressSettings.of(Map.of());
+        }
+        try
+        {
+            JsonNode root = objectMapper.readTree(result.toString());
+            Map<String, String> values = new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, JsonNode> field : root.properties())
+            {
+                if (!field.getValue().isNull())
+                {
+                    values.put(field.getKey(), field.getValue().asText());
+                }
+            }
+            return AddressSettings.of(values);
+        }
+        catch (Exception e)
+        {
+            throw new BrokerException("Could not read the settings for '" + name + "': " + e.getMessage(), e);
+        }
+    }
+
     private JsonNode listAddresses(ManagementChannel management, int page)
     {
         Object result = management.invoke(ResourceNames.BROKER, "listAddresses", "", page, LIST_PAGE_SIZE);

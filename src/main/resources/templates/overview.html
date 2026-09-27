@@ -70,7 +70,7 @@
                     <td>
                         <a th:href="@{/queues(name=${queue.name()})}" th:text="${queue.name()}">queue</a>
                     </td>
-                    <td class="muted" th:text="${queue.address()}">address</td>
+                    <td><a class="muted" th:href="@{/address(name=${queue.address()})}" th:text="${queue.address()}">address</a></td>
                     <td class="num strong" th:text="${queue.messageCount()}">0</td>
                     <td class="num" th:text="${queue.deliveringCount()}">0</td>
                     <td class="num" th:text="${queue.scheduledCount()}">0</td>

@@ -117,6 +117,45 @@ from — a wrong parse here yields a believable number rather than an error.
 - **There is no "which connection am I" call.** Our own connection is identified by finding the
   consumer sitting on our management reply queue and reading its `connectionID`.
 
+### Subscription shapes (2026-09-27, broker 2.44.0, before Phase 10 parsed any of them)
+
+- **Queue-level management resources take the BARE queue name, never the FQQN.**
+  `queue.events::probe-a.sub-a` → "AMQ229067: Cannot find resource"; `queue.probe-a.sub-a` works.
+  FQQN is for the JMS read path only. Mixing them up fails loudly here, unlike the silent JMS case.
+- **Subscription queue names by kind**: durable `clientId.subName`; shared durable with no client
+  id = bare `subName`; shared non-durable `nonDurable.clientId.subName`; plain non-durable = a UUID
+  with `temporary:"true"`, `durable:"false"`. Only the last two are distinguishable by flags alone.
+- **The stored filter is core syntax even when a JMS selector created it**: subscribing with
+  `JMSPriority > 3` stores `AMQPriority > 3`. So a subscription filter can be shown as-is.
+- **`listQueues` already carries `filter`, `user`, `temporary`, `exclusive`, `autoCreated`,
+  `purgeOnNoConsumers`, `maxConsumers`, `messagesExpired`, `messagesKilled`** — all string-quoted
+  like the counters. No per-queue calls needed for subscription identity.
+- **`queue.<name>` attribute `firstMessageAge`** → `Long` millis; **`null` on an empty queue**, not 0
+  or -1. `firstMessageTimestamp` likewise (epoch millis). Per-queue round trip each.
+- **`broker.getAddressSettingsAsJSON(address)`** → a flat JSON object, **numbers bare, not quoted**
+  (`"maxSizeBytes":-1`, `"autoCreateQueues":true`), with `deadLetterAddress`, `expiryAddress`,
+  `addressFullMessagePolicy`, `redeliveryDelay`, `autoCreate/DeleteQueues/Addresses`,
+  `managementBrowsePageSize`. It resolves the `#` match, so defaults show up for any address.
+  **`maxDeliveryAttempts` and `retroactiveMessageCount` were absent** at their defaults — treat a
+  missing key as "default", not as zero.
+- **Diverts have no listing operation**: `listDivertsAsJSON` and `listDiverts` → "AMQ229069: no
+  operation". `broker.getDivertNames()` → `Object[]` of names; then `divert.<name>` attributes:
+  `address`, `forwardingAddress`, `filter`, `routingType` (`PASS`/`STRIP`/`ANYCAST`/`MULTICAST`) all
+  String, `exclusive` **Boolean**, `transformerClassName` null when unset. One round trip each.
+- **`address.<name>.bindingNames` includes diverts** alongside queues (`events-audit` appeared there);
+  `queueNames` does not. `numberOfMessages` (13) is the sum of every queue's copy, while
+  `routedMessageCount` (6) counts messages routed once regardless of fan-out.
+- **`broker.listConsumers(filterJson, page, size)`** carries `clientID`, `user`, `remoteAddress`,
+  `queue`, `address`, `filter`, `queueType` — **`listAllConsumersAsJSON` has no clientID**. Shape is
+  mixed: counters quoted, `lastDeliveredTime` bare, `creationTime` a `Date.toString()` string
+  ("Sun Sep 27 20:20:42 GMT 2026"), not millis.
+
+- **In-flight messages are invisible to browse and to `firstMessageAge`** (2026-09-27, 2.44.0). A
+  durable subscriber that received 3 messages without acking: `messageCount=3`, `deliveringCount=3`,
+  `browse` (filtered or not) → 0 entries, `firstMessageAge` → null. Delivered-but-unacked refs leave
+  the browsable list. So "not found by browse" never means "not on the queue" while delivering > 0,
+  and `firstMessageAge` is the age of the oldest message *not yet delivered*.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -154,6 +193,14 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
   app keeps serving — against *old* classes and *new* templates, which shows up as a SpringEL error
   for a record accessor that exists in the source. Kill by port, not by task:
   `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process -Force`.
+
+- **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
+  turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
+  templates are LF; `docs/PRD.md` is CRLF. Check `git diff --stat` after any scripted edit.
+- **Checking a page live needs the tool's own login** (2026-09-27): a local `mvn spring-boot:run`
+  shows the sign-in form, and with `artemis.auth.*` blank nobody can sign in — although the README
+  says the loopback default needs no login. For verification without a browser, an `*IT` against
+  `ArtemisBrokerSupport` exercises the same service calls.
 
 ## Testing
 
@@ -214,6 +261,11 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
 - **Probes**: `/app.css` with `Host: localhost`. `/login` creates a session per probe (30m timeout);
   the kubelet's default Host is the pod IP, which `AllowedHostFilter` 403s — the pod then never goes
   Ready and the log shows only access denials.
+- **Ingress HTTPS (2026-09-27)**: `ingress.tls.secretName` = `artemis-browser-ingress-tls`, an mkcert
+  cert from `scripts/new-tls-secret.ps1` (expires 2028-12-27), used only while the Secret exists
+  (`lookup` in the ingress template). Separate from `artemis-browser-tls`, the pod's own cert. With
+  it, `/login` over HTTPS returns `JSESSIONID ... Secure; HttpOnly` and ingress-nginx adds HSTS.
+  This machine's hosts file had no `artemis-browser.claude.local` line at the time.
 - **The cluster's own conventions**: ingress-nginx v1.15.1, class `nginx`, `<app>.claude.local` with
   a hosts-file line each (no wildcard); node maps host :80/:443 straight through. Artemis lives in
   **both** `jms` and `claude-app` as Service `artemis` (61616/8161, artemis/artemis). Do not label

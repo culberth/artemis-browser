@@ -5,6 +5,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -17,6 +18,11 @@ public class BrokerInfoService
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
+
+    /** listConsumers wants a filter document even when there is nothing to filter on. */
+    private static final String NO_FILTER = "{\"field\":\"\",\"operation\":\"\",\"value\":\"\"}";
+
+    private static final int LIST_PAGE_SIZE = 200;
 
     private final BrokerSession brokerSession;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -84,6 +90,51 @@ public class BrokerInfoService
                     // This tool's own management reply consumer. Worth labelling rather than
                     // hiding: someone counting consumers on a quiet broker should see why it is 1.
                     queueName != null && queueName.equals(replyQueue)));
+        }
+        return consumers;
+    }
+
+    /**
+     * Consumers on the named queues, with their client ids, from {@code listConsumers}.
+     *
+     * <p>
+     * Filtered here rather than by the broker: {@code listConsumers} takes the same filter document as
+     * {@code listQueues}, but which fields it accepts has not been checked, and a filter that silently matches nothing
+     * would read as "nobody is subscribed". Its shape is mixed — counters quoted, {@code lastDeliveredTime} bare,
+     * {@code creationTime} a {@code Date.toString()} — so only the quoted counters are read.
+     */
+    public List<SubscriberConsumer> consumersOn(Set<String> queueNames)
+    {
+        List<SubscriberConsumer> consumers = new ArrayList<>();
+        if (queueNames.isEmpty())
+        {
+            return consumers;
+        }
+        ManagementChannel management = brokerSession.requireManagement();
+        for (int page = 1;; page++)
+        {
+            JsonNode data = pagedData(
+                    management.invoke(ResourceNames.BROKER, "listConsumers", NO_FILTER, page, LIST_PAGE_SIZE));
+            if (data == null || data.isEmpty())
+            {
+                break;
+            }
+            for (JsonNode node : data)
+            {
+                String queue = text(node, "queue");
+                if (queue == null || !queueNames.contains(queue))
+                {
+                    continue;
+                }
+                consumers.add(new SubscriberConsumer(text(node, "id"), queue, orEmpty(text(node, "clientID")),
+                        orEmpty(text(node, "user")), orEmpty(text(node, "remoteAddress")),
+                        orEmpty(text(node, "protocol")), orEmpty(text(node, "filter")),
+                        asLong(text(node, "messagesDelivered")), asLong(text(node, "messagesAcknowledged"))));
+            }
+            if (data.size() < LIST_PAGE_SIZE)
+            {
+                break;
+            }
         }
         return consumers;
     }
@@ -170,6 +221,29 @@ public class BrokerInfoService
         {
             return fallback;
         }
+    }
+
+    /** The {@code data} array of a paged {@code {"data":[...],"count":N}} reply. */
+    private JsonNode pagedData(Object result)
+    {
+        if (result == null)
+        {
+            return null;
+        }
+        try
+        {
+            JsonNode data = objectMapper.readTree(result.toString()).get("data");
+            return data == null || !data.isArray() ? null : data;
+        }
+        catch (Exception e)
+        {
+            throw new BrokerException("Could not read the broker's response: " + e.getMessage(), e);
+        }
+    }
+
+    private String orEmpty(String value)
+    {
+        return value == null ? "" : value;
     }
 
     private String text(JsonNode node, String field)

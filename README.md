@@ -114,6 +114,7 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
+| `/address?name=` | One address: its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts |
 | `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
@@ -142,16 +143,22 @@ Then add the hostname to your hosts file (as Administrator) and open it:
 127.0.0.1 artemis-browser.claude.local
 ```
 
-**How a request actually travels, and why.** The browser talks HTTP to ingress-nginx, which talks
-**HTTPS** to the pod. The pod terminates TLS itself because it has to: `ReachabilityGuard` refuses to
+For HTTPS in the browser too, trust mkcert's CA once (`winget install FiloSottile.mkcert`, then
+`mkcert -install`), run `./scripts/new-tls-secret.ps1`, and upgrade once with
+`helm upgrade artemis-browser charts/artemis-browser -n artemis-browser --reset-then-reuse-values`.
+The ingress then serves `https://artemis-browser.claude.local` and redirects HTTP to it. It uses
+`ingress.tls.secretName` (`artemis-browser-ingress-tls`) only while that secret exists.
+
+**How a request actually travels, and why.** The browser talks to ingress-nginx (HTTPS once the
+ingress certificate above exists, HTTP otherwise), which talks **HTTPS** to the pod. The pod terminates TLS itself because it has to: `ReachabilityGuard` refuses to
 start bound to anything but loopback without both a login and TLS, and a pod must bind `0.0.0.0` to
-be reachable at all. So the chart satisfies that requirement rather than working around it. The
-browser→ingress hop is plaintext — acceptable on a single-machine cluster, and not an arrangement to
-copy onto a shared one. For that, put a real certificate on the ingress and browse over HTTPS.
+be reachable at all. So the chart satisfies that requirement rather than working around it. Without
+the ingress certificate the browser→ingress hop is plaintext — acceptable on a single-machine
+cluster, and not an arrangement to copy onto a shared one.
 
 Two consequences worth knowing before changing anything:
 
-- `server.forward-headers-strategy=native` is load-bearing. Tomcat marks `JSESSIONID` `Secure` for a
+- `server.forward-headers-strategy=native` is load-bearing whenever the ingress serves plain HTTP. Tomcat marks `JSESSIONID` `Secure` for a
   request that arrived over TLS, and a browser on `http://` discards a `Secure` cookie — the symptom
   is a login that accepts the password and bounces straight back to the form, forever, with nothing
   in any log. Only `native` (Tomcat's `RemoteIpValve`) clears the flag; `framework` looks equivalent
@@ -266,10 +273,12 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerSession              @SessionScope: one live connection per HTTP session (never the password)
 │   ├── BrokerCredentials          Password carrier from the connect form to connect(), not retained
 │   ├── ConnectionInfo             What the session keeps after connecting: host/port/username only
-│   ├── ManagementChannel          Request/reply plumbing over the activemq.management address
+│   ├── ManagementChannel          Request/reply plumbing over activemq.management; refuses any non-read operation
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
+│   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
+│   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
 │   ├── StuckDiagnosisService      Gathers "why is this not moving" from the cheap reads only
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
@@ -277,6 +286,9 @@ com.culberth.tools.artemisbrowser
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
 │   │                              Queue and message view models, including FQQN browse-name handling
+│   ├── AddressDetail / Subscription / SubscriberConsumer / SubscriptionSearch
+│   │   / AddressRouting / AddressSettings / Divert
+│   │                              One address as its subscribers see it; kinds and name hints from the broker's naming
 │   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
 │   │   / SearchResult / SavedConnection / Finding
 │   │                              Broker, address, search and diagnosis view models
@@ -285,7 +297,7 @@ com.culberth.tools.artemisbrowser
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
-│   ├── BrokerController           /broker, /addresses
+│   ├── BrokerController           /broker, /addresses, /address
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── DiagnoseController         /diagnose
 │   ├── LoginController            /login (the sign-in itself is Spring Security's)
@@ -304,7 +316,7 @@ com.culberth.tools.artemisbrowser
     └── templates/
         ├── fragments/layout.html  Shared nav — edited once when a page is added
         ├── login.html, connect.html, overview.html, queues.html, message.html,
-        │   addresses.html, broker.html, search.html, diagnose.html
+        │   addresses.html, address.html, broker.html, search.html, diagnose.html
         └── static/app.css
 ```
 

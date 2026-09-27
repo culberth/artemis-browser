@@ -10,13 +10,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.culberth.tools.artemisbrowser.broker.AddressDetail;
+import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
+import com.culberth.tools.artemisbrowser.broker.AddressOverview;
+import com.culberth.tools.artemisbrowser.broker.AddressRouting;
+import com.culberth.tools.artemisbrowser.broker.AddressSettings;
+import com.culberth.tools.artemisbrowser.broker.BrokerProducer;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
+import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
@@ -31,6 +38,9 @@ import com.culberth.tools.artemisbrowser.broker.SavedConnection;
 import com.culberth.tools.artemisbrowser.broker.ScheduledMessage;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
 import com.culberth.tools.artemisbrowser.broker.StuckDiagnosisService;
+import com.culberth.tools.artemisbrowser.broker.SubscriberConsumer;
+import com.culberth.tools.artemisbrowser.broker.Subscription;
+import com.culberth.tools.artemisbrowser.broker.SubscriptionSearch;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
@@ -84,6 +94,9 @@ class PageRenderingTest
 
     @MockitoBean
     private AddressDirectory addressDirectory;
+
+    @MockitoBean
+    private AddressDetailService addressDetail;
 
     @MockitoBean
     private StuckDiagnosisService diagnosis;
@@ -144,6 +157,108 @@ class PageRenderingTest
     void rendersTheAddressesPage() throws Exception
     {
         page("/addresses").andExpect(content().string(containsString("Addresses")));
+    }
+
+    @Test
+    @DisplayName("one address renders its subscriptions, consumers and producers")
+    void rendersTheAddressPage() throws Exception
+    {
+        Subscription durable = Subscription.of("app-1.audit", "events", "MULTICAST", "AMQPriority > 3", "artemis", true,
+                false, false, 6, 0, 0, 0, 6, 0, 0, 0);
+        Subscription temporary = Subscription.of("0d6f-uuid", "events", "MULTICAST", "", "artemis", false, true, false,
+                0, 0, 0, 1, 0, 0, 0, 0);
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 6, 2048, 6, 0, false, false, false,
+                List.of());
+        Subscription waiting = Subscription.of("app-2.billing", "events", "MULTICAST", "", "artemis", true, false,
+                false, 2, 0, 0, 1, 6, 4, 0, 0);
+        AddressDetail detail = new AddressDetail(events, List.of(durable, temporary, waiting),
+                List.of(new SubscriberConsumer("9", "0d6f-uuid", "live-client", "artemis", "10.0.0.7:5000", "CORE", "",
+                        3, 3)),
+                List.of(new BrokerProducer("p1", "events", "conn-1", "2026-09-27 10:00:00", 6, 1200, false)),
+                Map.of("app-1.audit", 7_500_000L, "app-2.billing", 40_000L));
+        given(addressDetail.detail("events")).willReturn(detail);
+        given(addressDetail.find(detail, "orderId = 'A'")).willReturn(new SubscriptionSearch("orderId = 'A'",
+                List.of(new SubscriptionSearch.Row(durable, List.of(summary(1, "ID:held")), false),
+                        new SubscriptionSearch.Row(temporary, List.of(), false))));
+
+        page("/address?name=events&find=orderId = 'A'").andExpect(content().string(containsString("app-1.audit")))
+                .andExpect(content().string(containsString("2h 5m")))
+                .andExpect(content().string(containsString("furthest behind")))
+                .andExpect(content().string(containsString("ID:held")))
+                .andExpect(content().string(containsString("not on this queue")))
+                .andExpect(content().string(containsString("durable subscription")))
+                .andExpect(content().string(containsString("AMQPriority &gt; 3")))
+                .andExpect(content().string(containsString("live-client")))
+                .andExpect(content().string(containsString("conn-1")));
+    }
+
+    @Test
+    @DisplayName("the address page renders its settings and diverts, flagging a missing expiry address")
+    void rendersWhereElseMessagesGo() throws Exception
+    {
+        AddressOverview alerts = new AddressOverview("alerts", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        Subscription subscriber = Subscription.of("app.alerts", "alerts", "MULTICAST", "", "artemis", true, false,
+                false, 0, 0, 0, 1, 0, 0, 0, 0);
+        AddressRouting routing = new AddressRouting(
+                AddressSettings
+                        .of(Map.of("deadLetterAddress", "DLQ", "expiryAddress", "ExpiryGone",
+                                "addressFullMessagePolicy", "PAGE", "maxSizeBytes", "-1", "autoCreateQueues", "true")),
+                null,
+                List.of(new Divert("alerts-archive", "alerts", "alerts.archive", "severity = 'high'", true, "PASS",
+                        "")),
+                List.of(new Divert("fan-in", "legacy.alerts", "alerts", "", false, "PASS", "")),
+                java.util.Set.of("alerts", "DLQ"));
+        given(addressDetail.detail("alerts"))
+                .willReturn(new AddressDetail(alerts, List.of(subscriber), List.of(), List.of(), Map.of(), routing));
+
+        page("/address?name=alerts").andExpect(content().string(containsString("Where else its messages go")))
+                .andExpect(content().string(containsString("href=\"/address?name=DLQ\"")))
+                .andExpect(content().string(containsString("not on the broker")))
+                .andExpect(content().string(containsString("alerts-archive")))
+                .andExpect(content().string(containsString("An <strong>exclusive</strong> divert")))
+                .andExpect(content().string(containsString("legacy.alerts")))
+                .andExpect(content().string(containsString("not set")));
+    }
+
+    @Test
+    @DisplayName("settings that cannot be read say so without taking the address page down")
+    void rendersTheAddressPageWithoutSettings() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        given(addressDetail.detail("events")).willReturn(new AddressDetail(events, List.of(), List.of(), List.of(),
+                Map.of(), new AddressRouting(null, "refused", List.of(), List.of(), java.util.Set.of())));
+
+        page("/address?name=events").andExpect(content().string(containsString("could not be read: refused")))
+                .andExpect(content().string(containsString("Subscriptions")));
+    }
+
+    @Test
+    @DisplayName("a filter the broker rejects fails the search, not the address page")
+    void rendersTheAddressPageWhenTheSearchFails() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        AddressDetail detail = new AddressDetail(events, List.of(), List.of(), List.of());
+        given(addressDetail.detail("events")).willReturn(detail);
+        given(addressDetail.find(detail, "((")).willThrow(new BrokerException("bad filter"));
+
+        page("/address?name=events&find=((").andExpect(content().string(containsString("bad filter")))
+                .andExpect(content().string(containsString("Subscriptions")));
+    }
+
+    @Test
+    @DisplayName("an address the broker does not have says so rather than rendering empty tables")
+    void rendersTheAddressPageForAnUnknownAddress() throws Exception
+    {
+        page("/address?name=gone").andExpect(content().string(containsString("no address named")));
+    }
+
+    @Test
+    @DisplayName("the address page still renders when the broker cannot be read")
+    void rendersTheAddressPageOnError() throws Exception
+    {
+        given(addressDetail.detail("events")).willThrow(new BrokerException("nope"));
+
+        page("/address?name=events").andExpect(content().string(containsString("nope")));
     }
 
     // ------------------------------------------------------------ connect in
@@ -230,6 +345,19 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a queue whose every message is in flight says so, rather than 'empty'")
+    void rendersTheQueuePageWithEverythingInFlight() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE))
+                .willReturn(new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 3, 0, 1, 3, 0, true, false));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("in flight to a consumer")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("This queue is empty."))));
+    }
+
+    @Test
     @DisplayName("the queue page renders a filter rejected by the broker")
     void rendersTheQueuePageOnError() throws Exception
     {
@@ -304,6 +432,17 @@ class PageRenderingTest
                 .willReturn(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)));
 
         page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")));
+    }
+
+    @Test
+    @DisplayName("a finding about a subscription links to both its queue and its address")
+    void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
+    {
+        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of(new Finding(Finding.STUCK,
+                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")));
+
+        page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
+                .andExpect(content().string(containsString("href=\"/address?name=events\"")));
     }
 
     @Test

@@ -11,6 +11,15 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- /* HTTPS only once the secret exists, so an install before it is made stays plain HTTP
+         rather than redirecting to the controller's fake certificate. */}}
+  {{- $tlsSecret := .Values.ingress.tls.secretName }}
+  {{- if and $tlsSecret (lookup "v1" "Secret" .Release.Namespace $tlsSecret) }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ $tlsSecret }}
+  {{- end }}
   rules:
     - host: {{ .Values.ingress.host }}
       http:

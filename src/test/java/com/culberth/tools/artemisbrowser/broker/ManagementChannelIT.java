@@ -90,7 +90,7 @@ class ManagementChannelIT
             {
                 long started = System.currentTimeMillis();
                 BrokerException thrown = assertThrows(BrokerException.class,
-                        () -> channel.invoke(ResourceNames.BROKER, "getQueueNames"));
+                        () -> channel.invoke(ResourceNames.BROKER, "getAcceptorsAsJSON"));
                 long waited = System.currentTimeMillis() - started;
 
                 assertTrue(thrown.getMessage().contains("400ms"), thrown.getMessage());
