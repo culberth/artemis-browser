@@ -44,7 +44,7 @@ class ReadOnlyGuaranteeIT
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
-        search = new MessageSearchService(brokerSession, queues, browse, inFlight, 50);
+        search = new MessageSearchService(queues, browse, inFlight, 50);
     }
 
     @AfterAll

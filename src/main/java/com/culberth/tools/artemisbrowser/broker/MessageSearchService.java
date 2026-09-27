@@ -2,7 +2,6 @@ package com.culberth.tools.artemisbrowser.broker;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -35,17 +34,14 @@ import org.springframework.stereotype.Service;
 public class MessageSearchService
 {
 
-    private final BrokerSession brokerSession;
     private final QueueDirectory queueDirectory;
     private final QueueBrowseService browseService;
     private final InFlightService inFlightService;
     private final int maxPerQueue;
 
-    public MessageSearchService(BrokerSession brokerSession, QueueDirectory queueDirectory,
-            QueueBrowseService browseService, InFlightService inFlightService,
-            @Value("${artemis.search-max-per-queue:50}") int maxPerQueue)
+    public MessageSearchService(QueueDirectory queueDirectory, QueueBrowseService browseService,
+            InFlightService inFlightService, @Value("${artemis.search-max-per-queue:50}") int maxPerQueue)
     {
-        this.brokerSession = brokerSession;
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
         this.inFlightService = inFlightService;
@@ -62,7 +58,8 @@ public class MessageSearchService
     }
 
     /**
-     * The same search without fetching any messages — just which queues match and how many.
+     * Which queues match, without fetching their messages — one filtered browse of one row per queue, so each match
+     * count is "at least one", not a total.
      *
      * <p>
      * Export uses this: it is going to fetch each matching queue's messages itself, with full bodies and its own limit,
@@ -82,7 +79,6 @@ public class MessageSearchService
         }
         String messageId = MessageIdLookup.messageId(effectiveFilter);
 
-        ManagementChannel management = brokerSession.requireManagement();
         List<SearchResult.QueueMatches> matches = new ArrayList<>();
         List<InFlightLookup> inFlight = new ArrayList<>();
         long inFlightNotSearched = 0;
@@ -100,12 +96,14 @@ public class MessageSearchService
 
             if (perQueue <= 0)
             {
-                // Counting only, for export: it will fetch each queue's messages itself.
-                long count = count(management, queue.name(), effectiveFilter);
-                if (count > 0)
+                // Which queues match, for export, which fetches each queue's messages itself. By a
+                // one-row filtered browse, not a filtered count: the count samples the first 200
+                // messages, so a queue whose matches all lie past them counted zero and was left
+                // out of the export while the search page, which browses, listed it.
+                if (!browseService.matching(queue.name(), effectiveFilter, 1).isEmpty())
                 {
-                    matches.add(new SearchResult.QueueMatches(queue.name(), count, false, List.of()));
-                    total += count;
+                    matches.add(new SearchResult.QueueMatches(queue.name(), 1, true, List.of()));
+                    total++;
                 }
                 continue;
             }
@@ -142,9 +140,4 @@ public class MessageSearchService
                 inFlightNotSearched);
     }
 
-    private long count(ManagementChannel management, String queueName, String filter)
-    {
-        Object result = management.invoke(ResourceNames.QUEUE + queueName, "countMessages", filter);
-        return result instanceof Number number ? number.longValue() : 0L;
-    }
 }

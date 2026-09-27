@@ -34,8 +34,6 @@ import org.junit.jupiter.api.Test;
 class MessageSearchServiceTest
 {
 
-    private BrokerSession brokerSession;
-    private ManagementChannel management;
     private QueueDirectory queueDirectory;
     private QueueBrowseService browseService;
     private InFlightService inFlightService;
@@ -43,12 +41,9 @@ class MessageSearchServiceTest
     @BeforeEach
     void mocks()
     {
-        brokerSession = mock(BrokerSession.class);
-        management = mock(ManagementChannel.class);
         queueDirectory = mock(QueueDirectory.class);
         browseService = mock(QueueBrowseService.class);
         inFlightService = mock(InFlightService.class);
-        given(brokerSession.requireManagement()).willReturn(management);
         given(browseService.matching(anyString(), anyString(), anyInt())).willReturn(List.of());
     }
 
@@ -64,7 +59,6 @@ class MessageSearchServiceTest
 
         assertEquals(1, result.totalMatches());
         assertEquals("payments", result.matches().get(0).queueName());
-        verify(management, never()).invoke(anyString(), eq("countMessages"), anyString());
     }
 
     @Test
@@ -125,17 +119,21 @@ class MessageSearchServiceTest
     }
 
     @Test
-    @DisplayName("counting-only mode is for export, and still uses the cheap count")
+    @DisplayName("export picks its queues by a one-row browse, not the filtered count that samples 200 messages")
     void countsOnlyForExport()
     {
-        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false)));
-        given(management.invoke("queue.orders", "countMessages", "count = 1")).willReturn(7L);
+        // Measured on 2.44.0: a filtered count of a queue whose matches all lie past its first 200
+        // messages is 0, which left the queue out of the export while the search page listed it.
+        given(queueDirectory.overview()).willReturn(List.of(queue("orders", false), queue("payments", false)));
+        given(browseService.matching("orders", "count = 1", 1)).willReturn(messages(1));
 
         SearchResult result = service().counts("count = 1", false);
 
-        assertEquals(7, result.totalMatches());
-        assertTrue(result.matches().get(0).messages().isEmpty(), "counting mode fetches no messages");
-        verify(browseService, never()).matching(anyString(), anyString(), anyInt());
+        assertEquals(1, result.matches().size());
+        assertEquals("orders", result.matches().get(0).queueName());
+        assertTrue(result.matches().get(0).partial(), "one row found is a floor, not a count");
+        assertTrue(result.matches().get(0).messages().isEmpty(), "export fetches the messages itself");
+        verify(browseService, never()).matching(anyString(), anyString(), eq(50));
     }
 
     @Test
@@ -190,7 +188,7 @@ class MessageSearchServiceTest
 
     private MessageSearchService service()
     {
-        return new MessageSearchService(brokerSession, queueDirectory, browseService, inFlightService, 50);
+        return new MessageSearchService(queueDirectory, browseService, inFlightService, 50);
     }
 
     private List<MessageSummary> messages(int howMany)
