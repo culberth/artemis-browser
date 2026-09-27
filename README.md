@@ -195,6 +195,7 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.auth.password-hash` | *(blank)* | bcrypt hash for that account, with or without a `{bcrypt}` prefix. Generate with `--hash-password=` |
 | `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
 | `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |
+| `artemis.in-flight-limit` | `5000` | Most in-flight (delivered, unacknowledged) messages a queue page lists. The broker returns them all at once, so above this they are not read; their consumers are still named |
 
 ## Security posture
 
@@ -276,6 +277,7 @@ com.culberth.tools.artemisbrowser
 │   ├── ManagementChannel          Request/reply plumbing over activemq.management; refuses any non-read operation
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
+│   ├── InFlightService            Delivered-not-acked messages, which browse cannot see; capped, tied to their clients
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
@@ -285,6 +287,7 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
+│   │   / InFlight / InFlightConsumer / InFlightMessage
 │   │                              Queue and message view models, including FQQN browse-name handling
 │   ├── AddressDetail / Subscription / SubscriberConsumer / SubscriptionSearch
 │   │   / AddressRouting / AddressSettings / Divert

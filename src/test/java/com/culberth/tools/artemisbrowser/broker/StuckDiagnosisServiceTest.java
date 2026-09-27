@@ -266,7 +266,7 @@ class StuckDiagnosisServiceTest
 
     private BrokerConsumer consumer(String queueName, boolean browseOnly, boolean self)
     {
-        return new BrokerConsumer("c-1", queueName, "conn-1", browseOnly, 0, 0, 0, "OK", self);
+        return new BrokerConsumer("c-1", queueName, "conn-1", "sess-1", "1", browseOnly, 0, 0, 0, "OK", self);
     }
 
     private ScheduledMessage scheduled(boolean overdue)

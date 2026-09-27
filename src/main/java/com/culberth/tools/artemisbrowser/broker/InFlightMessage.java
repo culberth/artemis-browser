@@ -13,8 +13,9 @@ import java.util.Map;
  * @param messageId the JMS message ID ({@code userID}), which is what the rest of the tool links by
  * @param coreId    the broker's own numeric message ID
  * @param timestamp send time in epoch millis, 0 when absent
+ * @param ageText   how long ago it was <em>sent</em>, when read; empty without a timestamp
  */
 public record InFlightMessage(String messageId, long coreId, String type, int priority, boolean durable, long timestamp,
-        String timestampText, Map<String, String> properties)
+        String timestampText, String ageText, Map<String, String> properties)
 {
 }

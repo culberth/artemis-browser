@@ -392,11 +392,19 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 
 ### P1 — an "In flight" panel on the queue page
 
-- [ ] **Grouped by consumer**: client id, remote address and in-transit count where the consumer can
+- [x] **Grouped by consumer**: client id, remote address and in-transit count where the consumer can
       be matched; each message's ID, send time and properties. No body, and the panel says why.
-- [ ] **The empty-queue note** that says messages are in flight links to the panel.
-- [ ] **Ages are from send time.** There is no delivery time in the reply, so the page cannot say how
-      long a consumer has held a message, and does not pretend to.
+      Done 2026-09-27. Matching takes both listings: `listAllConsumersAsJSON` has the
+      connection/session/consumer triple the delivering list is keyed by, `listConsumers` has the
+      client under the same `sequentialId`. Over the limit the messages are not read but the
+      consumers holding them still are, with their counts — who holds them is most of the answer.
+      200 rows are drawn per consumer; the rest are counted. The filter box does not apply here,
+      and the panel says so.
+- [x] **The empty-queue note** that says messages are in flight links to the panel. So do the
+      *Delivering* counter and the filtered "could not be searched" note.
+- [x] **Ages are from send time.** There is no delivery time in the reply, so the page cannot say how
+      long a consumer has held a message, and does not pretend to. Shown as "sent … (4m 12s ago)",
+      with the reason under the heading.
 
 ### P2 — search sees in-flight messages, by message ID
 

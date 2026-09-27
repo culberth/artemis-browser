@@ -84,9 +84,9 @@ public class BrokerInfoService
         {
             String queueName = text(node, "queueName");
             consumers.add(new BrokerConsumer(text(node, "consumerID"), queueName, text(node, "connectionID"),
-                    Boolean.parseBoolean(text(node, "browseOnly")), asLong(text(node, "deliveringCount")),
-                    asLong(text(node, "messagesDelivered")), asLong(text(node, "messagesAcknowledged")),
-                    text(node, "status"),
+                    text(node, "sessionID"), text(node, "sequentialId"), Boolean.parseBoolean(text(node, "browseOnly")),
+                    asLong(text(node, "deliveringCount")), asLong(text(node, "messagesDelivered")),
+                    asLong(text(node, "messagesAcknowledged")), text(node, "status"),
                     // This tool's own management reply consumer. Worth labelling rather than
                     // hiding: someone counting consumers on a quiet broker should see why it is 1.
                     queueName != null && queueName.equals(replyQueue)));

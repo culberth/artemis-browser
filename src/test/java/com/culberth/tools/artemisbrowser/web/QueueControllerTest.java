@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
+import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
@@ -48,6 +49,9 @@ class QueueControllerTest
 
     @MockitoBean
     private QueueBrowseService browseService;
+
+    @MockitoBean
+    private InFlightService inFlightService;
 
     @BeforeEach
     void connected()

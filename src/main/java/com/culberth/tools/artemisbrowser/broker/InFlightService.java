@@ -58,21 +58,29 @@ public class InFlightService
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final BrokerSession brokerSession;
+    private final BrokerInfoService brokerInfo;
     private final int limit;
 
-    public InFlightService(BrokerSession brokerSession, @Value("${artemis.in-flight-limit:5000}") int limit)
+    public InFlightService(BrokerSession brokerSession, BrokerInfoService brokerInfo,
+            @Value("${artemis.in-flight-limit:5000}") int limit)
     {
         this.brokerSession = brokerSession;
+        this.brokerInfo = brokerInfo;
         this.limit = limit;
     }
 
     /**
-     * The queue's in-flight messages, grouped by the consumer holding them.
+     * The queue's in-flight messages, grouped by the consumer holding them, each consumer tied to its client where the
+     * broker's consumer listings allow.
      *
      * <p>
      * Takes {@link QueueStats} rather than a name for two reasons: its {@code deliveringCount} decides whether the call
      * is affordable, and its {@code name} is the bare queue name — management resources refuse the FQQN a multicast
      * subscription is browsed by.
+     *
+     * <p>
+     * Over the limit the messages are not read, but the consumers still are: which client holds them, and how many, is
+     * most of the answer, and costs two small listings rather than one unbounded reply.
      */
     public InFlight inFlight(QueueStats stats)
     {
@@ -82,14 +90,15 @@ public class InFlightService
         }
         if (stats.deliveringCount() > limit)
         {
-            return new InFlight(stats.name(), stats.deliveringCount(), limit, true, false, List.of());
+            return new InFlight(stats.name(), stats.deliveringCount(), limit, true, false, holders(stats.name()));
         }
 
         Object result = brokerSession.requireManagement().invoke(ResourceNames.QUEUE + stats.name(),
                 "listDeliveringMessagesAsJSON");
+        InFlight read;
         try
         {
-            return parse(stats, result == null ? "[]" : result.toString());
+            read = parse(stats, result == null ? "[]" : result.toString(), System.currentTimeMillis());
         }
         catch (BrokerException e)
         {
@@ -100,9 +109,61 @@ public class InFlightService
             throw new BrokerException(
                     "Could not read the in-flight messages on '" + stats.name() + "': " + e.getMessage(), e);
         }
+        return new InFlight(read.queueName(), read.deliveringCount(), read.limit(), false, read.truncated(),
+                identify(stats.name(), read.consumers()));
     }
 
-    private InFlight parse(QueueStats stats, String json)
+    /** Consumers on the queue holding anything, known from the listings alone, with no messages. */
+    private List<InFlightConsumer> holders(String queueName)
+    {
+        List<InFlightConsumer> holders = new ArrayList<>();
+        for (BrokerConsumer consumer : brokerInfo.consumers())
+        {
+            if (queueName.equals(consumer.queueName()) && consumer.deliveringCount() > 0)
+            {
+                holders.add(new InFlightConsumer("", consumer.connectionId(), consumer.sessionId(),
+                        consumer.consumerId(), List.of()));
+            }
+        }
+        return identify(queueName, holders);
+    }
+
+    /**
+     * Ties each consumer to who it is. {@code listAllConsumersAsJSON} has the connection/session/consumer triple the
+     * delivering list is keyed by, and a {@code sequentialId}; {@code listConsumers} has the client id, remote address
+     * and protocol, under that same {@code sequentialId} as {@code id}. Neither listing alone connects the two.
+     */
+    private List<InFlightConsumer> identify(String queueName, List<InFlightConsumer> consumers)
+    {
+        if (consumers.stream().noneMatch(InFlightConsumer::identified))
+        {
+            return consumers;
+        }
+        Map<String, BrokerConsumer> byKey = new LinkedHashMap<>();
+        for (BrokerConsumer consumer : brokerInfo.consumers())
+        {
+            if (queueName.equals(consumer.queueName()))
+            {
+                byKey.put(consumer.key(), consumer);
+            }
+        }
+        Map<String, SubscriberConsumer> clients = new LinkedHashMap<>();
+        for (SubscriberConsumer client : brokerInfo.consumersOn(Set.of(queueName)))
+        {
+            clients.put(client.consumerId(), client);
+        }
+
+        List<InFlightConsumer> identified = new ArrayList<>(consumers.size());
+        for (InFlightConsumer consumer : consumers)
+        {
+            BrokerConsumer match = consumer.identified() ? byKey.get(consumer.key()) : null;
+            identified.add(match == null ? consumer
+                    : consumer.withClient(clients.get(match.sequentialId()), match.deliveringCount()));
+        }
+        return identified;
+    }
+
+    InFlight parse(QueueStats stats, String json, long now)
     {
         JsonNode root = objectMapper.readTree(json);
         List<InFlightConsumer> consumers = new ArrayList<>();
@@ -122,7 +183,7 @@ public class InFlightService
                         truncated = true;
                         break;
                     }
-                    messages.add(toMessage(element));
+                    messages.add(toMessage(element, now));
                     kept++;
                 }
                 consumers.add(consumer(entry.path("consumerName").asString(""), messages));
@@ -148,7 +209,7 @@ public class InFlightService
         return new InFlightConsumer(consumerName, null, null, null, messages);
     }
 
-    private InFlightMessage toMessage(JsonNode node)
+    private InFlightMessage toMessage(JsonNode node, long now)
     {
         long timestamp = node.path("timestamp").asLong(0L);
 
@@ -166,6 +227,9 @@ public class InFlightService
         return new InFlightMessage(node.path("userID").asString(""), node.path("messageID").asLong(0L),
                 TYPE_NAMES.getOrDefault(node.path("type").asInt(0), "Message"), node.path("priority").asInt(4),
                 node.path("durable").asBoolean(false), timestamp,
-                timestamp == 0 ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)), properties);
+                timestamp == 0 ? "" : TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(timestamp)),
+                // Age since it was sent: the reply has no delivery time, so this is not how long the
+                // consumer has held it, and the page does not call it that.
+                timestamp == 0 ? "" : AddressDetail.ageText(now - timestamp), properties);
     }
 }

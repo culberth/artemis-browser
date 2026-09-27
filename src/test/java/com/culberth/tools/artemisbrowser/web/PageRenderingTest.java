@@ -25,6 +25,10 @@ import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
 import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
+import com.culberth.tools.artemisbrowser.broker.InFlight;
+import com.culberth.tools.artemisbrowser.broker.InFlightConsumer;
+import com.culberth.tools.artemisbrowser.broker.InFlightMessage;
+import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
@@ -115,6 +119,9 @@ class PageRenderingTest
 
     @MockitoBean
     private QueueBrowseService browseService;
+
+    @MockitoBean
+    private InFlightService inFlightService;
 
     @MockitoBean
     private MessageSearchService searchService;
@@ -361,6 +368,69 @@ class PageRenderingTest
 
         page("/queues?name=" + QUEUE).andExpect(content().string(containsString("in flight to a consumer")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("This queue is empty."))));
+    }
+
+    @Test
+    @DisplayName("the in-flight panel lists each consumer's messages, says why there is no body, and is linked to")
+    void rendersTheInFlightPanel() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 3, 0, 2, 3, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        InFlightMessage held = new InFlightMessage("ID:held-1", 30L, "Text", 4, true, 1L, "2026-09-27 10:00:00",
+                "4m 12s", Map.of("region", "eu"));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 3, 5000, false, false, List.of(
+                new InFlightConsumer("ServerConsumer [id=c:s:0, filter=null]", "c", "s", "0", List.of(held),
+                        new SubscriberConsumer("7", QUEUE, "billing-worker", "artemis", "10.0.0.7:5000", "AMQP", "", 3,
+                                0),
+                        3L),
+                new InFlightConsumer("Unrecognised [thing]", null, null, null, List.of(held)))));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("id=\"in-flight\"")))
+                .andExpect(content().string(containsString("href=\"#in-flight\"")))
+                .andExpect(content().string(containsString("billing-worker")))
+                .andExpect(content().string(containsString("10.0.0.7:5000")))
+                .andExpect(content().string(containsString("holding 3")))
+                .andExpect(content().string(containsString("ID:held-1")))
+                .andExpect(content().string(containsString("4m 12s ago")))
+                .andExpect(content().string(containsString("region=eu")))
+                .andExpect(content().string(containsString("no body")))
+                .andExpect(content().string(containsString("2 more held by this consumer")))
+                .andExpect(content().string(containsString("Unrecognised [thing]")));
+    }
+
+    @Test
+    @DisplayName("over the limit, the in-flight panel names the holders and says the messages were not read")
+    void rendersTheInFlightPanelOverTheLimit() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 9000, 9000, 0, 1, 9000, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, "region = 'eu'", 1, 50, 0, List.of()));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 9000, 5000, true, false,
+                List.of(new InFlightConsumer("", "c", "s", "0", List.of(), null, 9000L))));
+
+        page("/queues?name=" + QUEUE + "&filter=region = 'eu'")
+                .andExpect(content().string(containsString("more than the 5000 this page will list")))
+                .andExpect(content().string(containsString("c:s:0")))
+                .andExpect(content().string(containsString("holding 9000")))
+                .andExpect(content().string(containsString("filter above is not applied here")))
+                .andExpect(content().string(containsString("listed below")));
+    }
+
+    @Test
+    @DisplayName("a failure reading in-flight messages leaves the rest of the queue page standing")
+    void rendersTheQueuePageWhenInFlightFails() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 1, 0, 1, 3, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(
+                new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"), summary(2, "ID:bbb"))));
+        given(inFlightService.inFlight(stats)).willThrow(new BrokerException("delivering list unavailable"));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("ID:aaa")))
+                .andExpect(content().string(containsString("delivering list unavailable")));
     }
 
     @Test

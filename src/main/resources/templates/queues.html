@@ -71,7 +71,7 @@
         </h2>
         <div class="stats">
             <div class="stat"><span class="k">Messages</span><span class="v" th:text="${stats.messageCount()}">0</span></div>
-            <div class="stat"><span class="k">Delivering</span><span class="v" th:text="${stats.deliveringCount()}">0</span></div>
+            <div class="stat"><span class="k">Delivering</span><span class="v"><a th:if="${inFlight != null or inFlightError != null}" href="#in-flight" th:text="${stats.deliveringCount()}">0</a><span th:unless="${inFlight != null or inFlightError != null}" th:text="${stats.deliveringCount()}">0</span></span></div>
             <div class="stat"><span class="k">Scheduled</span><span class="v" th:text="${stats.scheduledCount()}">0</span></div>
             <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${stats.consumerCount()}">0</span></div>
             <div class="stat"><span class="k">Added</span><span class="v" th:text="${stats.messagesAdded()}">0</span></div>
@@ -115,9 +115,9 @@
                   Messages delivered to a consumer and not yet acknowledged cannot be browsed at all, so a
                   queue whose every message is in flight browses as empty while its counter says otherwise.
                 -->
-                <span th:if="${scheduled == null and stats != null and stats.deliveringCount() > 0}"
-                      th:text="'Nothing is waiting. The ' + ${stats.deliveringCount()} + ' message(s) the queue reports are in flight to a consumer and not yet acknowledged, which the broker does not return from a browse.'">
-                    Nothing is waiting.</span>
+                <span th:if="${scheduled == null and stats != null and stats.deliveringCount() > 0}"><span
+                      th:text="'Nothing is waiting. The ' + ${stats.deliveringCount()} + ' message(s) the queue reports are in flight to a consumer and not yet acknowledged, which the broker does not return from a browse'">
+                    Nothing is waiting.</span> &mdash; <a href="#in-flight">see what is in flight</a>.</span>
                 <!--
                   The broker counts scheduled messages but does not return them from a browse, so an
                   empty table on a queue that reports messages is expected rather than a failure.
@@ -129,7 +129,8 @@
             </span>
             <span th:unless="${#strings.isEmpty(messages.filter())}">No waiting message matches that filter<span
                     th:if="${stats != null and stats.deliveringCount() > 0}"
-                    th:text="' — ' + ${stats.deliveringCount()} + ' in flight to a consumer could not be searched'"></span>.</span>
+                    th:text="' — ' + ${stats.deliveringCount()} + ' in flight to a consumer could not be searched'"></span><span
+                    th:if="${stats != null and stats.deliveringCount() > 0}"> (<a href="#in-flight">listed below</a>, unfiltered)</span>.</span>
         </p>
 
         <div class="table-scroll" th:unless="${messages.messages().isEmpty()}">
@@ -222,6 +223,101 @@
                 appear in the list above once their delivery time arrives.
             </p>
         </div>
+    </div>
+    <!--
+      Delivered and not yet acknowledged: invisible to browse, read from listDeliveringMessagesAsJSON.
+      Headers and properties only, and no delivery time - the page says both rather than implying either.
+    -->
+    <div class="panel" id="in-flight" th:if="${inFlight != null or inFlightError != null}">
+        <h2 style="margin-top:0">
+            In flight
+            <span class="muted" th:if="${inFlight != null}" th:text="'(' + ${inFlight.deliveringCount()} + ')'">(0)</span>
+            <span class="muted" style="font-weight:normal">&mdash; delivered to a consumer, not yet
+                acknowledged, and not part of the list above</span>
+        </h2>
+        <div class="error" th:if="${inFlightError}" th:text="${inFlightError}">error</div>
+
+        <th:block th:if="${inFlight != null}">
+            <p class="note">
+                &ldquo;In flight&rdquo; includes messages waiting in a consumer&rsquo;s client-side buffer
+                (its consumer window), not only ones its application is working on &mdash; which is also how
+                one consumer can hold messages the others on this queue never see.
+                The broker returns <strong>no body</strong> for these, so they cannot be opened.
+                <strong>Sent</strong> is when a message was produced: the broker does not report when it
+                was delivered, so its age is not how long a consumer has held it.
+            </p>
+            <p class="note" th:unless="${#strings.isEmpty(filter)}">
+                The filter above is not applied here: the broker cannot filter in-flight messages, and this
+                tool does not evaluate filters itself.
+            </p>
+            <div class="error" th:if="${inFlight.notRead()}"
+               th:text="${inFlight.deliveringCount()} + ' messages are in flight, more than the ' + ${inFlight.limit()} + ' this page will list (artemis.in-flight-limit). The broker returns them all at once with no paging, so they were not read. The consumers holding them are below.'">
+                Too many to list.</div>
+            <div class="error" th:if="${inFlight.truncated()}"
+               th:text="'More came back than the ' + ${inFlight.limit()} + ' this page will list; only the first ' + ${inFlight.limit()} + ' were kept.'">
+                Truncated.</div>
+            <p class="muted" th:if="${inFlight.consumers().isEmpty()}">
+                No consumer holds anything now &mdash; what was in flight when the queue was read has since
+                been acknowledged or returned.
+            </p>
+
+            <div th:each="c : ${inFlight.consumers()}" style="margin-top:1.25rem">
+                <h3 style="margin:0 0 .5rem">
+                    <th:block th:if="${c.client() != null}">
+                        <span th:text="${#strings.isEmpty(c.client().clientId()) ? 'Consumer ' + c.client().consumerId() : c.client().clientId()}">client</span>
+                        <span class="badge" th:unless="${#strings.isEmpty(c.client().protocol())}" th:text="${c.client().protocol()}">CORE</span>
+                        <span class="muted" style="font-weight:normal" th:unless="${#strings.isEmpty(c.client().remoteAddress())}"
+                              th:text="'from ' + ${c.client().remoteAddress()}">from 10.0.0.1</span>
+                    </th:block>
+                    <th:block th:if="${c.client() == null and c.identified()}">
+                        <span>Consumer</span>
+                        <code style="font-weight:normal" th:text="${c.key()}">conn:session:0</code>
+                    </th:block>
+                    <th:block th:if="${!c.identified()}">
+                        <span>Consumer</span>
+                        <span class="muted" style="font-weight:normal">(not matched to a client)</span>
+                    </th:block>
+                    <span class="muted" style="font-weight:normal" th:text="'— holding ' + ${c.holding()}">&mdash; holding 0</span>
+                </h3>
+                <p class="note" th:if="${!c.identified()}">
+                    The broker described this consumer in a form this tool does not recognise, so it is shown
+                    as the broker gave it: <code th:text="${c.consumerName()}">ServerConsumer [...]</code>
+                </p>
+                <div class="table-scroll" th:unless="${c.messages().isEmpty()}">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Message ID</th>
+                            <th>Sent</th>
+                            <th>Type</th>
+                            <th class="num">Priority</th>
+                            <th>Properties</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="m : ${c.shown()}">
+                            <td><code class="muted" th:text="${m.messageId()}">ID</code></td>
+                            <td>
+                                <span th:text="${m.timestampText()}">2026-01-01 00:00:00</span>
+                                <span class="muted" th:unless="${#strings.isEmpty(m.ageText())}"
+                                      th:text="'(' + ${m.ageText()} + ' ago)'">(1m ago)</span>
+                            </td>
+                            <td th:text="${m.type()}">Text</td>
+                            <td class="num" th:text="${m.priority()}">4</td>
+                            <td class="props-cell">
+                                <span th:if="${m.properties().isEmpty()}" class="muted">&mdash;</span>
+                                <span th:each="p : ${m.properties()}" class="badge"
+                                      th:title="${p.key} + ' = ' + ${p.value}"
+                                      th:text="${p.key} + '=' + ${p.value}">k=v</span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="muted" th:if="${c.notShown() > 0 and !c.messages().isEmpty()}"
+                   th:text="'…and ' + ${c.notShown()} + ' more held by this consumer, not shown.'">…and more.</p>
+            </div>
+        </th:block>
     </div>
 </div>
 </body>

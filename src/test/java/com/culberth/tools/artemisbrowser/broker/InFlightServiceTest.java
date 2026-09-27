@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
+import java.util.Set;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +45,7 @@ class InFlightServiceTest
 
     private BrokerSession brokerSession;
     private ManagementChannel management;
+    private BrokerInfoService brokerInfo;
 
     @BeforeEach
     void mocks()
@@ -51,6 +53,9 @@ class InFlightServiceTest
         brokerSession = mock(BrokerSession.class);
         management = mock(ManagementChannel.class);
         given(brokerSession.requireManagement()).willReturn(management);
+        brokerInfo = mock(BrokerInfoService.class);
+        given(brokerInfo.consumers()).willReturn(List.of());
+        given(brokerInfo.consumersOn(Set.of("work"))).willReturn(List.of());
     }
 
     @Test
@@ -118,6 +123,62 @@ class InFlightServiceTest
     }
 
     @Test
+    @DisplayName("each consumer is tied to its client through both listings, and holds the broker's own count")
+    void matchesConsumersToClients()
+    {
+        reply("[" + entry(OPENWIRE_CONSUMER, OPENWIRE_ELEMENT) + "," + entry("Unrecognised [x]", CORE_ELEMENT) + "]");
+        given(brokerInfo.consumers()).willReturn(List.of(
+                new BrokerConsumer("0", "work", "d46364be", "ID:DESKTOP-LBV5B35-63679-1790546223121-1:1:1", "126380",
+                        false, 10, 10, 0, "OK", false),
+                // Same consumer number on another queue: must not match.
+                new BrokerConsumer("0", "other", "d46364be", "ID:DESKTOP-LBV5B35-63679-1790546223121-1:1:1", "9", false,
+                        1, 1, 0, "OK", false)));
+        given(brokerInfo.consumersOn(Set.of("work"))).willReturn(List.of(new SubscriberConsumer("126380", "work",
+                "openwire-holder", "artemis", "172.17.0.1:44324", "OPENWIRE", "", 10, 0)));
+
+        InFlight inFlight = service(5000).inFlight(stats(2));
+
+        InFlightConsumer matched = inFlight.consumers().get(0);
+        assertEquals("openwire-holder", matched.client().clientId());
+        assertEquals(10L, matched.inTransit());
+        assertEquals(10L, matched.holding(), "the broker's count, not the one message listed");
+        assertEquals(9L, matched.notShown());
+
+        InFlightConsumer unmatched = inFlight.consumers().get(1);
+        assertNull(unmatched.client());
+        assertEquals(1L, unmatched.holding());
+    }
+
+    @Test
+    @DisplayName("over the limit, the consumers holding the messages are still named, from the listings alone")
+    void namesHoldersAboveTheLimit()
+    {
+        given(brokerInfo.consumers()).willReturn(
+                List.of(new BrokerConsumer("0", "work", "conn-a", "sess-a", "7", false, 150, 150, 0, "OK", false),
+                        new BrokerConsumer("1", "work", "conn-b", "sess-b", "8", false, 0, 4, 4, "OK", false)));
+        given(brokerInfo.consumersOn(Set.of("work"))).willReturn(
+                List.of(new SubscriberConsumer("7", "work", "hoarder", "artemis", "10.0.0.1:1", "CORE", "", 150, 0)));
+
+        InFlight inFlight = service(100).inFlight(stats(150));
+
+        assertTrue(inFlight.notRead());
+        assertEquals(1, inFlight.consumers().size(), "a consumer holding nothing is not a holder");
+        assertEquals("hoarder", inFlight.consumers().get(0).client().clientId());
+        assertEquals(150L, inFlight.consumers().get(0).holding());
+        verifyNoInteractions(management);
+    }
+
+    @Test
+    @DisplayName("an in-flight message's age is measured from when it was sent")
+    void agesFromSendTime()
+    {
+        InFlight inFlight = service(5000).parse(stats(1), "[" + entry(CORE_CONSUMER, CORE_ELEMENT) + "]",
+                1790546131370L + 125_000L);
+
+        assertEquals("2m 5s", inFlight.consumers().get(0).messages().get(0).ageText());
+    }
+
+    @Test
     @DisplayName("nothing delivering means nothing to ask")
     void doesNotAskWhenNothingIsInFlight()
     {
@@ -155,7 +216,7 @@ class InFlightServiceTest
 
     private InFlightService service(int limit)
     {
-        return new InFlightService(brokerSession, limit);
+        return new InFlightService(brokerSession, brokerInfo, limit);
     }
 
     private static QueueStats stats(long delivering)

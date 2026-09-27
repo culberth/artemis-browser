@@ -44,7 +44,7 @@ class ReadOnlyGuaranteeIT
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         search = new MessageSearchService(brokerSession, queues, browse, 50);
-        inFlight = new InFlightService(brokerSession, 5000);
+        inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
     }
 
     @AfterAll
@@ -107,6 +107,8 @@ class ReadOnlyGuaranteeIT
                 assertEquals(5, held.listedCount());
                 assertEquals(1, held.consumers().size());
                 assertTrue(held.consumers().get(0).identified(), held.consumers().get(0).consumerName());
+                assertTrue(held.consumers().get(0).client() != null, "the holder was not matched to a client");
+                assertEquals(5L, held.consumers().get(0).inTransit());
             }
             finally
             {

@@ -189,6 +189,9 @@ from — a wrong parse here yields a believable number rather than an error.
   all four. OpenWire elements also carry `__HDR_*` headers (`__HDR_MESSAGE_ID`, `__HDR_ARRIVAL`…)
   as properties. `listConsumers` has `protocol` per consumer. The artemis CLI has no OpenWire
   consumer; `activemq-client` 6.1.7 (jakarta) resolves through Nexus for a throwaway one.
+- **The queue page's pager counts in-flight messages** (seen 2026-09-27, not yet fixed): 250 all in
+  flight showed "showing 0–0 of 250 … Page 1 of 5" over an empty table, because `countMessages`
+  includes delivering ones and `browse` does not. Whether a *filtered* count includes them is unchecked.
 - **`AddressDetailIT.measuresLagByAge` was red on `main`** from af9a664 to 2026-09-27: that commit's
   60s-gap rule for "furthest behind" correctly returns null for a feed seeded in one burst, and the IT
   still expected a mark. Run `-Pintegration` after changing a heuristic, not just unit tests.
