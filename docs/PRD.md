@@ -1,10 +1,10 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 11 merged 2026-09-27 (PR #24).** Phases 1–9 shipped and the project was declared
+Status: **Phase 12 planned 2026-09-27; Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
-*Phase 10* and *Phase 11* below, and *Queued after Phase 11* for what was chosen next. The tool is run by one person, which is what settles the open questions about replicas,
+*Phase 10*, *Phase 11* and *Phase 12* below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
 Last updated: 2026-09-27.
 
@@ -444,30 +444,85 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 - **Delivery times.** Not in the reply.
 - **Anything that releases, redelivers or re-routes an in-flight message.** Not read-only.
 
-## Queued after Phase 11
+## Phase 12 — Where messages went, whether they are moving, and who is doing it
 
-Chosen 2026-09-27 from a list of candidates, to be taken up once Phase 11 merges. Not yet phases:
-each becomes one, or joins one, when it is started. Every item begins the way Phases 10 and 11 did —
-the broker is asked first and its answers recorded, before anything is parsed.
+Planned 2026-09-27 on the author's request. It takes the three items queued before Phase 11, the
+pager bug Phase 11 found, and one new item the author chose from a suggested list: rates. What ties
+them together is the question the tool still answers worst — *is anything happening, and to whom?*
+Today every page is one snapshot, starts from a queue or an address, and cannot say where a message
+went if it is in neither a queue nor the dead-letter queue.
 
+Every item is a read. Every item begins the way Phases 10 and 11 did: the broker is asked first and
+its answers recorded in `.claude/memory.md`, before anything is parsed.
+
+### P0 — correct what is there, and measure what is new
+
+- [ ] **The pager counts messages browse cannot return.** With 250 messages all in flight, the
+      queue page reads "showing 0–0 of 250 … Page 1 of 5" over an empty table: the total comes from
+      `countMessages`, which includes in-flight messages — and scheduled ones — while `browse`
+      returns neither. First check on a broker what `countMessages(filter)` includes when a filter is
+      given; then page by what browse can reach (waiting = messages − delivering − scheduled, when
+      unfiltered), and let the in-flight panel and the scheduled list account for the rest.
 - [ ] **Measure the new pages at scale.** Phase 7 measured every page at 100,000 messages; nothing
       has measured `/address`, which makes one `firstMessageAge` read per non-empty subscription and
-      one read per divert field, or Phase 11's in-flight panel, whose reply has no paging. Seed an
-      address with a few hundred subscriptions and a consumer buffering thousands of messages, time
-      each page end to end, and add the rows to *Measured limits* in `.claude/memory.md`. Done means
-      numbers, not a feeling — and a fix, such as capping the per-subscription reads, only if a
-      number calls for one.
-- [ ] **A page per client.** Every view today starts from a queue or an address; this one starts
-      from "what is `billing-svc` doing?" — its connections, sessions, what it consumes and produces,
-      and what it holds in flight. Pairs with Phase 11. First establish what identifies a client
-      across the listings: whether `listConnectionsAsJSON` carries the client id, and what
-      `listSessionsAsJSON(connectionID)` and `listConsumersAsJSON(connectionID)` return.
-- [ ] **Show expired and killed counts.** `listQueues` already returns `messagesExpired` and
-      `messagesKilled` for every queue, quoted like the other counters; the tool reads neither. They
-      answer "where did my messages go" when the dead-letter queue is empty. First confirm on a
-      broker what each counts — killed is expected to mean "exceeded max delivery attempts", whether
-      then dead-lettered or dropped — then show them on the queue page, the overview and the address
-      page, with a diagnose finding for messages killed or expired with no address to go to.
+      one read per divert field; Phase 11's in-flight panel, whose reply has no paging; the ID
+      lookup, which reads a delivering list on every queue with anything in flight; or diagnose's
+      in-flight budget. Seed an address with a few hundred subscriptions and consumers buffering
+      thousands of messages, time each page end to end, and add the rows to *Measured limits* in
+      `.claude/memory.md`. Done means numbers, not a feeling — and a fix, such as capping the
+      per-subscription reads, only where a number calls for one.
+
+### P1 — expired and killed: where messages went when they are not in the dead-letter queue
+
+- [ ] **Confirm what each counter counts.** `listQueues` already returns `messagesExpired` and
+      `messagesKilled` for every queue, quoted like the other counters; the tool reads neither.
+      Killed is expected to mean "exceeded max delivery attempts" — check whether it counts a message
+      that was then dead-lettered, one that was dropped for want of a dead-letter address, or both.
+      Likewise for expired and the expiry address.
+- [ ] **Show them** on the queue page, the overview (sortable, like the other counters) and the
+      address page's subscription table.
+- [ ] **A diagnose finding for messages killed or expired with nowhere to go**: a non-zero counter
+      on a queue whose address settings name no dead-letter or expiry address, or name one that does
+      not exist (the address page already detects the latter). Those messages are gone, and nothing
+      else reports it. The settings read is one per affected address, only when a counter is non-zero.
+
+### P2 — rates: is it moving?
+
+- [ ] **Messages in and out per second, per queue**, from the difference between two readings of
+      `messagesAdded` and `messagesAcknowledged`. Recommended source: the previous reading kept in
+      the HTTP session, so the overview's auto-refresh yields a rate on every refresh after the first
+      at no extra cost, and a page with no previous reading says so rather than showing zero. A
+      counter that went *down* means the broker restarted; that interval shows no rate.
+- [ ] **Shown on the overview and the queue page**, with the interval it was measured over.
+- [ ] **Diagnose uses them where one snapshot could not.** The abandoned-subscription finding can
+      say "still growing" when it is; the long-in-flight finding can tell "this queue is
+      acknowledging N/s" (working through a backlog) from "acknowledged nothing in the last N
+      seconds" (stuck). Diagnose takes a second reading a few seconds after the first when the
+      session has none recent enough — measured, and said on the page, since it makes the page
+      slower.
+
+### P3 — a page per client
+
+- [ ] **Establish what identifies a client across the listings**, on a broker, before building
+      anything: whether `listConnectionsAsJSON` carries the client id; what
+      `listSessionsAsJSON(connectionID)` and `listConsumersAsJSON(connectionID)` return; and how a
+      client with no client id — common for plain CORE and AMQP clients — can be named at all
+      (user and remote address are the likely fallback). Each operation is added to
+      `ManagementChannel`'s allowlist only once its shape is recorded.
+- [ ] **`/client`**: a client's connections (remote address, protocol, since when), sessions, the
+      queues it consumes from with each consumer's delivered, acknowledged and in-flight counts, and
+      the addresses it produces to. Linked from every place a client is named today: the in-flight
+      panel, the address page's consumer table, `/broker`, and the hoarding and long-in-flight
+      findings.
+- [ ] **What it holds in flight**, from the consumer listing's counts, linking to each queue's
+      in-flight panel rather than reading every delivering list again.
+
+### Considered and left out
+
+- **Alerting on a rate.** Out of scope, as ever: this shows rates, it does not watch them.
+- **Rate history or charts.** Needs storage that outlives a page load; one interval is the answer
+  to "is it moving now".
+- **Closing a client's connection** from its page. Not read-only.
 
 ## Open questions
 
