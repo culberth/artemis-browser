@@ -135,7 +135,7 @@ class AddressDetailIT
     }
 
     @Test
-    @DisplayName("lag is the age of the oldest undelivered message, and the oldest subscription is furthest behind")
+    @DisplayName("lag is the age of the oldest undelivered message, and one burst marks no subscription furthest behind")
     void measuresLagByAge()
     {
         AddressDetail detail = detail();
@@ -143,7 +143,10 @@ class AddressDetailIT
 
         assertNotNull(detail.oldestUndelivered(abandoned));
         assertTrue(detail.oldestUndelivered(abandoned) >= 0);
-        assertNotNull(detail.furthestBehind(), "three subscriptions hold messages, so one is furthest behind");
+        // The feed was published in one burst, so every subscription's oldest message is the same
+        // age to within milliseconds — no subscriber is behind another, and none is marked.
+        // SubscriberLagTest covers the case where one clearly is.
+        assertNull(detail.furthestBehind(), "subscriptions a few milliseconds apart were told apart");
     }
 
     @Test
