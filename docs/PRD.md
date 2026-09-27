@@ -1,10 +1,10 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 11 in progress — reopened 2026-09-27 for in-flight messages.** Phases 1–9 shipped
-and the project was declared feature-complete; it was reopened on 2026-09-27 for one theme —
-subscription inspection — and Phase 10 merged the same day (PR #19). It was reopened again the same
-day, on request, for a second theme: messages delivered to a consumer and not yet acknowledged. See
-*Phase 10* and *Phase 11* below. The tool is run by one person, which is what settles the open questions about replicas,
+Status: **Phase 11 merged 2026-09-27 (PR #24).** Phases 1–9 shipped and the project was declared
+feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
+Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
+theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
+*Phase 10* and *Phase 11* below, and *Queued after Phase 11* for what was chosen next. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
 Last updated: 2026-09-27.
 
