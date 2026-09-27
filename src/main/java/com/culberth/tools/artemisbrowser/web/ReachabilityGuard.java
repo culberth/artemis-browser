@@ -63,7 +63,14 @@ public class ReachabilityGuard
      */
     private boolean loopbackOnly()
     {
-        return !bindAddress.isEmpty() && AllowedHostFilter.isLoopbackHost(bindAddress);
+        return loopbackOnly(bindAddress);
+    }
+
+    /** Shared with {@link SecurityConfig}, which only runs without a login when this holds. */
+    static boolean loopbackOnly(String bindAddress)
+    {
+        String address = bindAddress == null ? "" : bindAddress.trim();
+        return !address.isEmpty() && AllowedHostFilter.isLoopbackHost(address);
     }
 
     private String refusal(String because)

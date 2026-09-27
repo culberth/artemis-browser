@@ -197,10 +197,12 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
 - **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
   turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
   templates are LF; `docs/PRD.md` is CRLF. Check `git diff --stat` after any scripted edit.
-- **Checking a page live needs the tool's own login** (2026-09-27): a local `mvn spring-boot:run`
-  shows the sign-in form, and with `artemis.auth.*` blank nobody can sign in — although the README
-  says the loopback default needs no login. For verification without a browser, an `*IT` against
-  `ArtemisBrokerSupport` exercises the same service calls.
+- **`@WithMockUser` does not authenticate in these MockMvc tests** (2026-09-27, Boot 4.1.1): in the
+  full-context `SecurityConfigTest` a request under it was redirected to `/login`, and in
+  `PageRenderingTest` the page rendered with no `Principal`. A CSRF test "passed" on that redirect
+  from Phase 7 on. Sign in for real (`signedIn()` in `SecurityConfigTest`) and pin the redirect target.
+- **A local run needs no login** since 2026-09-27 — before that the default `mvn spring-boot:run`
+  opened on a sign-in form nobody could pass, despite the README. See `SecurityConfig.openLocally`.
 
 ## Testing
 
