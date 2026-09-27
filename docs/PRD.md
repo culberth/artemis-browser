@@ -208,29 +208,28 @@ answer is that nothing is asking it to be.
 
 ### Closed as won't do — 2026-09-20
 
-The two items the Phase 8 entry left open are closed, not deferred. Both were only ever downstream
+The two items the Phase 8 entry left open were closed, not deferred. Both were only ever downstream
 of one question — whether anyone other than the author runs this — and the answer is no. They are
-recorded here with the reasoning so they are not rediscovered as gaps and quietly reopened.
+recorded here with the reasoning so they are not rediscovered as gaps and quietly reopened. One of
+them, HTTPS in the browser, was later done anyway (2026-09-27); the session store stays won't-do.
 
 - **An external session store.** ~~A second replica needs one.~~ **Won't do.** A single replica is
   correct for a single user, and "one broker per HTTP session" is a stated constraint rather than a
   limitation to engineer around. What this would actually buy is surviving a pod restart without
   dropping the session *and* the broker connection with it — which matters to a team and not to one
   person who can simply connect again.
-- **A real certificate on the ingress, and browsing over HTTPS.** ~~The browser→ingress hop is
-  plaintext and the pod's certificate is self-signed.~~ **Won't do.** The self-signed certificate
-  is the right answer for a local cluster, and a real one would be ceremony without a threat it
-  addresses on a single-user loopback-adjacent deployment. Worth restating plainly: this is a
-  **local-cluster arrangement**, and the honest reason it stays one is that nothing else is asking
-  it to change.
+- [x] **A certificate on the ingress, and browsing over HTTPS.** ~~The browser→ingress hop is
+  plaintext and the pod's certificate is self-signed.~~ **Done 2026-09-27**, having first been
+  closed as won't do. The ingress serves HTTPS, and redirects HTTP to it, whenever the
+  `artemis-browser-ingress-tls` Secret exists; `scripts/new-tls-secret.ps1` makes it with mkcert, and
+  the install stays plain HTTP until it does. Over HTTPS the session cookie is `Secure; HttpOnly` and
+  ingress-nginx adds HSTS. The certificate comes from mkcert's local CA, trusted on this machine
+  alone rather than publicly — which is the right fit for a single-user local cluster, and why this
+  is still a **local-cluster arrangement** rather than a deployment. The pod's own certificate, which
+  only the ingress sees, is still self-signed.
 
-  *Partly done anyway, 2026-09-27:* the ingress now serves HTTPS when an mkcert certificate exists
-  (`scripts/new-tls-secret.ps1`), so browsing over HTTPS works on this machine. The certificate
-  comes from a CA trusted only here, not a real one, so the arrangement is still local-cluster and
-  the reasoning above for going no further still stands.
-
-If that answer ever changes, the **first** thing to decide is not either of the above — it is the
-login. The tool authenticates against one configured account, so a team shares one password: no
+If that answer ever changes, the **first** thing to decide is not a certificate or a session store — it
+is the login. The tool authenticates against one configured account, so a team shares one password: no
 record of who read which queue, and rotating it means telling everyone at once. That is the same
 shape of decision Phase 7 made deliberately rather than by erosion, and it would come before any
 certificate or session store.
