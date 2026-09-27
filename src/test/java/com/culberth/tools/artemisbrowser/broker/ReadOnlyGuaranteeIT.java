@@ -43,8 +43,8 @@ class ReadOnlyGuaranteeIT
         brokerSession = ArtemisBrokerSupport.connect();
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
-        search = new MessageSearchService(brokerSession, queues, browse, 50);
         inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
+        search = new MessageSearchService(brokerSession, queues, browse, inFlight, 50);
     }
 
     @AfterAll
@@ -92,7 +92,8 @@ class ReadOnlyGuaranteeIT
                 // Two received and never acknowledged; the other three sit in the consumer's buffer,
                 // which the broker counts as delivering too.
                 MessageConsumer consumer = session.createConsumer(session.createQueue(queue));
-                assertTrue(consumer.receive(5000) != null && consumer.receive(5000) != null);
+                jakarta.jms.Message first = consumer.receive(5000);
+                assertTrue(first != null && consumer.receive(5000) != null);
                 awaitDelivering(queue, 5);
 
                 Map<String, String> before = counters();
@@ -102,6 +103,13 @@ class ReadOnlyGuaranteeIT
                     held = inFlight.inFlight(queues.stats(queue));
                     readEverything();
                 }
+                // A search by its ID finds the held message in flight, where browse alone cannot see it.
+                SearchResult byId = search.search(first.getJMSMessageID(), false);
+                assertEquals(0, byId.totalMatches(), "browse should not see a message in flight");
+                assertEquals(1, byId.inFlight().size(), "the ID lookup did not find the message in flight");
+                assertEquals(queue, byId.inFlight().get(0).queueName());
+                assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
+
                 assertEquals(before, counters(), "reading the in-flight messages moved a counter");
 
                 assertEquals(5, held.listedCount());
@@ -211,7 +219,7 @@ class ReadOnlyGuaranteeIT
         search.search("AMQPriority >= 0", true);
         new BrokerInfoService(brokerSession).consumers();
         AddressDetailService addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession));
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight);
         for (AddressOverview address : new AddressDirectory(brokerSession, queues).overview())
         {
             AddressDetail detail = addresses.detail(address.name());

@@ -172,7 +172,7 @@ class InFlightServiceTest
     @DisplayName("an in-flight message's age is measured from when it was sent")
     void agesFromSendTime()
     {
-        InFlight inFlight = service(5000).parse(stats(1), "[" + entry(CORE_CONSUMER, CORE_ELEMENT) + "]",
+        InFlight inFlight = service(5000).parse("work", 1, "[" + entry(CORE_CONSUMER, CORE_ELEMENT) + "]",
                 1790546131370L + 125_000L);
 
         assertEquals("2m 5s", inFlight.consumers().get(0).messages().get(0).ageText());
@@ -202,6 +202,26 @@ class InFlightServiceTest
         assertTrue(inFlight.truncated());
         assertEquals(3, inFlight.listedCount());
         assertEquals(2, inFlight.consumers().size(), "the second consumer is still named, with what fitted");
+    }
+
+    @Test
+    @DisplayName("locating one message by ID: found with its holder, a clean miss, or unknown when not all was read")
+    void locatesByMessageId()
+    {
+        reply("[" + entry(CORE_CONSUMER, CORE_ELEMENT) + "," + entry(OPENWIRE_CONSUMER, OPENWIRE_ELEMENT) + "]");
+
+        InFlightLookup found = service(5000).locate("work", 2, "ID:5f6ce32b");
+        assertTrue(found.found());
+        assertEquals("d46364be", found.holder().connectionId());
+        assertEquals(126370L, found.message().coreId());
+
+        InFlightLookup missing = service(5000).locate("work", 2, "ID:not-here");
+        assertTrue(missing.checked());
+        assertFalse(missing.found());
+
+        // Cut at one message, the OpenWire consumer's was never looked at: that is not a "no".
+        assertFalse(service(1).locate("work", 1, "ID:not-here").checked());
+        assertFalse(service(1).locate("work", 2, "ID:not-here").checked(), "over the limit, not even asked");
     }
 
     private void reply(String json)

@@ -278,6 +278,7 @@ com.culberth.tools.artemisbrowser
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── InFlightService            Delivered-not-acked messages, which browse cannot see; capped, tied to their clients
+│   ├── MessageIdLookup            Recognises an exact message-ID search, the one kind in-flight messages can answer
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
@@ -287,7 +288,7 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
-│   │   / InFlight / InFlightConsumer / InFlightMessage
+│   │   / InFlight / InFlightConsumer / InFlightMessage / InFlightLookup
 │   │                              Queue and message view models, including FQQN browse-name handling
 │   ├── AddressDetail / Subscription / SubscriberConsumer / SubscriptionSearch
 │   │   / AddressRouting / AddressSettings / Divert

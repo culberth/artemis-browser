@@ -189,6 +189,11 @@ from — a wrong parse here yields a believable number rather than an error.
   all four. OpenWire elements also carry `__HDR_*` headers (`__HDR_MESSAGE_ID`, `__HDR_ARRIVAL`…)
   as properties. `listConsumers` has `protocol` per consumer. The artemis CLI has no OpenWire
   consumer; `activemq-client` 6.1.7 (jakarta) resolves through Nexus for a throwaway one.
+- **Message IDs agree across read paths (2026-09-27, CORE)**: browse's `userID`, the delivering
+  list's `userID` and the consumer's `JMSMessageID` are the same string. Core filter
+  `AMQUserID = 'ID:…'` finds it; without the `ID:` prefix, or as `JMSMessageID = '…'`, it silently
+  matches nothing. OpenWire differs: its own `JMSMessageID` travels as `__HDR_MESSAGE_ID`, while
+  `userID` is Artemis-generated — this tool shows and looks up `userID`. Unverified for lookup.
 - **The queue page's pager counts in-flight messages** (seen 2026-09-27, not yet fixed): 250 all in
   flight showed "showing 0–0 of 250 … Page 1 of 5" over an empty table, because `countMessages`
   includes delivering ones and `browse` does not. Whether a *filtered* count includes them is unchecked.

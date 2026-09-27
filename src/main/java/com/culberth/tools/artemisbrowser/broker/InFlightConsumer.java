@@ -45,6 +45,25 @@ public record InFlightConsumer(String consumerName, String connectionId, String 
         return identified() ? connectionId + ":" + sessionId + ":" + consumerId : null;
     }
 
+    /** Who this is, in words: the client id where there is one, else whatever the broker gave to go on. */
+    public String describe()
+    {
+        if (client != null)
+        {
+            StringBuilder text = new StringBuilder(
+                    client.clientId().isEmpty() ? "consumer " + client.consumerId() : client.clientId());
+            String protocol = client.protocol();
+            String remote = client.remoteAddress();
+            if (!protocol.isEmpty() || !remote.isEmpty())
+            {
+                text.append(" (").append(protocol).append(!protocol.isEmpty() && !remote.isEmpty() ? ", " : "")
+                        .append(remote).append(')');
+            }
+            return text.toString();
+        }
+        return identified() ? "consumer " + key() : "a consumer this tool could not identify";
+    }
+
     public InFlightConsumer withClient(SubscriberConsumer client, Long inTransit)
     {
         return new InFlightConsumer(consumerName, connectionId, sessionId, consumerId, messages, client, inTransit);

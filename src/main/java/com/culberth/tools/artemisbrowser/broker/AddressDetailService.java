@@ -30,15 +30,18 @@ public class AddressDetailService
     private final BrokerInfoService brokerInfo;
     private final QueueBrowseService browseService;
     private final DivertDirectory divertDirectory;
+    private final InFlightService inFlightService;
 
     public AddressDetailService(AddressDirectory addressDirectory, QueueDirectory queueDirectory,
-            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory)
+            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
+            InFlightService inFlightService)
     {
         this.addressDirectory = addressDirectory;
         this.queueDirectory = queueDirectory;
         this.brokerInfo = brokerInfo;
         this.browseService = browseService;
         this.divertDirectory = divertDirectory;
+        this.inFlightService = inFlightService;
     }
 
     /** The address by exact name, or null when the broker has no such address. */
@@ -99,23 +102,32 @@ public class AddressDetailService
      * Looks for messages matching {@code filter} in each of the address's subscriptions, reporting every subscription
      * whether or not anything was found.
      *
-     * @param filter Artemis core filter syntax
+     * <p>
+     * When the filter is an exact message ID ({@link MessageIdLookup}), a subscription browse did not find it on is
+     * also checked for it in flight — browse first, so a message delivered in between is still caught by one of the
+     * two. Each subscription holds its own copy, so each is checked whatever the others said.
+     *
+     * @param filter Artemis core filter syntax, or a bare {@code ID:…}
      */
     public SubscriptionSearch find(AddressDetail detail, String filter)
     {
-        String effectiveFilter = filter == null ? "" : filter.trim();
+        String effectiveFilter = MessageIdLookup.filterFor(filter);
         if (effectiveFilter.isEmpty())
         {
             throw new BrokerException("Enter a filter to look for.");
         }
+        String messageId = MessageIdLookup.messageId(effectiveFilter);
         List<SubscriptionSearch.Row> rows = new ArrayList<>();
         for (Subscription subscription : detail.subscriptions())
         {
             // The bare name: browse here is a management operation, and management resources are
             // named by the queue alone. The FQQN is for the JMS path only.
             List<MessageSummary> found = browseService.matching(subscription.name(), effectiveFilter, FIND_LIMIT);
-            rows.add(new SubscriptionSearch.Row(subscription, found, found.size() >= FIND_LIMIT));
+            InFlightLookup inFlight = messageId != null && found.isEmpty()
+                    ? inFlightService.locate(subscription.name(), subscription.deliveringCount(), messageId)
+                    : null;
+            rows.add(new SubscriptionSearch.Row(subscription, found, found.size() >= FIND_LIMIT, inFlight));
         }
-        return new SubscriptionSearch(effectiveFilter, rows);
+        return new SubscriptionSearch(effectiveFilter, messageId, rows);
     }
 }

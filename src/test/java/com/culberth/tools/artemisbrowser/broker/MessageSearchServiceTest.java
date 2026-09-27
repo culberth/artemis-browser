@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,7 @@ class MessageSearchServiceTest
     private ManagementChannel management;
     private QueueDirectory queueDirectory;
     private QueueBrowseService browseService;
+    private InFlightService inFlightService;
 
     @BeforeEach
     void mocks()
@@ -44,6 +47,7 @@ class MessageSearchServiceTest
         management = mock(ManagementChannel.class);
         queueDirectory = mock(QueueDirectory.class);
         browseService = mock(QueueBrowseService.class);
+        inFlightService = mock(InFlightService.class);
         given(brokerSession.requireManagement()).willReturn(management);
         given(browseService.matching(anyString(), anyString(), anyInt())).willReturn(List.of());
     }
@@ -147,9 +151,46 @@ class MessageSearchServiceTest
         verify(browseService).matching("orders", "count = 1", 50);
     }
 
+    @Test
+    @DisplayName("an ordinary search counts the in-flight messages it could not look at, and does not read them")
+    void countsInFlightItCouldNotSearch()
+    {
+        given(queueDirectory.overview())
+                .willReturn(List.of(queue("orders", false, 3), queue("payments", false, 4), queue("audit", false, 0)));
+        given(browseService.matching("payments", "region = 'eu'", 50)).willReturn(messages(1));
+
+        SearchResult result = service().search("region = 'eu'", false);
+
+        // payments had a match, so its in-flight ones do not change the answer for it; orders might.
+        assertEquals(3, result.inFlightNotSearched());
+        assertTrue(result.inFlight().isEmpty());
+        verifyNoInteractions(inFlightService);
+    }
+
+    @Test
+    @DisplayName("a message-ID lookup finds the message in flight where browse could not")
+    void findsAMessageInFlightById()
+    {
+        String id = "ID:3be27521-bac0-11f1-8802-00155d348692";
+        given(queueDirectory.overview())
+                .willReturn(List.of(queue("orders", false, 3), queue("hoard", false, 9000), queue("idle", false, 0)));
+        InFlightLookup hit = new InFlightLookup("orders", true, new InFlightConsumer("", "c", "s", "0", List.of()),
+                mock(InFlightMessage.class));
+        given(inFlightService.locate("orders", 3, id)).willReturn(hit);
+        given(inFlightService.locate("hoard", 9000, id)).willReturn(InFlightLookup.notChecked("hoard"));
+
+        SearchResult result = service().search(id, false);
+
+        assertEquals("AMQUserID = '" + id + "'", result.filter());
+        assertEquals(List.of(hit), result.inFlight());
+        assertEquals(9000, result.inFlightNotSearched(), "the queue over the limit was not checked");
+        assertFalse(result.nothingFound());
+        verify(inFlightService, never()).locate(eq("idle"), anyLong(), anyString());
+    }
+
     private MessageSearchService service()
     {
-        return new MessageSearchService(brokerSession, queueDirectory, browseService, 50);
+        return new MessageSearchService(brokerSession, queueDirectory, browseService, inFlightService, 50);
     }
 
     private List<MessageSummary> messages(int howMany)
@@ -160,6 +201,11 @@ class MessageSearchServiceTest
 
     private QueueOverview queue(String name, boolean internal)
     {
-        return new QueueOverview(name, name, "ANYCAST", 0, 0, 0, 0, 0, 0, true, false, internal);
+        return queue(name, internal, 0);
+    }
+
+    private QueueOverview queue(String name, boolean internal, long delivering)
+    {
+        return new QueueOverview(name, name, "ANYCAST", delivering, delivering, 0, 0, 0, 0, true, false, internal);
     }
 }

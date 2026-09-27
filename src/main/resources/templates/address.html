@@ -264,7 +264,7 @@
             <div style="flex:1;min-width:22rem">
                 <label for="find-filter">Filter</label>
                 <input id="find-filter" type="text" name="find" th:value="${find}" style="width:100%"
-                       placeholder="orderId = 'A-1042'" autocomplete="off">
+                       placeholder="orderId = 'A-1042'    |    ID:3be27521-…" autocomplete="off">
             </div>
             <div>
                 <button type="submit">Look</button>
@@ -276,6 +276,12 @@
             Core syntax, as above. A search only sees messages still waiting: one delivered to a
             consumer and not yet acknowledged, or one scheduled for later, cannot be browsed, so where a
             subscription has either, &ldquo;not found&rdquo; is not a clean no.
+        </p>
+        <p class="note">
+            <strong>Looking up one message by its ID</strong> &mdash; paste the <code>ID:&hellip;</code>
+            itself, or <code>AMQUserID = 'ID:&hellip;'</code> &mdash; also checks the messages in flight,
+            and says which consumer holds it. Only an exact ID can be: checking in-flight messages against
+            any other filter would mean this tool evaluating Artemis&rsquo;s filter language itself.
         </p>
 
         <div class="error" th:if="${findError}" th:text="${findError}">error</div>
@@ -293,11 +299,17 @@
                     </thead>
                     <tbody>
                     <tr th:each="r : ${found.rows()}"
-                        th:classappend="${!r.found() and r.unsearchable()} ? 'row-warn' : ''">
+                        th:classappend="${!r.found() and !r.inFlightHere() and r.unsearchable()} ? 'row-warn' : ''">
                         <td class="nowrap" th:text="${r.subscription().name()}">queue</td>
-                        <td class="num strong" th:text="${r.messages().size()} + (${r.partial()} ? '+' : '')">0</td>
+                        <td class="num strong"
+                            th:text="${r.inFlightHere()} ? '1' : (${r.messages().size()} + (${r.partial()} ? '+' : ''))">0</td>
                         <td th:text="${r.verdict()}">not on this queue</td>
                         <td>
+                            <!-- In flight: nothing to open, since the broker returns no body; the queue page lists it. -->
+                            <a class="badge-link" th:if="${r.inFlightHere()}"
+                               th:href="@{/queues(name=${r.subscription().name()})} + '#in-flight'"
+                               th:title="'In flight to ' + ${r.inFlight().holder().describe()} + ' — listed on the queue page'"
+                               th:text="${found.messageId()} + ' — in flight'">ID:1 — in flight</a>
                             <a class="badge-link" th:each="m : ${r.messages()}"
                                th:href="@{/message(name=${r.subscription().name()},id=${m.messageId()})}"
                                th:text="${m.messageId()}">ID:1</a>

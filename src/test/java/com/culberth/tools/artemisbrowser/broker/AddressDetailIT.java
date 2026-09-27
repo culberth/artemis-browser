@@ -48,7 +48,8 @@ class AddressDetailIT
         addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
                 new BrokerInfoService(brokerSession),
                 new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
-                new DivertDirectory(brokerSession));
+                new DivertDirectory(brokerSession),
+                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000));
 
         // A non-durable subscription exists only while its consumer does, so it is held open for the
         // class. Client acknowledge and never acking: attached, and consuming nothing.
@@ -182,9 +183,12 @@ class AddressDetailIT
                 producer.send(message);
             }
             // Received and never acknowledged: on the queue, delivering, and invisible to browse.
+            String[] ids = new String[4];
             for (int n = 1; n <= 3; n++)
             {
-                assertNotNull(consumer.receive(5000));
+                Message received = consumer.receive(5000);
+                assertNotNull(received);
+                ids[received.getIntProperty("n")] = received.getJMSMessageID();
             }
 
             AddressDetail detail = addresses.detail("it-inflight");
@@ -196,6 +200,20 @@ class AddressDetailIT
             assertFalse(row.found(), "browse cannot see a delivered, unacknowledged message");
             assertTrue(row.unsearchable());
             assertTrue(row.verdict().contains("3 in flight"), row.verdict());
+
+            // By its exact ID, pasted bare, the same message is found in flight — and to whom.
+            SubscriptionSearch byId = addresses.find(detail, ids[2]);
+            SubscriptionSearch.Row held = byId.rows().get(0);
+            assertTrue(held.inFlightHere(), held.verdict());
+            assertEquals(ids[2], held.inFlight().message().messageId());
+            assertTrue(held.verdict().startsWith("in flight to it-inflight"), held.verdict());
+            assertEquals(1, byId.subscriptionsHolding());
+
+            // And an ID it does not hold is now a clean no, since the in-flight messages were checked.
+            SubscriptionSearch.Row absent = addresses.find(detail, "ID:00000000-0000-0000-0000-000000000000").rows()
+                    .get(0);
+            assertFalse(absent.unsearchable());
+            assertTrue(absent.verdict().startsWith("not on this queue"), absent.verdict());
         }
         finally
         {

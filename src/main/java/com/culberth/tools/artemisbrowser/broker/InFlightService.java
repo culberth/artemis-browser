@@ -93,12 +93,57 @@ public class InFlightService
             return new InFlight(stats.name(), stats.deliveringCount(), limit, true, false, holders(stats.name()));
         }
 
-        Object result = brokerSession.requireManagement().invoke(ResourceNames.QUEUE + stats.name(),
+        InFlight read = read(stats.name(), stats.deliveringCount());
+        return new InFlight(read.queueName(), read.deliveringCount(), read.limit(), false, read.truncated(),
+                identify(stats.name(), read.consumers()));
+    }
+
+    /**
+     * Whether one message, by its exact ID, is in flight on a queue — and to whom.
+     *
+     * <p>
+     * A string comparison against the delivering list, not a filter: this is the one question about in-flight messages
+     * that needs no evaluation of Artemis's filter language. Only the consumer found is matched to its client, so
+     * looking across an address's subscriptions costs one delivering list per subscription that has anything in flight,
+     * and the consumer listings once per hit.
+     *
+     * @param queueName the bare queue name — management resources refuse an FQQN
+     */
+    public InFlightLookup locate(String queueName, long deliveringCount, String messageId)
+    {
+        if (deliveringCount <= 0)
+        {
+            return InFlightLookup.notInFlight(queueName);
+        }
+        if (deliveringCount > limit)
+        {
+            return InFlightLookup.notChecked(queueName);
+        }
+        InFlight read = read(queueName, deliveringCount);
+        for (InFlightConsumer consumer : read.consumers())
+        {
+            for (InFlightMessage message : consumer.messages())
+            {
+                if (messageId.equals(message.messageId()))
+                {
+                    InFlightConsumer holder = identify(queueName, List.of(consumer)).get(0);
+                    return new InFlightLookup(queueName, true, holder, message);
+                }
+            }
+        }
+        // Cut at the limit, the rest of the list was never looked at: not a clean "no".
+        return read.truncated() ? InFlightLookup.notChecked(queueName) : InFlightLookup.notInFlight(queueName);
+    }
+
+    /** The delivering list, parsed and capped, with no consumer matched to a client yet. */
+    private InFlight read(String queueName, long deliveringCount)
+    {
+        Object result = brokerSession.requireManagement().invoke(ResourceNames.QUEUE + queueName,
                 "listDeliveringMessagesAsJSON");
-        InFlight read;
         try
         {
-            read = parse(stats, result == null ? "[]" : result.toString(), System.currentTimeMillis());
+            return parse(queueName, deliveringCount, result == null ? "[]" : result.toString(),
+                    System.currentTimeMillis());
         }
         catch (BrokerException e)
         {
@@ -106,11 +151,9 @@ public class InFlightService
         }
         catch (Exception e)
         {
-            throw new BrokerException(
-                    "Could not read the in-flight messages on '" + stats.name() + "': " + e.getMessage(), e);
+            throw new BrokerException("Could not read the in-flight messages on '" + queueName + "': " + e.getMessage(),
+                    e);
         }
-        return new InFlight(read.queueName(), read.deliveringCount(), read.limit(), false, read.truncated(),
-                identify(stats.name(), read.consumers()));
     }
 
     /** Consumers on the queue holding anything, known from the listings alone, with no messages. */
@@ -163,7 +206,7 @@ public class InFlightService
         return identified;
     }
 
-    InFlight parse(QueueStats stats, String json, long now)
+    InFlight parse(String queueName, long deliveringCount, String json, long now)
     {
         JsonNode root = objectMapper.readTree(json);
         List<InFlightConsumer> consumers = new ArrayList<>();
@@ -189,7 +232,7 @@ public class InFlightService
                 consumers.add(consumer(entry.path("consumerName").asString(""), messages));
             }
         }
-        return new InFlight(stats.name(), stats.deliveringCount(), limit, false, truncated, consumers);
+        return new InFlight(queueName, deliveringCount, limit, false, truncated, consumers);
     }
 
     static InFlightConsumer consumer(String consumerName, List<InFlightMessage> messages)

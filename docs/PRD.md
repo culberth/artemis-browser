@@ -408,11 +408,19 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 
 ### P2 — search sees in-flight messages, by message ID
 
-- [ ] **Exact message-ID lookup against the delivering lists.** Not general filters: evaluating
+- [x] **Exact message-ID lookup against the delivering lists.** Not general filters: evaluating
       `region = 'eu'` against in-flight messages would mean reimplementing Artemis's filter language,
       which this project declined in Phase 10 for being a new source of silently wrong answers.
-- [ ] **The address page's "which subscriptions hold a message"** turns "N in flight could not be
+      Done 2026-09-27. A lookup is `AMQUserID = 'ID:…'` and nothing else, or a bare `ID:…` pasted in,
+      rewritten to that. Checked on 2.44.0 first: browse, the delivering list and the consumer's
+      `JMSMessageID` all carry the same ID; `AMQUserID` needs the `ID:` prefix; `JMSMessageID = '…'`
+      matches nothing. Cross-queue search uses it too, and every search now says how many in-flight
+      messages it could not look at — it said nothing about them before.
+- [x] **The address page's "which subscriptions hold a message"** turns "N in flight could not be
       searched" into "in flight to consumer X" — a real yes — when the lookup is by message ID.
+      Done 2026-09-27, and it turns the other way too: a subscription whose in-flight messages were
+      checked and did not hold it is a clean "not on this queue". Only a queue over the in-flight limit
+      stays "could not be searched", and says why.
 
 ### P3 — diagnose
 
