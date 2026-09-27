@@ -156,6 +156,28 @@ from — a wrong parse here yields a believable number rather than an error.
   the browsable list. So "not found by browse" never means "not on the queue" while delivering > 0,
   and `firstMessageAge` is the age of the oldest message *not yet delivered*.
 
+### In-flight messages (2026-09-27, 2.44.0, before Phase 11 parsed any of it)
+
+- **`queue.<bare name>.listDeliveringMessagesAsJSON()`** → a JSON array, one entry per consumer:
+  `{"consumerName": "<ServerConsumer toString>", "elements": [ {...}, ... ]}`. Each element is the
+  message's headers (`messageID` bare number, `userID`, `address`, `durable`, `priority`, `timestamp`
+  bare epoch millis, `expiration`, `type`) with **its properties inline at the top level** — same
+  layout as `listScheduledMessagesAsJSON` — plus Artemis's own `__AMQ_CID`, `_AMQ_ROUTING_TYPE`.
+  **No body, no delivery time.** `listDeliveringMessages()` (non-JSON) → a HashMap keyed by the same
+  toString, values `Object[]`.
+- **`consumerName` is a `toString()`**, e.g. `ServerConsumer [id=800977e2:18098baf-…-00155d348692:0,
+  filter=null, binding=LocalQueueBinding [address=work, queue=QueueImpl[name=work, …]]]`. The `id` is
+  `<connectionID>:<sessionID>:<consumerID within session>` — which `listAllConsumersAsJSON`'s
+  `connectionID`/`sessionID`/`consumerID` can match, and whose `sequentialId` is `listConsumers`' `id`
+  (where the client id is). Only checked for CORE clients.
+- **No paging, no filter**: 300 in-flight messages = 65,813 chars in 11ms. A consumer's buffer
+  (consumer window, 1MB default) can hold thousands of small messages.
+- **"Delivering" includes the consumer's client-side buffer.** Consumer A called `receive()` twice;
+  the third message was also delivering to A, and consumer B on the same queue got nothing.
+  `listConsumers` showed A `messagesInTransit=3`, B `0`.
+- **Reading it is non-destructive**: messageCount/deliveringCount/messagesAcknowledged identical
+  before and after, on a plain queue, a buffered backlog and a durable subscription.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
