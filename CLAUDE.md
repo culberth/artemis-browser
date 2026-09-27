@@ -36,8 +36,10 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
    `.claude/memory.md`; the parsing is tested against them.
 5. **Exports are untrusted content.** Every CSV field is quoted and a leading `=`, `+`, `-` or `@`
    gets an apostrophe, so a body cannot become a spreadsheet formula. Don't "simplify" it.
-6. **`browse` does not return scheduled messages.** They are counted by the queue and read through
-   `listScheduledMessagesAsJSON` instead, so a queue can report messages and browse as empty.
+6. **`browse` returns neither scheduled nor in-flight messages.** Scheduled ones are counted by the
+   queue and read through `listScheduledMessagesAsJSON`; ones delivered to a consumer and not yet
+   acked cannot be read at all. Either way a queue can report messages and browse as empty — and a
+   search that finds nothing has not shown the message is gone while `deliveringCount` > 0.
 
 ## Security posture
 

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.culberth.tools.artemisbrowser.broker.Subscription.Kind;
 import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
@@ -43,7 +45,8 @@ class AddressDetailIT
         brokerSession = ArtemisBrokerSupport.connect();
         QueueDirectory queues = new QueueDirectory(brokerSession);
         addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
-                new BrokerInfoService(brokerSession));
+                new BrokerInfoService(brokerSession),
+                new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L));
 
         // A non-durable subscription exists only while its consumer does, so it is held open for the
         // class. Client acknowledge and never acking: attached, and consuming nothing.
@@ -127,6 +130,73 @@ class AddressDetailIT
 
         assertEquals(1, detail.producers().size(), detail.producers().toString());
         assertTrue(detail.producers().get(0).messagesSent() >= 1);
+    }
+
+    @Test
+    @DisplayName("lag is the age of the oldest undelivered message, and the oldest subscription is furthest behind")
+    void measuresLagByAge()
+    {
+        AddressDetail detail = detail();
+        Subscription abandoned = byName(detail).get(ArtemisBrokerSupport.FEED_ABANDONED);
+
+        assertNotNull(detail.oldestUndelivered(abandoned));
+        assertTrue(detail.oldestUndelivered(abandoned) >= 0);
+        assertNotNull(detail.furthestBehind(), "three subscriptions hold messages, so one is furthest behind");
+    }
+
+    @Test
+    @DisplayName("a search reports every subscription, and finds the message in each one still holding it")
+    void findsWhichSubscriptionsHoldAMessage()
+    {
+        SubscriptionSearch found = addresses.find(detail(), "region = 'eu' AND AMQPriority = 4");
+
+        assertEquals(4, found.rows().size(), "every subscription is reported, found or not");
+        assertEquals(3, found.subscriptionsHolding(), "filtered, abandoned and shared all hold it");
+        SubscriptionSearch.Row nonDurable = found.rows().stream()
+                .filter(row -> row.subscription().kind() == Kind.NON_DURABLE).findFirst().orElseThrow();
+        assertFalse(nonDurable.found(), "its filter takes only region = 'us'");
+    }
+
+    @Test
+    @DisplayName("a message in flight to a consumer cannot be browsed, and the result says so instead of 'not here'")
+    void saysWhenInFlightMessagesCouldNotBeSearched() throws Exception
+    {
+        Connection inflight = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+        try
+        {
+            inflight.setClientID("it-inflight");
+            inflight.start();
+            Session session = inflight.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+            Topic topic = session.createTopic("it-inflight");
+            MessageConsumer consumer = session.createDurableSubscriber(topic, "sub");
+            MessageProducer producer = session.createProducer(topic);
+            for (int n = 1; n <= 3; n++)
+            {
+                Message message = session.createTextMessage("n" + n);
+                message.setIntProperty("n", n);
+                producer.send(message);
+            }
+            // Received and never acknowledged: on the queue, delivering, and invisible to browse.
+            for (int n = 1; n <= 3; n++)
+            {
+                assertNotNull(consumer.receive(5000));
+            }
+
+            AddressDetail detail = addresses.detail("it-inflight");
+            Subscription subscription = detail.subscriptions().get(0);
+            assertEquals(3, subscription.deliveringCount());
+            assertNull(detail.oldestUndelivered(subscription), "the broker reports no age for in-flight messages");
+
+            SubscriptionSearch.Row row = addresses.find(detail, "n = 2").rows().get(0);
+            assertFalse(row.found(), "browse cannot see a delivered, unacknowledged message");
+            assertTrue(row.unsearchable());
+            assertTrue(row.verdict().contains("3 in flight"), row.verdict());
+        }
+        finally
+        {
+            // Closing without acknowledging returns the messages; nothing here consumed them.
+            inflight.close();
+        }
     }
 
     @Test

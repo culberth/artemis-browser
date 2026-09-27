@@ -110,7 +110,14 @@
 
         <p class="muted" th:if="${messages.messages().isEmpty()}">
             <span th:if="${#strings.isEmpty(messages.filter())}">
-                <span th:if="${scheduled == null}">This queue is empty.</span>
+                <span th:if="${scheduled == null and (stats == null or stats.deliveringCount() == 0)}">This queue is empty.</span>
+                <!--
+                  Messages delivered to a consumer and not yet acknowledged cannot be browsed at all, so a
+                  queue whose every message is in flight browses as empty while its counter says otherwise.
+                -->
+                <span th:if="${scheduled == null and stats != null and stats.deliveringCount() > 0}"
+                      th:text="'Nothing is waiting. The ' + ${stats.deliveringCount()} + ' message(s) the queue reports are in flight to a consumer and not yet acknowledged, which the broker does not return from a browse.'">
+                    Nothing is waiting.</span>
                 <!--
                   The broker counts scheduled messages but does not return them from a browse, so an
                   empty table on a queue that reports messages is expected rather than a failure.
@@ -120,7 +127,9 @@
                     for later, and listed below.
                 </span>
             </span>
-            <span th:unless="${#strings.isEmpty(messages.filter())}">No messages match that filter.</span>
+            <span th:unless="${#strings.isEmpty(messages.filter())}">No waiting message matches that filter<span
+                    th:if="${stats != null and stats.deliveringCount() > 0}"
+                    th:text="' — ' + ${stats.deliveringCount()} + ' in flight to a consumer could not be searched'"></span>.</span>
         </p>
 
         <div class="table-scroll" th:unless="${messages.messages().isEmpty()}">

@@ -85,7 +85,8 @@ public class BrokerController
 
     /** One address: who is subscribed, how, what each subscription lets through, and who is sending. */
     @GetMapping("/address")
-    public String address(@RequestParam(name = "name", required = false) String name, Model model)
+    public String address(@RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "find", required = false) String find, Model model)
     {
         if (!brokerSession.isConnected())
         {
@@ -97,9 +98,11 @@ public class BrokerController
         }
         model.addAttribute("connection", brokerSession.info());
         model.addAttribute("name", name);
+        model.addAttribute("find", find);
+        AddressDetail detail;
         try
         {
-            AddressDetail detail = addressDetail.detail(name);
+            detail = addressDetail.detail(name);
             if (detail == null)
             {
                 model.addAttribute("error", "The broker has no address named '" + name + "'. It may have been"
@@ -110,6 +113,20 @@ public class BrokerController
         catch (BrokerException e)
         {
             model.addAttribute("error", e.getMessage());
+            return "address";
+        }
+        if (detail != null && find != null && !find.isBlank())
+        {
+            // Its own error slot: a filter the broker rejects should not take the rest of the page
+            // down with it.
+            try
+            {
+                model.addAttribute("found", addressDetail.find(detail, find));
+            }
+            catch (BrokerException e)
+            {
+                model.addAttribute("findError", e.getMessage());
+            }
         }
         return "address";
     }

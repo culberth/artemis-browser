@@ -150,6 +150,12 @@ from — a wrong parse here yields a believable number rather than an error.
   mixed: counters quoted, `lastDeliveredTime` bare, `creationTime` a `Date.toString()` string
   ("Sun Sep 27 20:20:42 GMT 2026"), not millis.
 
+- **In-flight messages are invisible to browse and to `firstMessageAge`** (2026-09-27, 2.44.0). A
+  durable subscriber that received 3 messages without acking: `messageCount=3`, `deliveringCount=3`,
+  `browse` (filtered or not) → 0 entries, `firstMessageAge` → null. Delivered-but-unacked refs leave
+  the browsable list. So "not found by browse" never means "not on the queue" while delivering > 0,
+  and `firstMessageAge` is the age of the oldest message *not yet delivered*.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -255,17 +261,17 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
 - **Probes**: `/app.css` with `Host: localhost`. `/login` creates a session per probe (30m timeout);
   the kubelet's default Host is the pod IP, which `AllowedHostFilter` 403s — the pod then never goes
   Ready and the log shows only access denials.
+- **Ingress HTTPS (2026-09-27)**: `ingress.tls.secretName` = `artemis-browser-ingress-tls`, an mkcert
+  cert from `scripts/new-tls-secret.ps1` (expires 2028-12-27), used only while the Secret exists
+  (`lookup` in the ingress template). Separate from `artemis-browser-tls`, the pod's own cert. With
+  it, `/login` over HTTPS returns `JSESSIONID ... Secure; HttpOnly` and ingress-nginx adds HSTS.
+  This machine's hosts file had no `artemis-browser.claude.local` line at the time.
 - **The cluster's own conventions**: ingress-nginx v1.15.1, class `nginx`, `<app>.claude.local` with
   a hosts-file line each (no wildcard); node maps host :80/:443 straight through. Artemis lives in
   **both** `jms` and `claude-app` as Service `artemis` (61616/8161, artemis/artemis). Do not label
   a namespace for Istio injection — a sidecar in front of a pod terminating its own TLS is a second
   interception point nobody designed.
 
-- **Ingress HTTPS (2026-09-27)**: `ingress.tls.secretName` = `artemis-browser-ingress-tls`, an mkcert
-  cert from `scripts/new-tls-secret.ps1` (expires 2028-12-27), used only while the Secret exists
-  (`lookup` in the ingress template). Separate from `artemis-browser-tls`, the pod's own cert. With
-  it, `/login` over HTTPS returns `JSESSIONID ... Secure; HttpOnly` and ingress-nginx adds HSTS.
-  This machine's hosts file had no `artemis-browser.claude.local` line at the time.
 ## Template rendering
 
 - **A rendering test is only worth what it fails on** (2026-09-20). Every template was broken in

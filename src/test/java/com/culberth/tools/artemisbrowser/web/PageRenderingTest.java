@@ -37,6 +37,7 @@ import com.culberth.tools.artemisbrowser.broker.SearchResult;
 import com.culberth.tools.artemisbrowser.broker.StuckDiagnosisService;
 import com.culberth.tools.artemisbrowser.broker.SubscriberConsumer;
 import com.culberth.tools.artemisbrowser.broker.Subscription;
+import com.culberth.tools.artemisbrowser.broker.SubscriptionSearch;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
@@ -165,16 +166,40 @@ class PageRenderingTest
                 0, 0, 0, 1, 0, 0, 0, 0);
         AddressOverview events = new AddressOverview("events", "MULTICAST", 6, 2048, 6, 0, false, false, false,
                 List.of());
-        given(addressDetail.detail("events")).willReturn(new AddressDetail(events, List.of(durable, temporary),
+        Subscription waiting = Subscription.of("app-2.billing", "events", "MULTICAST", "", "artemis", true, false,
+                false, 2, 0, 0, 1, 6, 4, 0, 0);
+        AddressDetail detail = new AddressDetail(events, List.of(durable, temporary, waiting),
                 List.of(new SubscriberConsumer("9", "0d6f-uuid", "live-client", "artemis", "10.0.0.7:5000", "CORE", "",
                         3, 3)),
-                List.of(new BrokerProducer("p1", "events", "conn-1", "2026-09-27 10:00:00", 6, 1200, false))));
+                List.of(new BrokerProducer("p1", "events", "conn-1", "2026-09-27 10:00:00", 6, 1200, false)),
+                Map.of("app-1.audit", 7_500_000L, "app-2.billing", 40_000L));
+        given(addressDetail.detail("events")).willReturn(detail);
+        given(addressDetail.find(detail, "orderId = 'A'")).willReturn(new SubscriptionSearch("orderId = 'A'",
+                List.of(new SubscriptionSearch.Row(durable, List.of(summary(1, "ID:held")), false),
+                        new SubscriptionSearch.Row(temporary, List.of(), false))));
 
-        page("/address?name=events").andExpect(content().string(containsString("app-1.audit")))
+        page("/address?name=events&find=orderId = 'A'").andExpect(content().string(containsString("app-1.audit")))
+                .andExpect(content().string(containsString("2h 5m")))
+                .andExpect(content().string(containsString("furthest behind")))
+                .andExpect(content().string(containsString("ID:held")))
+                .andExpect(content().string(containsString("not on this queue")))
                 .andExpect(content().string(containsString("durable subscription")))
                 .andExpect(content().string(containsString("AMQPriority &gt; 3")))
                 .andExpect(content().string(containsString("live-client")))
                 .andExpect(content().string(containsString("conn-1")));
+    }
+
+    @Test
+    @DisplayName("a filter the broker rejects fails the search, not the address page")
+    void rendersTheAddressPageWhenTheSearchFails() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        AddressDetail detail = new AddressDetail(events, List.of(), List.of(), List.of());
+        given(addressDetail.detail("events")).willReturn(detail);
+        given(addressDetail.find(detail, "((")).willThrow(new BrokerException("bad filter"));
+
+        page("/address?name=events&find=((").andExpect(content().string(containsString("bad filter")))
+                .andExpect(content().string(containsString("Subscriptions")));
     }
 
     @Test
@@ -274,6 +299,19 @@ class PageRenderingTest
                 true, "2026-09-20 10:00:00", "2026-09-21 10:00:00", false, Map.of())));
 
         page("/queues?name=" + QUEUE).andExpect(content().string(containsString("ID:sched")));
+    }
+
+    @Test
+    @DisplayName("a queue whose every message is in flight says so, rather than 'empty'")
+    void rendersTheQueuePageWithEverythingInFlight() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE))
+                .willReturn(new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 3, 0, 1, 3, 0, true, false));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("in flight to a consumer")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("This queue is empty."))));
     }
 
     @Test

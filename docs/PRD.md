@@ -282,16 +282,23 @@ Every item is a read. Nothing sends, subscribes, or creates anything.
 
 ### P2 — how far behind each subscriber is
 
-- [ ] **Lag per subscription**: messages waiting, delivering, and the age of the oldest message
+- [x] **Lag per subscription**: messages waiting, delivering, and the age of the oldest message
       (`getFirstMessageAge`). One call per queue, so it belongs on the single-address page only,
       never the index.
-- [ ] **Measure lag by what is waiting, not by differences in `messagesAdded`.** A filtered
+- [x] **Measure lag by what is waiting, not by differences in `messagesAdded`.** A filtered
       subscription is *meant* to receive fewer messages; comparing `messagesAdded` against the fullest
       subscriber would call every filter lag. Recorded in `architecture.md` beside the FQQN note.
-- [ ] **"Which subscriptions still hold message X?"** Search limited to one address's queues,
+- [x] **"Which subscriptions still hold message X?"** Search limited to one address's queues,
       reusing `MessageSearchService` over a subset. Answers "did subscriber B get it" without
       inferring from counters. Filtered **browse**, never a filtered count, which samples only the
       first 200 messages.
+
+      Done 2026-09-27, and bigger than it read. Checked against the broker first: **a message
+      delivered to a consumer and not yet acknowledged is invisible to browse**, filtered or not, and
+      to `firstMessageAge`. So the search reports three outcomes, not two — waiting here, not here,
+      and "not waiting, but N in flight or scheduled could not be searched" — and lag is the age of
+      the oldest *undelivered* message. The same blind spot had the queue page saying "This queue is
+      empty." for a queue whose every message was in flight; it now says what is happening.
 
 ### P3 — where messages go besides subscribers
 

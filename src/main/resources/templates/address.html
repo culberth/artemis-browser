@@ -60,7 +60,8 @@
                 <thead>
                 <tr>
                     <th>Queue</th><th>Kind</th><th>Client / subscription</th><th>Filter</th>
-                    <th class="num">Messages</th><th class="num">Delivering</th><th class="num">Consumers</th>
+                    <th class="num">Messages</th><th class="num">Delivering</th><th class="num">Oldest undelivered</th>
+                    <th class="num">Consumers</th>
                     <th class="num">Added</th><th class="num">Acked</th><th></th>
                 </tr>
                 </thead>
@@ -87,6 +88,12 @@
                     </td>
                     <td class="num strong" th:text="${s.messageCount()}">0</td>
                     <td class="num" th:text="${s.deliveringCount()}">0</td>
+                    <td class="num" style="white-space:nowrap">
+                        <span th:text="${detail.oldestUndeliveredText(s)}">4m 12s</span>
+                        <span class="muted" th:if="${detail.oldestUndelivered(s) == null and s.messageCount() > 0}"
+                              title="Everything on this queue is in flight to a consumer or scheduled, and the broker reports no age for those">&mdash;</span>
+                        <span class="badge warn" th:if="${s.name() == detail.furthestBehind()}">furthest behind</span>
+                    </td>
                     <td class="num" th:text="${s.consumerCount()}">0</td>
                     <td class="num muted" th:text="${s.messagesAdded()}">0</td>
                     <td class="num muted" th:text="${s.messagesAcked()}">0</td>
@@ -105,6 +112,12 @@
             messages than the others; a lower <em>Added</em> is not lag.
         </p>
         <p class="note">
+            <em>Oldest undelivered</em> is how long the oldest message not yet handed to a consumer has
+            waited, which means the same thing on every subscription whatever its filter &mdash; so it,
+            not a count, decides which subscriber is furthest behind. Messages delivered and awaiting
+            acknowledgement are not counted in it: the broker reports no age for them.
+        </p>
+        <p class="note">
             The broker names a subscription's queue after how it was made &mdash;
             <code>clientId.subscription</code> for a durable one &mdash; so client and subscription
             are split from that name. <em>(from the name)</em> marks a split no attached consumer has
@@ -112,6 +125,60 @@
             reasons. A non-durable subscription goes away when its consumer disconnects.
         </p>
     </div>
+
+    <form class="panel" method="get" th:action="@{/address}" id="find">
+        <h2>Which subscriptions hold a message?</h2>
+        <input type="hidden" name="name" th:value="${name}">
+        <div class="field-row">
+            <div style="flex:1;min-width:22rem">
+                <label for="find-filter">Filter</label>
+                <input id="find-filter" type="text" name="find" th:value="${find}" style="width:100%"
+                       placeholder="orderId = 'A-1042'" autocomplete="off">
+            </div>
+            <div>
+                <button type="submit">Look</button>
+            </div>
+        </div>
+        <p class="note">
+            Every subscription on this address is searched, and each says whether it holds a match
+            &mdash; which answers <em>did subscriber B get it?</em> without guessing from counters.
+            Core syntax, as above. A search only sees messages still waiting: one delivered to a
+            consumer and not yet acknowledged, or one scheduled for later, cannot be browsed, so where a
+            subscription has either, &ldquo;not found&rdquo; is not a clean no.
+        </p>
+
+        <div class="error" th:if="${findError}" th:text="${findError}">error</div>
+
+        <th:block th:if="${found}">
+            <p>
+                <strong th:text="${found.subscriptionsHolding()}">0</strong>
+                of <span th:text="${found.rows().size()}">0</span> subscriptions hold a message matching
+                <code th:text="${found.filter()}">filter</code>.
+            </p>
+            <div class="table-scroll" th:unless="${found.rows().isEmpty()}">
+                <table>
+                    <thead>
+                    <tr><th>Queue</th><th class="num">Found</th><th>Result</th><th>Messages</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="r : ${found.rows()}"
+                        th:classappend="${!r.found() and r.unsearchable()} ? 'row-warn' : ''">
+                        <td th:text="${r.subscription().name()}">queue</td>
+                        <td class="num strong" th:text="${r.messages().size()} + (${r.partial()} ? '+' : '')">0</td>
+                        <td th:text="${r.verdict()}">not on this queue</td>
+                        <td>
+                            <a class="badge-link" th:each="m : ${r.messages()}"
+                               th:href="@{/message(name=${r.subscription().name()},id=${m.messageId()})}"
+                               th:text="${m.messageId()}">ID:1</a>
+                            <a class="badge-link" th:if="${r.partial()}"
+                               th:href="@{/queues(name=${r.subscription().name()},filter=${found.filter()})}">All matches</a>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </th:block>
+    </form>
 
     <div class="panel">
         <h2>Consumers <span class="muted" th:text="'(' + ${detail.consumers().size()} + ')'">(0)</span></h2>

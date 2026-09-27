@@ -145,6 +145,29 @@ public class QueueDirectory
         return subscriptions;
     }
 
+    /**
+     * How long the oldest message not yet handed to a consumer has been waiting, or null when there is none — including
+     * when every message on the queue is in flight, since delivered-but-unacked messages leave the list this reads.
+     *
+     * <p>
+     * One round trip per queue, and addressed by the bare queue name: management resources are, and an FQQN here fails
+     * with "Cannot find resource". A queue that vanished since it was listed — a non-durable subscription whose
+     * consumer just left — answers with an error, which is reported as unknown rather than failing the page.
+     */
+    public Long oldestUndeliveredAgeMillis(String queueName)
+    {
+        try
+        {
+            Object age = brokerSession.requireManagement().attribute(ResourceNames.QUEUE + queueName,
+                    "firstMessageAge");
+            return age instanceof Number number ? number.longValue() : null;
+        }
+        catch (BrokerException e)
+        {
+            return null;
+        }
+    }
+
     private JsonNode listQueues(ManagementChannel management, int page)
     {
         return listQueues(management, NO_FILTER, page);
