@@ -188,6 +188,14 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
   for a record accessor that exists in the source. Kill by port, not by task:
   `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process -Force`.
 
+- **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
+  turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
+  templates are LF; `docs/PRD.md` is CRLF. Check `git diff --stat` after any scripted edit.
+- **Checking a page live needs the tool's own login** (2026-09-27): a local `mvn spring-boot:run`
+  shows the sign-in form, and with `artemis.auth.*` blank nobody can sign in — although the README
+  says the loopback default needs no login. For verification without a browser, an `*IT` against
+  `ArtemisBrokerSupport` exercises the same service calls.
+
 ## Testing
 
 - **`JMSManagementHelper` refuses a foreign message**: "Cannot send a foreign message as a
