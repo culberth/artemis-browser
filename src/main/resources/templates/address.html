@@ -67,7 +67,7 @@
                 </thead>
                 <tbody>
                 <tr th:each="s : ${detail.subscriptions()}" th:classappend="${s.stalled()} ? 'row-warn' : ''">
-                    <td><a th:href="@{/queues(name=${s.name()})}" th:text="${s.name()}">queue</a></td>
+                    <td class="nowrap"><a th:href="@{/queues(name=${s.name()})}" th:text="${s.name()}">queue</a></td>
                     <td>
                         <span class="badge" th:text="${s.kind().label()}">durable subscription</span>
                         <span class="badge" th:if="${s.exclusive()}">exclusive</span>
@@ -75,8 +75,8 @@
                     </td>
                     <td>
                         <th:block th:if="${s.subscriptionHint() != null}">
-                            <span th:if="${s.clientIdHint() != null}"><code th:text="${s.clientIdHint()}">client</code> /</span>
-                            <code th:text="${s.subscriptionHint()}">sub</code>
+                            <span class="nowrap" th:if="${s.clientIdHint() != null}"><code th:text="${s.clientIdHint()}">client</code> /</span>
+                            <code class="nowrap" th:text="${s.subscriptionHint()}">sub</code>
                             <span class="muted" th:unless="${detail.identityConfirmed(s)}"
                                   title="Split from the queue's name, not reported by the broker">(from the name)</span>
                         </th:block>
@@ -114,8 +114,10 @@
         <p class="note">
             <em>Oldest undelivered</em> is how long the oldest message not yet handed to a consumer has
             waited, which means the same thing on every subscription whatever its filter &mdash; so it,
-            not a count, decides which subscriber is furthest behind. Messages delivered and awaiting
-            acknowledgement are not counted in it: the broker reports no age for them.
+            not a count, decides which subscriber is furthest behind. The badge appears only when one
+            is <em>clearly</em> behind: at least a minute older than the next, and twice its age.
+            Messages delivered and awaiting acknowledgement are not counted in it: the broker reports
+            no age for them.
         </p>
         <p class="note">
             The broker names a subscription's queue after how it was made &mdash;
@@ -220,7 +222,7 @@
                 <tbody>
                 <tr th:each="d : ${r.divertsFrom()}"
                     th:classappend="${d.exclusive() and !detail.subscriptions().isEmpty()} ? 'row-warn' : ''">
-                    <td><code th:text="${d.name()}">divert</code></td>
+                    <td class="nowrap"><code th:text="${d.name()}">divert</code></td>
                     <td><a th:href="@{/address(name=${d.forwardingAddress()})}" th:text="${d.forwardingAddress()}">to</a></td>
                     <td>
                         <code th:if="${d.filtered()}" th:text="${d.filter()}">x</code>
@@ -292,7 +294,7 @@
                     <tbody>
                     <tr th:each="r : ${found.rows()}"
                         th:classappend="${!r.found() and r.unsearchable()} ? 'row-warn' : ''">
-                        <td th:text="${r.subscription().name()}">queue</td>
+                        <td class="nowrap" th:text="${r.subscription().name()}">queue</td>
                         <td class="num strong" th:text="${r.messages().size()} + (${r.partial()} ? '+' : '')">0</td>
                         <td th:text="${r.verdict()}">not on this queue</td>
                         <td>
@@ -322,7 +324,7 @@
                 </thead>
                 <tbody>
                 <tr th:each="c : ${detail.consumers()}">
-                    <td th:text="${c.queueName()}">queue</td>
+                    <td class="nowrap" th:text="${c.queueName()}">queue</td>
                     <td><code th:if="${!c.clientId().isEmpty()}" th:text="${c.clientId()}">client</code>
                         <span class="muted" th:if="${c.clientId().isEmpty()}">none set</span></td>
                     <td th:text="${c.user()}">user</td>

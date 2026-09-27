@@ -47,23 +47,39 @@ public record AddressDetail(AddressOverview address, List<Subscription> subscrip
         return oldestUndeliveredMillis.get(subscription.name());
     }
 
+    /** How much older the furthest-behind subscription's oldest message must be than the runner-up's. */
+    static final long BEHIND_MIN_GAP_MILLIS = 60_000;
+
+    /** And by what factor: twice as old, so two subscriptions an hour behind are not told apart by a minute. */
+    static final long BEHIND_MIN_RATIO = 2;
+
     /**
-     * The subscription whose oldest undelivered message has waited longest — the one furthest behind — or null when
-     * fewer than two have anything waiting, since "furthest behind" of one says nothing.
+     * The subscription clearly furthest behind, or null when none is.
      *
      * <p>
      * Deliberately by age and not by comparing {@code messagesAdded}: a filtered subscription is meant to receive fewer
      * messages, so a lower count is its filter working, not lag. Age of what is waiting means the same thing on every
      * subscription whatever its filter.
+     *
+     * <p>
+     * "Clearly" is the point. Picking whichever age is largest put the badge on one of three subscriptions all showing
+     * "4m 40s" — published in the same burst, a few milliseconds apart — which points at a subscriber that is not
+     * behind anything. So the oldest must beat the runner-up by at least {@link #BEHIND_MIN_GAP_MILLIS} and be at least
+     * {@link #BEHIND_MIN_RATIO} times its age. A subscription with nothing waiting counts as zero, so one subscription
+     * an hour behind while the rest are caught up is marked.
      */
     public String furthestBehind()
     {
-        if (oldestUndeliveredMillis.size() < 2)
+        if (subscriptions.size() < 2 || oldestUndeliveredMillis.isEmpty())
         {
             return null;
         }
-        return oldestUndeliveredMillis.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey)
-                .orElse(null);
+        List<Map.Entry<String, Long>> byAge = oldestUndeliveredMillis.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed()).toList();
+        long oldest = byAge.get(0).getValue();
+        long runnerUp = byAge.size() > 1 ? byAge.get(1).getValue() : 0;
+        boolean clearly = oldest - runnerUp >= BEHIND_MIN_GAP_MILLIS && oldest >= BEHIND_MIN_RATIO * runnerUp;
+        return clearly ? byAge.get(0).getKey() : null;
     }
 
     public String oldestUndeliveredText(Subscription subscription)
