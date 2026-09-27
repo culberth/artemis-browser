@@ -265,15 +265,19 @@ Every item is a read. Nothing sends, subscribes, or creates anything.
 
 ### P1 — a page for one address
 
-- [ ] **`/address?name=`**, following `/queues?name=`, linked from each heading on `/addresses`, the
+- [x] **`/address?name=`**, following `/queues?name=`, linked from each heading on `/addresses`, the
       overview's address column, and diagnose findings. `/addresses` stays as the index.
-- [ ] **A subscriptions table in place of the plain queue list.** Per row: the **kind** (anycast
+- [x] **A subscriptions table in place of the plain queue list.** Per row: the **kind** (anycast
       queue, durable subscription, shared durable, non-durable/temporary); the **filter**, labelled as
       core syntax; the attached **consumers** with client ID, user and remote address from
       `listAllConsumersAsJSON`; and a **browse link** by FQQN. Client ID and subscription name are
       split from names like `clientId.subName` — a guess, shown as one, since shared and non-durable
       queues are named differently.
-- [ ] **Producers sending to this address**, from `BrokerProducer.address`, which today only shows on
+      Done 2026-09-27. The guess is marked *(from the name)* unless an attached consumer's client id
+      confirms it. Shared durable subscriptions turned out to be indistinguishable from durable ones
+      by anything the broker reports — `maxConsumers` is -1 on both — so there is no "shared durable"
+      kind; the page says "durable" and does not pretend to know more.
+- [x] **Producers sending to this address**, from `BrokerProducer.address`, which today only shows on
       `/broker`.
 
 ### P2 — how far behind each subscriber is

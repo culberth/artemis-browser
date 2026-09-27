@@ -10,7 +10,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.culberth.tools.artemisbrowser.broker.AddressDetail;
+import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
+import com.culberth.tools.artemisbrowser.broker.AddressOverview;
+import com.culberth.tools.artemisbrowser.broker.BrokerProducer;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
@@ -31,6 +35,8 @@ import com.culberth.tools.artemisbrowser.broker.SavedConnection;
 import com.culberth.tools.artemisbrowser.broker.ScheduledMessage;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
 import com.culberth.tools.artemisbrowser.broker.StuckDiagnosisService;
+import com.culberth.tools.artemisbrowser.broker.SubscriberConsumer;
+import com.culberth.tools.artemisbrowser.broker.Subscription;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
@@ -84,6 +90,9 @@ class PageRenderingTest
 
     @MockitoBean
     private AddressDirectory addressDirectory;
+
+    @MockitoBean
+    private AddressDetailService addressDetail;
 
     @MockitoBean
     private StuckDiagnosisService diagnosis;
@@ -144,6 +153,44 @@ class PageRenderingTest
     void rendersTheAddressesPage() throws Exception
     {
         page("/addresses").andExpect(content().string(containsString("Addresses")));
+    }
+
+    @Test
+    @DisplayName("one address renders its subscriptions, consumers and producers")
+    void rendersTheAddressPage() throws Exception
+    {
+        Subscription durable = Subscription.of("app-1.audit", "events", "MULTICAST", "AMQPriority > 3", "artemis", true,
+                false, false, 6, 0, 0, 0, 6, 0, 0, 0);
+        Subscription temporary = Subscription.of("0d6f-uuid", "events", "MULTICAST", "", "artemis", false, true, false,
+                0, 0, 0, 1, 0, 0, 0, 0);
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 6, 2048, 6, 0, false, false, false,
+                List.of());
+        given(addressDetail.detail("events")).willReturn(new AddressDetail(events, List.of(durable, temporary),
+                List.of(new SubscriberConsumer("9", "0d6f-uuid", "live-client", "artemis", "10.0.0.7:5000", "CORE", "",
+                        3, 3)),
+                List.of(new BrokerProducer("p1", "events", "conn-1", "2026-09-27 10:00:00", 6, 1200, false))));
+
+        page("/address?name=events").andExpect(content().string(containsString("app-1.audit")))
+                .andExpect(content().string(containsString("durable subscription")))
+                .andExpect(content().string(containsString("AMQPriority &gt; 3")))
+                .andExpect(content().string(containsString("live-client")))
+                .andExpect(content().string(containsString("conn-1")));
+    }
+
+    @Test
+    @DisplayName("an address the broker does not have says so rather than rendering empty tables")
+    void rendersTheAddressPageForAnUnknownAddress() throws Exception
+    {
+        page("/address?name=gone").andExpect(content().string(containsString("no address named")));
+    }
+
+    @Test
+    @DisplayName("the address page still renders when the broker cannot be read")
+    void rendersTheAddressPageOnError() throws Exception
+    {
+        given(addressDetail.detail("events")).willThrow(new BrokerException("nope"));
+
+        page("/address?name=events").andExpect(content().string(containsString("nope")));
     }
 
     // ------------------------------------------------------------ connect in

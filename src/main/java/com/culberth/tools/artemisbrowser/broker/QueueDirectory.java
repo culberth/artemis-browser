@@ -2,6 +2,7 @@ package com.culberth.tools.artemisbrowser.broker;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -97,9 +98,61 @@ public class QueueDirectory
         return null;
     }
 
+    /**
+     * The queues bound to one address, as subscriptions, sorted by name.
+     *
+     * <p>
+     * One {@code listQueues} call with the broker doing the filtering, rather than the whole listing grouped here — and
+     * that call already carries each queue's filter, user and flags, so describing a subscription costs no per-queue
+     * round trips.
+     */
+    public List<Subscription> onAddress(String address)
+    {
+        ManagementChannel management = brokerSession.requireManagement();
+        ObjectNode filter = objectMapper.createObjectNode().put("field", "address").put("operation", "EQUALS")
+                .put("value", address);
+        List<Subscription> subscriptions = new ArrayList<>();
+        for (int page = 1;; page++)
+        {
+            JsonNode data = listQueues(management, filter.toString(), page);
+            if (data == null || data.isEmpty())
+            {
+                break;
+            }
+            for (JsonNode node : data)
+            {
+                String name = text(node, "name");
+                // EQUALS is the broker's to interpret; checking again here costs nothing and means a
+                // looser match on some other version cannot put another address's queue on the page.
+                if (name == null || name.equals(management.replyQueueName())
+                        || !address.equals(textOr(node, "address", name)))
+                {
+                    continue;
+                }
+                subscriptions.add(Subscription.of(name, address, textOr(node, "routingType", "ANYCAST"),
+                        text(node, "filter"), text(node, "user"), flag(node, "durable"), flag(node, "temporary"),
+                        flag(node, "exclusive"), number(node, "messageCount"), number(node, "deliveringCount"),
+                        number(node, "scheduledCount"), (int) number(node, "consumerCount"),
+                        number(node, "messagesAdded"), number(node, "messagesAcked"), number(node, "messagesExpired"),
+                        number(node, "messagesKilled")));
+            }
+            if (data.size() < LIST_PAGE_SIZE)
+            {
+                break;
+            }
+        }
+        subscriptions.sort(Comparator.comparing(subscription -> subscription.name().toLowerCase()));
+        return subscriptions;
+    }
+
     private JsonNode listQueues(ManagementChannel management, int page)
     {
-        Object result = management.invoke(ResourceNames.BROKER, "listQueues", NO_FILTER, page, LIST_PAGE_SIZE);
+        return listQueues(management, NO_FILTER, page);
+    }
+
+    private JsonNode listQueues(ManagementChannel management, String filter, int page)
+    {
+        Object result = management.invoke(ResourceNames.BROKER, "listQueues", filter, page, LIST_PAGE_SIZE);
         if (result == null)
         {
             return null;

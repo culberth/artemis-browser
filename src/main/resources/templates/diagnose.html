@@ -40,7 +40,7 @@
             <a class="badge-link" th:if="${f.queue() != null}"
                th:href="@{/queues(name=${f.queue()})}">Open this queue</a>
             <a class="badge-link" th:if="${f.address() != null}"
-               th:href="@{/addresses}">See addresses</a>
+               th:href="@{/address(name=${f.address()})}">Open this address</a>
         </div>
 
         <p class="note">

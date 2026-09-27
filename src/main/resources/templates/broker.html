@@ -130,7 +130,7 @@
                 </thead>
                 <tbody>
                 <tr th:each="p : ${producers}">
-                    <td th:text="${p.address()}">orders</td>
+                    <td><a th:if="${p.address() != null}" th:href="@{/address(name=${p.address()})}" th:text="${p.address()}">orders</a></td>
                     <td><code th:text="${p.connectionId()}">id</code></td>
                     <td th:text="${p.createdText()}">—</td>
                     <td class="num" th:text="${p.messagesSent()}">0</td>

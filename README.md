@@ -114,6 +114,7 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
+| `/address?name=` | One address: its subscriptions (kind, filter, client), the consumers on them, and who is sending |
 | `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
@@ -266,10 +267,11 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerSession              @SessionScope: one live connection per HTTP session (never the password)
 │   ├── BrokerCredentials          Password carrier from the connect form to connect(), not retained
 │   ├── ConnectionInfo             What the session keeps after connecting: host/port/username only
-│   ├── ManagementChannel          Request/reply plumbing over the activemq.management address
+│   ├── ManagementChannel          Request/reply plumbing over activemq.management; refuses any non-read operation
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
+│   ├── AddressDetailService       One address: subscriptions, their consumers (with client ids), its producers
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
 │   ├── StuckDiagnosisService      Gathers "why is this not moving" from the cheap reads only
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
@@ -277,6 +279,8 @@ com.culberth.tools.artemisbrowser
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
 │   │                              Queue and message view models, including FQQN browse-name handling
+│   ├── AddressDetail / Subscription / SubscriberConsumer
+│   │                              One address as its subscribers see it; kinds and name hints from the broker's naming
 │   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
 │   │   / SearchResult / SavedConnection / Finding
 │   │                              Broker, address, search and diagnosis view models
@@ -285,7 +289,7 @@ com.culberth.tools.artemisbrowser
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
-│   ├── BrokerController           /broker, /addresses
+│   ├── BrokerController           /broker, /addresses, /address
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── DiagnoseController         /diagnose
 │   ├── LoginController            /login (the sign-in itself is Spring Security's)
@@ -304,7 +308,7 @@ com.culberth.tools.artemisbrowser
     └── templates/
         ├── fragments/layout.html  Shared nav — edited once when a page is added
         ├── login.html, connect.html, overview.html, queues.html, message.html,
-        │   addresses.html, broker.html, search.html, diagnose.html
+        │   addresses.html, address.html, broker.html, search.html, diagnose.html
         └── static/app.css
 ```
 

@@ -145,6 +145,12 @@ class ReadOnlyGuaranteeIT
         }
         search.search("AMQPriority >= 0", true);
         new BrokerInfoService(brokerSession).consumers();
+        AddressDetailService addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
+                new BrokerInfoService(brokerSession));
+        for (AddressOverview address : new AddressDirectory(brokerSession, queues).overview())
+        {
+            addresses.detail(address.name());
+        }
     }
 
     /**

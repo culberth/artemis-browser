@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="'artemis-browser &mdash; ' + ${name}">artemis-browser &mdash; address</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('addresses')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <div class="panel" th:unless="${detail}">
+        <p><a th:href="@{/addresses}">&larr; All addresses</a></p>
+    </div>
+
+    <th:block th:if="${detail}" th:with="a=${detail.address()}">
+    <div class="panel">
+        <p style="margin:0 0 .5rem"><a th:href="@{/addresses}">&larr; All addresses</a></p>
+        <h2>
+            <span th:text="${a.name()}">address</span>
+            <span class="badge" th:text="${a.routingTypes()}">MULTICAST</span>
+            <span class="badge" th:if="${a.internal()}">internal</span>
+            <span class="badge" th:if="${a.temporary()}">temporary</span>
+            <span class="badge" th:if="${a.paging()}">paging</span>
+            <span class="badge warn" th:if="${a.hasUnrouted()}">unrouted</span>
+        </h2>
+
+        <div class="stats">
+            <div class="stat"><span class="k">Messages</span><span class="v" th:text="${a.messageCount()}">0</span></div>
+            <div class="stat"><span class="k">Subscriptions</span>
+                <span class="v" th:text="${detail.subscriptions().size()}">0</span></div>
+            <div class="stat"><span class="k">Consumers</span>
+                <span class="v" th:text="${detail.consumers().size()}">0</span></div>
+            <div class="stat"><span class="k">Producers</span>
+                <span class="v" th:text="${detail.producers().size()}">0</span></div>
+            <div class="stat"><span class="k">Routed</span><span class="v" th:text="${a.routedMessageCount()}">0</span></div>
+            <div class="stat" th:classappend="${a.hasUnrouted()} ? 'stat-warn' : ''">
+                <span class="k">Unrouted</span><span class="v" th:text="${a.unroutedMessageCount()}">0</span>
+            </div>
+            <div class="stat"><span class="k">Size</span><span class="v" th:text="${a.addressSizeBytes()}">0</span></div>
+        </div>
+
+        <p class="note" th:if="${a.hasUnrouted()}">
+            Messages reached this address and matched no queue, so they were dropped. With multicast
+            that usually means they were published before any subscription existed, or that every
+            subscription's filter turned them away.
+        </p>
+    </div>
+
+    <div class="panel">
+        <h2>Subscriptions <span class="muted" th:text="'(' + ${detail.subscriptions().size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${detail.subscriptions().isEmpty()}">
+            No queues are bound to this address. Anything sent here now is dropped rather than stored.
+        </p>
+        <div class="table-scroll" th:unless="${detail.subscriptions().isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Queue</th><th>Kind</th><th>Client / subscription</th><th>Filter</th>
+                    <th class="num">Messages</th><th class="num">Delivering</th><th class="num">Consumers</th>
+                    <th class="num">Added</th><th class="num">Acked</th><th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="s : ${detail.subscriptions()}" th:classappend="${s.stalled()} ? 'row-warn' : ''">
+                    <td><a th:href="@{/queues(name=${s.name()})}" th:text="${s.name()}">queue</a></td>
+                    <td>
+                        <span class="badge" th:text="${s.kind().label()}">durable subscription</span>
+                        <span class="badge" th:if="${s.exclusive()}">exclusive</span>
+                        <span class="badge warn" th:if="${s.stalled()}">no consumer</span>
+                    </td>
+                    <td>
+                        <th:block th:if="${s.subscriptionHint() != null}">
+                            <span th:if="${s.clientIdHint() != null}"><code th:text="${s.clientIdHint()}">client</code> /</span>
+                            <code th:text="${s.subscriptionHint()}">sub</code>
+                            <span class="muted" th:unless="${detail.identityConfirmed(s)}"
+                                  title="Split from the queue's name, not reported by the broker">(from the name)</span>
+                        </th:block>
+                        <span class="muted" th:if="${s.subscriptionHint() == null}">&mdash;</span>
+                    </td>
+                    <td>
+                        <code th:if="${s.filtered()}" th:text="${s.filter()}">region = 'eu'</code>
+                        <span class="muted" th:unless="${s.filtered()}">everything</span>
+                    </td>
+                    <td class="num strong" th:text="${s.messageCount()}">0</td>
+                    <td class="num" th:text="${s.deliveringCount()}">0</td>
+                    <td class="num" th:text="${s.consumerCount()}">0</td>
+                    <td class="num muted" th:text="${s.messagesAdded()}">0</td>
+                    <td class="num muted" th:text="${s.messagesAcked()}">0</td>
+                    <td style="width:1%;white-space:nowrap">
+                        <a class="badge-link" th:href="@{/queues(name=${s.name()})}">Browse</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Filters are Artemis <em>core</em> syntax &mdash; <code>AMQPriority</code>,
+            <code>AMQTimestamp</code>, or a property by its bare name. A JMS selector given when
+            subscribing is stored already translated, so <code>JMSPriority &gt; 3</code> shows here as
+            <code>AMQPriority &gt; 3</code>. A filtered subscription is meant to receive fewer
+            messages than the others; a lower <em>Added</em> is not lag.
+        </p>
+        <p class="note">
+            The broker names a subscription's queue after how it was made &mdash;
+            <code>clientId.subscription</code> for a durable one &mdash; so client and subscription
+            are split from that name. <em>(from the name)</em> marks a split no attached consumer has
+            confirmed; a queue configured on the broker can have a dot in its name for its own
+            reasons. A non-durable subscription goes away when its consumer disconnects.
+        </p>
+    </div>
+
+    <div class="panel">
+        <h2>Consumers <span class="muted" th:text="'(' + ${detail.consumers().size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${detail.consumers().isEmpty()}">Nothing is attached to any queue on this address.</p>
+        <div class="table-scroll" th:unless="${detail.consumers().isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Queue</th><th>Client ID</th><th>User</th><th>Remote address</th><th>Protocol</th>
+                    <th>Own selector</th><th class="num">Delivered</th><th class="num">Acked</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${detail.consumers()}">
+                    <td th:text="${c.queueName()}">queue</td>
+                    <td><code th:if="${!c.clientId().isEmpty()}" th:text="${c.clientId()}">client</code>
+                        <span class="muted" th:if="${c.clientId().isEmpty()}">none set</span></td>
+                    <td th:text="${c.user()}">user</td>
+                    <td><code th:text="${c.remoteAddress()}">10.0.0.1:5000</code></td>
+                    <td th:text="${c.protocol()}">CORE</td>
+                    <td><code th:if="${!c.filter().isEmpty()}" th:text="${c.filter()}">x</code>
+                        <span class="muted" th:if="${c.filter().isEmpty()}">&mdash;</span></td>
+                    <td class="num" th:text="${c.messagesDelivered()}">0</td>
+                    <td class="num muted" th:text="${c.messagesAcknowledged()}">0</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Producers <span class="muted" th:text="'(' + ${detail.producers().size()} + ')'">(0)</span></h2>
+        <p class="muted" th:if="${detail.producers().isEmpty()}">Nothing attached is sending to this address.</p>
+        <div class="table-scroll" th:unless="${detail.producers().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Connection</th><th>Created</th><th class="num">Sent</th><th class="num">Bytes sent</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="p : ${detail.producers()}">
+                    <td><code th:text="${p.connectionId()}">id</code></td>
+                    <td th:text="${p.createdText()}">&mdash;</td>
+                    <td class="num" th:text="${p.messagesSent()}">0</td>
+                    <td class="num muted" th:text="${p.bytesSent()}">0</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Only producers attached right now, and only those created for this address. A producer
+            that connects, sends and disconnects between page loads never appears, and an anonymous
+            producer, which names its destination per message, is not tied to any one address.
+        </p>
+    </div>
+    </th:block>
+</div>
+</body>
+</html>

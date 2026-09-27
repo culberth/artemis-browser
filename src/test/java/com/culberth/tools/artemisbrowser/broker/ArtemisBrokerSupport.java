@@ -36,6 +36,18 @@ final class ArtemisBrokerSupport
     /** Artemis names a durable subscription's queue {@code clientId.subscriptionName}. */
     static final String MULTICAST_QUEUE = "it-client.it-sub";
 
+    /**
+     * Phase 10's address: one of each kind of subscription that can exist without a consumer held open. A live
+     * non-durable one only exists while its consumer does, so tests that need it open their own.
+     */
+    static final String FEED_ADDRESS = "it-feed";
+    /** Made with the JMS selector {@code region = 'eu' AND JMSPriority > 3}; stored translated to core. */
+    static final String FEED_FILTERED = "it-client.it-filtered";
+    static final String FEED_ABANDONED = "it-client.it-abandoned";
+    /** A shared durable subscription made without a client id is named after the subscription alone. */
+    static final String FEED_SHARED = "it-shared";
+    static final int FEED_MESSAGES = 6;
+
     private static GenericContainer<?> container;
 
     private ArtemisBrokerSupport()
@@ -116,8 +128,37 @@ final class ArtemisBrokerSupport
             }
             subscriber.close();
 
+            seedFeed(factory, session);
+
             session.close();
             connection.close();
+        }
+    }
+
+    /** Priorities 0..5 alternating eu/us, so the filtered subscription takes exactly one: eu at priority 4. */
+    private static void seedFeed(ActiveMQConnectionFactory factory, Session session) throws JMSException
+    {
+        Topic feed = session.createTopic(FEED_ADDRESS);
+        session.createDurableSubscriber(feed, "it-filtered", "region = 'eu' AND JMSPriority > 3", false).close();
+        session.createDurableSubscriber(feed, "it-abandoned").close();
+        Connection anonymous = factory.createConnection(USER, PASSWORD);
+        try
+        {
+            anonymous.createSession(false, Session.AUTO_ACKNOWLEDGE).createSharedDurableConsumer(feed, FEED_SHARED)
+                    .close();
+        }
+        finally
+        {
+            anonymous.close();
+        }
+        try (MessageProducer producer = session.createProducer(feed))
+        {
+            for (int i = 0; i < FEED_MESSAGES; i++)
+            {
+                TextMessage message = session.createTextMessage("feed-" + i);
+                message.setStringProperty("region", i % 2 == 0 ? "eu" : "us");
+                producer.send(message, DeliveryMode.PERSISTENT, i, 0);
+            }
         }
     }
 }

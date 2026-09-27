@@ -1,5 +1,7 @@
 package com.culberth.tools.artemisbrowser.web;
 
+import com.culberth.tools.artemisbrowser.broker.AddressDetail;
+import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
@@ -21,13 +23,15 @@ public class BrokerController
     private final BrokerSession brokerSession;
     private final BrokerInfoService brokerInfo;
     private final AddressDirectory addressDirectory;
+    private final AddressDetailService addressDetail;
 
     public BrokerController(BrokerSession brokerSession, BrokerInfoService brokerInfo,
-            AddressDirectory addressDirectory)
+            AddressDirectory addressDirectory, AddressDetailService addressDetail)
     {
         this.brokerSession = brokerSession;
         this.brokerInfo = brokerInfo;
         this.addressDirectory = addressDirectory;
+        this.addressDetail = addressDetail;
     }
 
     @GetMapping("/broker")
@@ -77,5 +81,36 @@ public class BrokerController
             model.addAttribute("error", e.getMessage());
         }
         return "addresses";
+    }
+
+    /** One address: who is subscribed, how, what each subscription lets through, and who is sending. */
+    @GetMapping("/address")
+    public String address(@RequestParam(name = "name", required = false) String name, Model model)
+    {
+        if (!brokerSession.isConnected())
+        {
+            return "redirect:/";
+        }
+        if (name == null || name.isBlank())
+        {
+            return "redirect:/addresses";
+        }
+        model.addAttribute("connection", brokerSession.info());
+        model.addAttribute("name", name);
+        try
+        {
+            AddressDetail detail = addressDetail.detail(name);
+            if (detail == null)
+            {
+                model.addAttribute("error", "The broker has no address named '" + name + "'. It may have been"
+                        + " auto-deleted when its last queue went.");
+            }
+            model.addAttribute("detail", detail);
+        }
+        catch (BrokerException e)
+        {
+            model.addAttribute("error", e.getMessage());
+        }
+        return "address";
     }
 }
