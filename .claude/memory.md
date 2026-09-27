@@ -194,6 +194,9 @@ from — a wrong parse here yields a believable number rather than an error.
   `AMQUserID = 'ID:…'` finds it; without the `ID:` prefix, or as `JMSMessageID = '…'`, it silently
   matches nothing. OpenWire differs: its own `JMSMessageID` travels as `__HDR_MESSAGE_ID`, while
   `userID` is Artemis-generated — this tool shows and looks up `userID`. Unverified for lookup.
+- **Thymeleaf 3.1 in `th:text` rejects an apostrophe inside a string literal** (2026-09-27): prose
+  like "each queue's" in `th:text="'...'"` fails with "Could not parse as expression", and only when
+  that branch renders — `PageRenderingTest` caught it. Word around it, or use `&rsquo;`.
 - **The queue page's pager counts in-flight messages** (seen 2026-09-27, not yet fixed): 250 all in
   flight showed "showing 0–0 of 250 … Page 1 of 5" over an empty table, because `countMessages`
   includes delivering ones and `browse` does not. Whether a *filtered* count includes them is unchecked.

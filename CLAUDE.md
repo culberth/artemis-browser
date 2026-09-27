@@ -9,10 +9,11 @@ Maven, Java 21, Thymeleaf server-rendered (no npm, no build step). Phases 1–9 
 queue overview, message browsing and detail, cross-queue search, CSV/JSON export, broker health and
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
 Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multicast addresses:
-a page per address with its subscriptions, lag, settings and diverts. **Phase 11 is in progress** —
-in-flight messages, reopened on request for that one theme and planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 275 unit tests,
-22 integration.
+a page per address with its subscriptions, lag, settings and diverts. **Phase 11 is built on
+`phase11`, not yet merged** — in-flight messages: a panel on the queue page, lookup by message ID in
+both searches, and two diagnose findings. Planned in [docs/PRD.md](docs/PRD.md); see *Closed as
+won't do* there before proposing more. 281 unit tests,
+23 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read

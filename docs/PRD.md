@@ -424,10 +424,19 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 
 ### P3 — diagnose
 
-- [ ] **A consumer hoarding the queue**: one consumer holds everything in flight while others on the
+- [x] **A consumer hoarding the queue**: one consumer holds everything in flight while others on the
       same queue hold nothing — usually a consumer window set too large.
-- [ ] **Messages in flight a long time**: the oldest in-flight message was sent long ago, suggesting
+      Done 2026-09-27, from the consumer listing diagnose already reads — no new call unless it fires,
+      and then one, to name the client. It needs at least 10 held (`HOARDING_MIN`): one message in
+      flight while the others idle is a consumer working, not a buffer. Browsers and this tool's own
+      consumer are not counted as "the others". Verified against a real broker in `ReadOnlyGuaranteeIT`.
+- [x] **Messages in flight a long time**: the oldest in-flight message was sent long ago, suggesting
       a consumer stuck mid-processing. Measured from send time, and the finding says so.
+      Done 2026-09-27: ten minutes from send time, naming the message and its holder. Where the queue
+      also has messages waiting, the finding says the message may have spent that time in the backlog.
+      This is the one diagnose check that reads delivering lists, so it has a budget — four times
+      `artemis.in-flight-limit` for the whole page, smallest queue first — and what it leaves unread
+      is a note on the page rather than a finding: a limit of this page is not a fault on the broker.
 
 ### Considered and left out
 

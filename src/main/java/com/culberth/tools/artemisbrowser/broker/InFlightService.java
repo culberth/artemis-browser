@@ -135,6 +135,47 @@ public class InFlightService
         return read.truncated() ? InFlightLookup.notChecked(queueName) : InFlightLookup.notInFlight(queueName);
     }
 
+    /**
+     * The message that has been in flight on a queue the longest, as far as anything can tell — the one <em>sent</em>
+     * earliest, since the broker reports no delivery time — with the consumer holding it.
+     */
+    public InFlightLookup oldest(String queueName, long deliveringCount)
+    {
+        if (deliveringCount <= 0)
+        {
+            return InFlightLookup.notInFlight(queueName);
+        }
+        if (deliveringCount > limit)
+        {
+            return InFlightLookup.notChecked(queueName);
+        }
+        InFlightConsumer holder = null;
+        InFlightMessage oldest = null;
+        InFlight read = read(queueName, deliveringCount);
+        for (InFlightConsumer consumer : read.consumers())
+        {
+            for (InFlightMessage message : consumer.messages())
+            {
+                if (message.timestamp() > 0 && (oldest == null || message.timestamp() < oldest.timestamp()))
+                {
+                    holder = consumer;
+                    oldest = message;
+                }
+            }
+        }
+        if (oldest == null)
+        {
+            return InFlightLookup.notInFlight(queueName);
+        }
+        return new InFlightLookup(queueName, !read.truncated(), identify(queueName, List.of(holder)).get(0), oldest);
+    }
+
+    /** The most in-flight messages one queue's read may return; above it the list is not asked for. */
+    public int limit()
+    {
+        return limit;
+    }
+
     /** The delivering list, parsed and capped, with no consumer matched to a client yet. */
     private InFlight read(String queueName, long deliveringCount)
     {

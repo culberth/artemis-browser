@@ -110,6 +110,9 @@ class ReadOnlyGuaranteeIT
                 assertEquals(queue, byId.inFlight().get(0).queueName());
                 assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
 
+                // The oldest in flight is the first one sent, which is also the first received.
+                assertEquals(first.getJMSMessageID(), inFlight.oldest(queue, 5).message().messageId());
+
                 assertEquals(before, counters(), "reading the in-flight messages moved a counter");
 
                 assertEquals(5, held.listedCount());
@@ -121,6 +124,55 @@ class ReadOnlyGuaranteeIT
             finally
             {
                 holder.close();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("diagnose names a consumer whose buffer holds everything while another on the queue gets nothing")
+    void diagnosesAHoardingConsumer() throws Exception
+    {
+        String queue = "it-hoard";
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(ArtemisBrokerSupport.url()))
+        {
+            Connection hoarder = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            Connection starved = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            try
+            {
+                hoarder.setClientID("it-hoarder");
+                hoarder.start();
+                Session session = hoarder.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+                try (MessageProducer producer = session.createProducer(session.createQueue(queue)))
+                {
+                    for (int i = 1; i <= 20; i++)
+                    {
+                        producer.send(session.createTextMessage("hoarded-" + i));
+                    }
+                }
+                // One received; the default window pulls the other nineteen into this client's buffer
+                // before the second consumer exists, and it gets nothing.
+                assertTrue(session.createConsumer(session.createQueue(queue)).receive(5000) != null);
+                awaitDelivering(queue, 20);
+                starved.start();
+                starved.createSession(false, Session.CLIENT_ACKNOWLEDGE)
+                        .createConsumer(starved.createSession(false, Session.CLIENT_ACKNOWLEDGE).createQueue(queue));
+
+                Map<String, String> before = counters();
+                List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
+                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                        .diagnose(false);
+                assertEquals(before, counters(), "diagnosing moved a counter");
+
+                Finding hoarding = findings.stream()
+                        .filter(f -> queue.equals(f.queue()) && f.title().startsWith("One consumer holds")).findFirst()
+                        .orElseThrow(() -> new AssertionError("no hoarding finding in " + findings));
+                assertTrue(hoarding.detail().contains("Client 'it-hoarder'"), hoarding.detail());
+                assertTrue(hoarding.detail().contains("holds 20"), hoarding.detail());
+            }
+            finally
+            {
+                starved.close();
+                hoarder.close();
             }
         }
     }
@@ -229,7 +281,8 @@ class ReadOnlyGuaranteeIT
             }
         }
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession)).diagnose(true);
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                .diagnose(true);
     }
 
     /**

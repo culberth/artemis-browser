@@ -23,6 +23,7 @@ import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
+import com.culberth.tools.artemisbrowser.broker.Diagnosis;
 import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
 import com.culberth.tools.artemisbrowser.broker.InFlight;
@@ -560,8 +561,8 @@ class PageRenderingTest
     @DisplayName("the diagnose page renders its findings")
     void rendersTheDiagnosePage() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean()))
-                .willReturn(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)));
+        given(diagnosis.run(anyBoolean())).willReturn(
+                new Diagnosis(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)), 0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")));
     }
@@ -570,8 +571,9 @@ class PageRenderingTest
     @DisplayName("a finding about a subscription links to both its queue and its address")
     void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of(new Finding(Finding.STUCK,
-                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")));
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(new Finding(Finding.STUCK,
+                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")),
+                0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
                 .andExpect(content().string(containsString("href=\"/address?name=events\"")));
@@ -581,9 +583,22 @@ class PageRenderingTest
     @DisplayName("the diagnose page renders when it finds nothing")
     void rendersTheDiagnosePageWithNoFindings() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of());
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(), 0, 0));
 
-        Assertions.assertDoesNotThrow(() -> page("/diagnose"));
+        page("/diagnose").andExpect(content().string(containsString("Nothing on this broker looks blocked")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("was not checked"))));
+    }
+
+    @Test
+    @DisplayName("the diagnose page says which queues' in-flight ages it did not read")
+    void rendersTheDiagnosePageWithInFlightNotRead() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(
+                List.of(Finding.watch("One consumer holds everything in flight on 'orders'", "hoarding", QUEUE)), 2,
+                31000));
+
+        page("/diagnose").andExpect(content().string(containsString("One consumer holds everything in flight")))
+                .andExpect(content().string(containsString("not checked on 2 queue(s) holding 31000 in flight")));
     }
 
     // --------------------------------------------------------------- helpers

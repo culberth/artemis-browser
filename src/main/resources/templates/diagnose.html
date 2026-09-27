@@ -43,6 +43,10 @@
                th:href="@{/address(name=${f.address()})}">Open this address</a>
         </div>
 
+        <p class="note" th:if="${inFlightQueuesNotRead != null and inFlightQueuesNotRead > 0}"
+           th:text="'How long messages have been in flight was not checked on ' + ${inFlightQueuesNotRead} + ' queue(s) holding ' + ${inFlightNotRead} + ' in flight between them: the broker returns the in-flight messages of a queue all at once, so this page reads them within a budget, smallest queue first. The page for each queue can still show them.'">
+            In-flight ages not checked on some queues.</p>
+
         <p class="note">
             These are observations, not verdicts. A queue with no consumer is a problem if something
             should be reading it and entirely normal if nothing is meant to be running yet &mdash;
