@@ -409,6 +409,31 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 - **Delivery times.** Not in the reply.
 - **Anything that releases, redelivers or re-routes an in-flight message.** Not read-only.
 
+## Queued after Phase 11
+
+Chosen 2026-09-27 from a list of candidates, to be taken up once Phase 11 merges. Not yet phases:
+each becomes one, or joins one, when it is started. Every item begins the way Phases 10 and 11 did —
+the broker is asked first and its answers recorded, before anything is parsed.
+
+- [ ] **Measure the new pages at scale.** Phase 7 measured every page at 100,000 messages; nothing
+      has measured `/address`, which makes one `firstMessageAge` read per non-empty subscription and
+      one read per divert field, or Phase 11's in-flight panel, whose reply has no paging. Seed an
+      address with a few hundred subscriptions and a consumer buffering thousands of messages, time
+      each page end to end, and add the rows to *Measured limits* in `.claude/memory.md`. Done means
+      numbers, not a feeling — and a fix, such as capping the per-subscription reads, only if a
+      number calls for one.
+- [ ] **A page per client.** Every view today starts from a queue or an address; this one starts
+      from "what is `billing-svc` doing?" — its connections, sessions, what it consumes and produces,
+      and what it holds in flight. Pairs with Phase 11. First establish what identifies a client
+      across the listings: whether `listConnectionsAsJSON` carries the client id, and what
+      `listSessionsAsJSON(connectionID)` and `listConsumersAsJSON(connectionID)` return.
+- [ ] **Show expired and killed counts.** `listQueues` already returns `messagesExpired` and
+      `messagesKilled` for every queue, quoted like the other counters; the tool reads neither. They
+      answer "where did my messages go" when the dead-letter queue is empty. First confirm on a
+      broker what each counts — killed is expected to mean "exceeded max delivery attempts", whether
+      then dead-lettered or dropped — then show them on the queue page, the overview and the address
+      page, with a diagnose finding for messages killed or expired with no address to go to.
+
 ## Open questions
 
 1. ~~**Does Phase 5 have a theme, or is it a cleanup phase?**~~ **Settled 2026-09-19: Phase 5 is
