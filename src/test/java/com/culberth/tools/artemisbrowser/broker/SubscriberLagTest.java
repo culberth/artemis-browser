@@ -56,6 +56,35 @@ class SubscriberLagTest
     }
 
     @Test
+    @DisplayName("no badge when nobody is clearly behind — the same burst read a few milliseconds apart")
+    void noBadgeForATie()
+    {
+        // What a real broker showed: three subscriptions all at "4m 40s", published in one burst.
+        List<Subscription> three = List.of(subscription("a", 1, 0, 0, 1), subscription("b", 6, 0, 0, 6),
+                subscription("c", 6, 0, 0, 6));
+        AddressDetail burst = new AddressDetail(null, three, List.of(), List.of(),
+                Map.of("a", 280_004L, "b", 280_011L, "c", 280_017L));
+        assertNull(burst.furthestBehind(), "a 13ms lead is not being behind");
+
+        // Both an hour behind, one by a few minutes more: behind, but not further behind than the other.
+        AddressDetail close = new AddressDetail(null, three.subList(0, 2), List.of(), List.of(),
+                Map.of("a", 3_600_000L, "b", 3_900_000L));
+        assertNull(close.furthestBehind(), "twice the runner-up's age is the bar");
+    }
+
+    @Test
+    @DisplayName("one subscription behind while the rest are caught up is marked")
+    void badgeWhenTheOthersHaveNothingWaiting()
+    {
+        List<Subscription> two = List.of(subscription("stuck", 40, 0, 0, 40), subscription("caught-up", 0, 0, 0, 40));
+
+        assertEquals("stuck",
+                new AddressDetail(null, two, List.of(), List.of(), Map.of("stuck", 3_600_000L)).furthestBehind());
+        assertNull(new AddressDetail(null, two, List.of(), List.of(), Map.of("stuck", 5_000L)).furthestBehind(),
+                "five seconds is not behind, even against zero");
+    }
+
+    @Test
     @DisplayName("each search verdict says which kind of 'not found' it is")
     void verdictsSayWhatWasSearched()
     {
