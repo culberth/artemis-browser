@@ -4,10 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.StringWriter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +35,7 @@ class ReadOnlyGuaranteeIT
     private static QueueDirectory queues;
     private static QueueBrowseService browse;
     private static MessageSearchService search;
+    private static InFlightService inFlight;
 
     @BeforeAll
     static void connect() throws Exception
@@ -38,6 +44,7 @@ class ReadOnlyGuaranteeIT
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         search = new MessageSearchService(brokerSession, queues, browse, 50);
+        inFlight = new InFlightService(brokerSession, 5000);
     }
 
     @AfterAll
@@ -61,6 +68,61 @@ class ReadOnlyGuaranteeIT
         }
 
         assertEquals(before, counters(), "a read path moved a counter");
+    }
+
+    @Test
+    @DisplayName("reading what a consumer holds unacknowledged moves no counter, on that queue or any other")
+    void readingInFlightChangesNothing() throws Exception
+    {
+        String queue = "it-held";
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(ArtemisBrokerSupport.url()))
+        {
+            Connection holder = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            try
+            {
+                holder.start();
+                Session session = holder.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+                try (MessageProducer producer = session.createProducer(session.createQueue(queue)))
+                {
+                    for (int i = 1; i <= 5; i++)
+                    {
+                        producer.send(session.createTextMessage("held-" + i));
+                    }
+                }
+                // Two received and never acknowledged; the other three sit in the consumer's buffer,
+                // which the broker counts as delivering too.
+                MessageConsumer consumer = session.createConsumer(session.createQueue(queue));
+                assertTrue(consumer.receive(5000) != null && consumer.receive(5000) != null);
+                awaitDelivering(queue, 5);
+
+                Map<String, String> before = counters();
+                InFlight held = null;
+                for (int round = 0; round < 3; round++)
+                {
+                    held = inFlight.inFlight(queues.stats(queue));
+                    readEverything();
+                }
+                assertEquals(before, counters(), "reading the in-flight messages moved a counter");
+
+                assertEquals(5, held.listedCount());
+                assertEquals(1, held.consumers().size());
+                assertTrue(held.consumers().get(0).identified(), held.consumers().get(0).consumerName());
+            }
+            finally
+            {
+                holder.close();
+            }
+        }
+    }
+
+    /** The consumer's buffer fills asynchronously after the first receive. */
+    private void awaitDelivering(String queue, long expected) throws InterruptedException
+    {
+        for (int attempt = 0; attempt < 50 && queues.stats(queue).deliveringCount() < expected; attempt++)
+        {
+            Thread.sleep(100);
+        }
+        assertEquals(expected, queues.stats(queue).deliveringCount());
     }
 
     @Test
@@ -133,6 +195,7 @@ class ReadOnlyGuaranteeIT
         {
             QueueStats stats = queues.stats(queue.name());
             MessagePage page = browse.page(queue.name(), null, 1, 100);
+            inFlight.inFlight(stats);
             browse.pageForExport(queue.name(), stats.browseName(), null, 1, 100);
 
             for (MessageSummary message : page.messages())

@@ -11,8 +11,8 @@ producers, address view, a diagnose page, a login for shared hosts, and a Helm c
 Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multicast addresses:
 a page per address with its subscriptions, lag, settings and diverts. **Phase 11 is in progress** —
 in-flight messages, reopened on request for that one theme and planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 242 unit tests,
-21 integration.
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 248 unit tests,
+22 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read

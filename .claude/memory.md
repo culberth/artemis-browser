@@ -177,6 +177,21 @@ from — a wrong parse here yields a believable number rather than an error.
   `listConsumers` showed A `messagesInTransit=3`, B `0`.
 - **Reading it is non-destructive**: messageCount/deliveringCount/messagesAcknowledged identical
   before and after, on a plain queue, a buffered backlog and a durable subscription.
+- **Measured at scale (2026-09-27)**: ~280 chars per small message, linear. 1,000 → 278KB/~15ms;
+  3,214 → 900KB/~40ms; 20,000 → 5.6MB/~150ms; 100,000 → 28MB/~800ms. A CORE consumer on the
+  **default 1MB window saturates at ~3,200** small messages (5,000 sent, 3,214 delivering); only an
+  unbounded window (`consumerWindowSize=-1`) takes the lot. Cap is `artemis.in-flight-limit=5000`,
+  checked against `deliveringCount` *before* calling, since nothing broker-side shrinks the reply.
+- **Non-CORE consumers (2026-09-27)**: AMQP (`artemis consumer --protocol AMQP`) and STOMP give the
+  same `id=<conn>:<session>:<consumerID>` shape (STOMP's consumerID is a large number, e.g.
+  `126356`). **OpenWire's session id contains colons** — `id=d46364be:ID:HOST-63679-1790…-1:1:1:0` —
+  so split at the first and last colon only; that triple matches `listAllConsumersAsJSON` exactly for
+  all four. OpenWire elements also carry `__HDR_*` headers (`__HDR_MESSAGE_ID`, `__HDR_ARRIVAL`…)
+  as properties. `listConsumers` has `protocol` per consumer. The artemis CLI has no OpenWire
+  consumer; `activemq-client` 6.1.7 (jakarta) resolves through Nexus for a throwaway one.
+- **`AddressDetailIT.measuresLagByAge` was red on `main`** from af9a664 to 2026-09-27: that commit's
+  60s-gap rule for "furthest behind" correctly returns null for a feed seeded in one burst, and the IT
+  still expected a mark. Run `-Pintegration` after changing a heuristic, not just unit tests.
 
 ## Verified behaviour
 

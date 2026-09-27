@@ -372,13 +372,23 @@ What a 2.44.0 broker returned before any of this was planned (details in `.claud
 
 ### P0 — guard and verify
 
-- [ ] **Allowlist `listDeliveringMessagesAsJSON`.**
-- [ ] **Measure it at scale**: thousands of small messages in one consumer's buffer — reply size and
+- [x] **Allowlist `listDeliveringMessagesAsJSON`.**
+- [x] **Measure it at scale**: thousands of small messages in one consumer's buffer — reply size and
       time — and set the cap from the measurement, not a guess.
-- [ ] **Check the consumer text from a non-CORE client.** If it does not parse, show it as it came
+      Done 2026-09-27: linear at ~280 characters per small message, from 278KB/15ms at 1,000 to
+      28MB/800ms at 100,000. A consumer on the default 1MB window stops at about 3,200 small
+      messages; only an unbounded window takes more. So `artemis.in-flight-limit` is 5,000, and it is
+      checked against `deliveringCount` *before* the call — the reply cannot be made smaller, only
+      not asked for. Above it the page says how many are in flight and that they were not listed.
+- [x] **Check the consumer text from a non-CORE client.** If it does not parse, show it as it came
       rather than guess a client.
-- [ ] **`ReadOnlyGuaranteeIT` reads the delivering list** with messages in flight and asserts no
-      counter moved.
+      Done 2026-09-27 with AMQP, STOMP and OpenWire consumers. All parse, but **OpenWire's session ID
+      contains colons** (`ID:host-…-1:1:1`), so the id is split at the first and last colon, never on
+      every one; the result matches `listAllConsumersAsJSON` for all four protocols. Text of any
+      other shape is kept verbatim with no ids.
+- [x] **`ReadOnlyGuaranteeIT` reads the delivering list** with messages in flight and asserts no
+      counter moved. Done 2026-09-27: two received and three buffered, unacknowledged, read three
+      times alongside every other read path.
 
 ### P1 — an "In flight" panel on the queue page
 
