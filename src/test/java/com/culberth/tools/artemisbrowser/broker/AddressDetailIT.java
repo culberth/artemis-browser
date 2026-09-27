@@ -13,6 +13,7 @@ import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -46,7 +47,8 @@ class AddressDetailIT
         QueueDirectory queues = new QueueDirectory(brokerSession);
         addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
                 new BrokerInfoService(brokerSession),
-                new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L));
+                new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
+                new DivertDirectory(brokerSession));
 
         // A non-durable subscription exists only while its consumer does, so it is held open for the
         // class. Client acknowledge and never acking: attached, and consuming nothing.
@@ -197,6 +199,41 @@ class AddressDetailIT
             // Closing without acknowledging returns the messages; nothing here consumed them.
             inflight.close();
         }
+    }
+
+    @Test
+    @DisplayName("the address's settings and its exclusive divert are read from the broker")
+    void readsWhereElseMessagesGo()
+    {
+        AddressRouting routing = detail().routing();
+
+        assertNotNull(routing.settings(), routing.settingsError());
+        assertEquals("DLQ", routing.settings().deadLetterAddress());
+        assertTrue(routing.exists("DLQ"), "a stock broker has its DLQ");
+        assertEquals(1, routing.divertsFrom().size(), routing.divertsFrom().toString());
+        Divert divert = routing.divertsFrom().get(0);
+        assertEquals(ArtemisBrokerSupport.FEED_DIVERT, divert.name());
+        assertTrue(divert.exclusive());
+        assertEquals("region = 'us'", divert.filter());
+        assertEquals(ArtemisBrokerSupport.FEED_ADDRESS + ".us", divert.forwardingAddress());
+        assertTrue(routing.hasExclusiveDivert());
+    }
+
+    @Test
+    @DisplayName("diagnose names the abandoned subscription and the exclusive divert on a real broker")
+    void diagnosesSubscriptionsAndDiverts()
+    {
+        QueueDirectory queues = new QueueDirectory(brokerSession);
+        QueueBrowseService browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
+        List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession)).diagnose(false);
+
+        assertTrue(findings.stream().anyMatch(finding -> ArtemisBrokerSupport.FEED_ABANDONED.equals(finding.queue())
+                && finding.title().startsWith("Durable subscription")), findings.toString());
+        assertTrue(
+                findings.stream().anyMatch(
+                        finding -> finding.title().contains("'" + ArtemisBrokerSupport.FEED_DIVERT + "' takes")),
+                findings.toString());
     }
 
     @Test

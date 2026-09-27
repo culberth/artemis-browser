@@ -146,7 +146,7 @@ class ReadOnlyGuaranteeIT
         search.search("AMQPriority >= 0", true);
         new BrokerInfoService(brokerSession).consumers();
         AddressDetailService addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
-                new BrokerInfoService(brokerSession), browse);
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession));
         for (AddressOverview address : new AddressDirectory(brokerSession, queues).overview())
         {
             AddressDetail detail = addresses.detail(address.name());
@@ -155,6 +155,8 @@ class ReadOnlyGuaranteeIT
                 addresses.find(detail, "AMQPriority >= 0");
             }
         }
+        new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession)).diagnose(true);
     }
 
     /**

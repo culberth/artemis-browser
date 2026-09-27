@@ -12,6 +12,7 @@ package com.culberth.tools.artemisbrowser.broker;
  * @param severity {@link #STUCK} for something that is not moving now, {@link #WATCH} for something that will bite
  *                 later or may be fine
  * @param queue    the queue to open to see more, or null when the finding is about the broker or an address
+ * @param address  the address to open to see more, or null; a finding about a subscription carries both
  */
 public record Finding(String severity, String title, String detail, String queue, String address)
 {

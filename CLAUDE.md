@@ -10,7 +10,7 @@ queue overview, message browsing and detail, cross-queue search, CSV/JSON export
 producers, address view, a diagnose page, a login for shared hosts, and a Helm chart for the local
 Kubernetes cluster. Declared feature-complete at Phase 9, then **reopened 2026-09-27 for Phase 10**
 — subscription inspection on multicast addresses, one theme, planned in [docs/PRD.md](docs/PRD.md).
-The items under *Closed as won't do* there stay closed. 188 unit tests, 12 integration.
+The items under *Closed as won't do* there stay closed. 233 unit tests, 21 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read

@@ -99,6 +99,17 @@ message?" therefore reports three outcomes rather than two — waiting here; not
 *waiting* here, with N in flight or scheduled that could not be searched — because rounding the
 third into "not here" says a subscriber never got a message it is holding right now.
 
+### An address's messages can go somewhere its subscriptions never see
+
+Two more routes out of an address, both invisible from the queue list. Its **address settings**
+name where messages go after too many delivery attempts or on expiry; the broker leaves a setting
+out of `getAddressSettingsAsJSON` when it is at its default, so a missing key is "not set", never
+zero, and a named dead-letter address that does not exist is where messages go to be dropped. And
+an **exclusive divert** takes a message instead of copying it: what it matches never reaches the
+address's own queues, with no error anywhere. Both are on `/address`, and the exclusive divert on an
+address that has subscribers is a diagnose finding, because "my subscriber is missing messages" is
+exactly the report it produces.
+
 ## Two filter dialects, and mixing them fails silently
 
 Management operations (`countMessages`, `browse`) take Artemis **core** filter syntax:

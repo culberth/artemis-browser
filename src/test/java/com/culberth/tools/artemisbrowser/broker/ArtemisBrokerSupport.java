@@ -4,13 +4,18 @@ import jakarta.jms.BytesMessage;
 import jakarta.jms.Connection;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
 import jakarta.jms.TopicSubscriber;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import org.apache.activemq.artemis.api.core.management.ResourceNames;
+import org.apache.activemq.artemis.api.jms.management.JMSManagementHelper;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -47,6 +52,11 @@ final class ArtemisBrokerSupport
     /** A shared durable subscription made without a client id is named after the subscription alone. */
     static final String FEED_SHARED = "it-shared";
     static final int FEED_MESSAGES = 6;
+    /**
+     * An exclusive divert on the feed, taking {@code region = 'us'} to {@code it-feed.us}. Created after the feed is
+     * seeded, so it changes no counts the other tests rely on; it exists to be found.
+     */
+    static final String FEED_DIVERT = "it-feed-us";
 
     private static GenericContainer<?> container;
 
@@ -129,9 +139,46 @@ final class ArtemisBrokerSupport
             subscriber.close();
 
             seedFeed(factory, session);
+            createExclusiveDivert(session);
 
             session.close();
             connection.close();
+        }
+    }
+
+    /**
+     * Through the management address directly, as test setup. The app's own {@code ManagementChannel} refuses
+     * {@code createDivert} — it is not a read — which is the point of it.
+     */
+    private static void createExclusiveDivert(Session session) throws JMSException
+    {
+        TemporaryQueue reply = session.createTemporaryQueue();
+        try (MessageProducer producer = session.createProducer(session.createQueue("activemq.management"));
+                MessageConsumer consumer = session.createConsumer(reply))
+        {
+            Message request = session.createMessage();
+            JMSManagementHelper.putOperationInvocation(request, ResourceNames.BROKER, "createDivert", FEED_DIVERT,
+                    FEED_DIVERT, FEED_ADDRESS, FEED_ADDRESS + ".us", true, "region = 'us'", null, "PASS");
+            request.setJMSReplyTo(reply);
+            producer.send(request);
+            Message answer = consumer.receive(10000);
+            if (answer == null || !JMSManagementHelper.hasOperationSucceeded(answer))
+            {
+                throw new IllegalStateException("could not create the test divert: "
+                        + (answer == null ? "no answer" : JMSManagementHelper.getResult(answer)));
+            }
+        }
+        catch (JMSException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new IllegalStateException("could not create the test divert", e);
+        }
+        finally
+        {
+            reply.delete();
         }
     }
 

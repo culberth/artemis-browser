@@ -23,6 +23,7 @@ class StuckDiagnosisServiceTest
     private AddressDirectory addresses;
     private BrokerInfoService brokerInfo;
     private QueueBrowseService browse;
+    private DivertDirectory diverts;
 
     @BeforeEach
     void mocks()
@@ -31,6 +32,8 @@ class StuckDiagnosisServiceTest
         addresses = mock(AddressDirectory.class);
         brokerInfo = mock(BrokerInfoService.class);
         browse = mock(QueueBrowseService.class);
+        diverts = mock(DivertDirectory.class);
+        given(diverts.all()).willReturn(List.of());
 
         given(queues.overview()).willReturn(List.of());
         given(addresses.overview()).willReturn(List.of());
@@ -187,9 +190,66 @@ class StuckDiagnosisServiceTest
                 org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
     }
 
+    @Test
+    @DisplayName("a durable subscription with nobody attached says what it costs, and links queue and address")
+    void flagsAnAbandonedDurableSubscription()
+    {
+        given(queues.overview()).willReturn(
+                List.of(new QueueOverview("app-b.audit", "events", "MULTICAST", 6, 0, 0, 0, 6, 0, true, false, false)));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.isStuck());
+        assertTrue(finding.title().contains("Durable subscription 'app-b.audit'"), finding.title());
+        assertTrue(finding.detail().contains("only grows"), finding.detail());
+        assertEquals("app-b.audit", finding.queue());
+        assertEquals("events", finding.address());
+    }
+
+    @Test
+    @DisplayName("a multicast queue named after its own address is not treated as someone's subscription")
+    void leavesBrokerConfiguredMulticastQueuesToTheGeneralFinding()
+    {
+        given(queues.overview()).willReturn(
+                List.of(new QueueOverview("events", "events", "MULTICAST", 6, 0, 0, 0, 6, 0, true, false, false)));
+
+        assertTrue(only(service().diagnose(false)).title().contains("Nothing is reading 'events'"));
+    }
+
+    @Test
+    @DisplayName("an exclusive divert on an address with subscribers is worth a look; a copying one is not")
+    void flagsExclusiveDivertsOnSubscribedAddresses()
+    {
+        QueueOverview subscriber = new QueueOverview("app.alerts", "alerts", "MULTICAST", 0, 0, 0, 1, 0, 0, true, false,
+                false);
+        given(addresses.overview()).willReturn(List
+                .of(new AddressOverview("alerts", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of(subscriber))));
+        given(diverts.all()).willReturn(
+                List.of(new Divert("alerts-archive", "alerts", "alerts.archive", "severity = 'high'", true, "PASS", ""),
+                        new Divert("alerts-copy", "alerts", "alerts.audit", "", false, "PASS", "")));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertEquals(Finding.WATCH, finding.severity());
+        assertTrue(finding.title().contains("'alerts-archive' takes every message matching severity = 'high'"),
+                finding.title());
+        assertEquals("alerts", finding.address());
+    }
+
+    @Test
+    @DisplayName("an exclusive divert on an address nobody subscribes to is only an entry point")
+    void ignoresExclusiveDivertsWithNobodyToMiss()
+    {
+        given(addresses.overview()).willReturn(
+                List.of(new AddressOverview("inbound", "ANYCAST", 0, 0, 0, 0, false, true, false, List.of())));
+        given(diverts.all()).willReturn(List.of(new Divert("route", "inbound", "orders", "", true, "ANYCAST", "")));
+
+        assertTrue(service().diagnose(false).isEmpty());
+    }
+
     private StuckDiagnosisService service()
     {
-        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse);
+        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts);
     }
 
     private Finding only(List<Finding> findings)

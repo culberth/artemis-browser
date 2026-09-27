@@ -1,6 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 10 in progress — reopened 2026-09-27 for subscription inspection.** Phases 1–9
+Status: **Phase 10 done on `phase10`, awaiting its PR — reopened 2026-09-27 for subscription
+inspection.** Phases 1–9
 shipped and the project was declared feature-complete; it was reopened deliberately, for one theme,
 rather than by a backlog creeping back — see *Phase 10* below. The items closed as won't do stay
 closed. The tool is run by one person, which is what settles the open questions about replicas,
@@ -302,15 +303,23 @@ Every item is a read. Nothing sends, subscribes, or creates anything.
 
 ### P3 — where messages go besides subscribers
 
-- [ ] **Address settings**: dead-letter and expiry addresses (linked), max size and full policy, max
-      delivery attempts, auto-create/delete, retroactive message count.
-- [ ] **Diverts** from and to the address: target, filter, routing type, and whether it is
+- [x] **Address settings**: dead-letter and expiry addresses (linked), max size and full policy, max
+      delivery attempts, auto-create/delete, retroactive message count. Done 2026-09-27, with every
+      other setting the broker reported behind a disclosure. The broker leaves a setting *out* at its
+      default, so an absent one shows as "not set" rather than as zero; and a named dead-letter or
+      expiry address that does not exist is flagged, since a message sent there is dropped.
+- [x] **Diverts** from and to the address: target, filter, routing type, and whether it is
       exclusive. **An exclusive divert means the address's own subscribers never receive the diverted
       messages**, and nothing reports an error — a silent failure of exactly the kind this project
-      keeps a list of.
-- [ ] **Two diagnose findings**: an *abandoned durable subscription* (no consumer, still growing —
+      keeps a list of. Done 2026-09-27; there is no listing operation, so it is `getDivertNames` and
+      one read per field per divert.
+- [x] **Two diagnose findings**: an *abandoned durable subscription* (no consumer, still growing —
       the classic way a multicast address fills a disk), and an *exclusive divert* on an address that
-      has subscribers.
+      has subscribers. Done 2026-09-27. "Still growing" is not something one snapshot can show, so the
+      finding says what the subscription costs rather than claiming a trend; it links both the queue
+      and the address. A multicast queue named after its own address is left to the general
+      "nothing is reading" finding, since that is a queue someone configured, not a subscriber who
+      left.
 
 ### Considered and left out
 
@@ -323,6 +332,10 @@ Every item is a read. Nothing sends, subscribes, or creates anything.
 - **Sending a test message to see how it routes.** Sending is out of scope.
 
 ### Verification
+
+Done as planned, on an `it-feed` address rather than `events` so the earlier fixtures stay as they
+were; plus an in-flight subscriber, which P2's broker check made necessary. 233 unit tests, 21
+integration.
 
 The integration broker gains an `events` address carrying a filtered durable subscription, an
 abandoned durable subscription, a live non-durable subscription, a shared durable subscription, and

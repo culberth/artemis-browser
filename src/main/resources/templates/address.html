@@ -126,6 +126,135 @@
         </p>
     </div>
 
+    <div class="panel" th:with="r=${detail.routing()}">
+        <h2>Where else its messages go</h2>
+
+        <div class="error" th:if="${r.settingsError()}"
+             th:text="'Address settings could not be read: ' + ${r.settingsError()}">error</div>
+
+        <div class="table-scroll" th:if="${r.settings()}" th:with="st=${r.settings()}">
+            <table>
+                <tbody>
+                <tr>
+                    <th>Dead-letter address</th>
+                    <td>
+                        <a th:if="${st.deadLetterAddress() != null and r.exists(st.deadLetterAddress())}"
+                           th:href="@{/address(name=${st.deadLetterAddress()})}" th:text="${st.deadLetterAddress()}">DLQ</a>
+                        <th:block th:if="${st.deadLetterAddress() != null and !r.exists(st.deadLetterAddress())}">
+                            <code th:text="${st.deadLetterAddress()}">DLQ</code>
+                            <span class="badge warn">not on the broker</span>
+                        </th:block>
+                        <span class="badge warn" th:if="${st.deadLetterAddress() == null}">none</span>
+                    </td>
+                    <td class="muted">
+                        <span th:if="${st.deadLetterAddress() == null}">A message that exhausts its delivery
+                            attempts is dropped, with only a line in the broker's log.</span>
+                        <span th:if="${st.deadLetterAddress() != null and !r.exists(st.deadLetterAddress())}">
+                            Named, but no such address exists &mdash; unless the broker auto-creates it, a message
+                            sent there has nowhere to go and is dropped.</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Expiry address</th>
+                    <td>
+                        <a th:if="${st.expiryAddress() != null and r.exists(st.expiryAddress())}"
+                           th:href="@{/address(name=${st.expiryAddress()})}" th:text="${st.expiryAddress()}">ExpiryQueue</a>
+                        <th:block th:if="${st.expiryAddress() != null and !r.exists(st.expiryAddress())}">
+                            <code th:text="${st.expiryAddress()}">ExpiryQueue</code>
+                            <span class="badge warn">not on the broker</span>
+                        </th:block>
+                        <span class="muted" th:if="${st.expiryAddress() == null}">none</span>
+                    </td>
+                    <td class="muted">
+                        <span th:if="${st.expiryAddress() == null}">An expired message is dropped.</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Max delivery attempts</th>
+                    <td th:text="${st.maxDeliveryAttempts() != null} ? ${st.maxDeliveryAttempts()} : 'not set'">10</td>
+                    <td class="muted" th:if="${st.maxDeliveryAttempts() == null}">The broker leaves a setting out
+                        when it is at its default &mdash; for this one, 10 on a stock broker.</td>
+                    <td class="muted" th:unless="${st.maxDeliveryAttempts() == null}"
+                        th:text="${st.redeliveryDelayMillis() != null} ? ('Redelivery delay ' + ${st.redeliveryDelayMillis()} + 'ms') : ''"></td>
+                </tr>
+                <tr>
+                    <th>When full</th>
+                    <td><code th:text="${st.fullPolicy()} ?: 'not set'">PAGE</code></td>
+                    <td class="muted"
+                        th:text="'Max size ' + (${st.maxSize()} ?: 'not set') + ', max messages ' + (${st.maxMessages()} ?: 'not set')">
+                        Max size unlimited</td>
+                </tr>
+                <tr>
+                    <th>Auto-create / delete</th>
+                    <td th:text="'queues ' + (${st.flag('autoCreateQueues')} ? 'created' : 'not created') + ', ' + (${st.flag('autoDeleteQueues')} ? 'deleted' : 'kept')">queues</td>
+                    <td th:text="'addresses ' + (${st.flag('autoCreateAddresses')} ? 'created' : 'not created') + ', ' + (${st.flag('autoDeleteAddresses')} ? 'deleted' : 'kept')">addresses</td>
+                </tr>
+                <tr th:if="${st.retroactiveMessageCount() != null}">
+                    <th>Retroactive</th>
+                    <td th:text="${st.retroactiveMessageCount()}">0</td>
+                    <td class="muted">A new subscription is given up to this many of the address's most recent
+                        messages.</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <details th:if="${r.settings()}" style="margin-top:.5rem">
+            <summary class="muted">Every setting the broker reported</summary>
+            <table>
+                <tbody>
+                <tr th:each="e : ${r.settings().all()}">
+                    <td><code th:text="${e.key}">key</code></td><td th:text="${e.value}">value</td>
+                </tr>
+                </tbody>
+            </table>
+        </details>
+
+        <h3 style="margin-top:1.25rem">Diverts from here</h3>
+        <p class="muted" th:if="${r.divertsFrom().isEmpty()}">None. Every message sent here routes only to the
+            subscriptions above.</p>
+        <div class="table-scroll" th:unless="${r.divertsFrom().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Divert</th><th>To</th><th>Filter</th><th>Routing</th><th></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="d : ${r.divertsFrom()}"
+                    th:classappend="${d.exclusive() and !detail.subscriptions().isEmpty()} ? 'row-warn' : ''">
+                    <td><code th:text="${d.name()}">divert</code></td>
+                    <td><a th:href="@{/address(name=${d.forwardingAddress()})}" th:text="${d.forwardingAddress()}">to</a></td>
+                    <td>
+                        <code th:if="${d.filtered()}" th:text="${d.filter()}">x</code>
+                        <span class="muted" th:unless="${d.filtered()}">everything</span>
+                    </td>
+                    <td><span class="badge" th:text="${d.routingType()}">PASS</span>
+                        <span class="badge" th:if="${d.transformed()}" th:title="${d.transformerClassName()}">transformed</span></td>
+                    <td>
+                        <span class="badge warn" th:if="${d.exclusive()}">exclusive</span>
+                        <span class="muted" th:unless="${d.exclusive()}">copies</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${r.hasExclusiveDivert()}">
+            An <strong>exclusive</strong> divert takes the message instead of copying it: whatever it
+            matches goes to its target and never reaches the subscriptions on this address, and the
+            broker reports no error for it. If a subscriber here is missing messages, this is the
+            first place to look.
+        </p>
+
+        <h3 style="margin-top:1.25rem">Diverts to here</h3>
+        <p class="muted" th:if="${r.divertsTo().isEmpty()}">None.</p>
+        <ul th:unless="${r.divertsTo().isEmpty()}">
+            <li th:each="d : ${r.divertsTo()}">
+                <code th:text="${d.name()}">divert</code> from
+                <a th:href="@{/address(name=${d.address()})}" th:text="${d.address()}">from</a><span
+                    th:if="${d.filtered()}">, matching <code th:text="${d.filter()}">x</code></span>
+                <span class="badge" th:if="${d.exclusive()}">exclusive</span>
+            </li>
+        </ul>
+    </div>
+
     <form class="panel" method="get" th:action="@{/address}" id="find">
         <h2>Which subscriptions hold a message?</h2>
         <input type="hidden" name="name" th:value="${name}">

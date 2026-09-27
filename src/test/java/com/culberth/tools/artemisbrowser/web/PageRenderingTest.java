@@ -14,6 +14,8 @@ import com.culberth.tools.artemisbrowser.broker.AddressDetail;
 import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.AddressOverview;
+import com.culberth.tools.artemisbrowser.broker.AddressRouting;
+import com.culberth.tools.artemisbrowser.broker.AddressSettings;
 import com.culberth.tools.artemisbrowser.broker.BrokerProducer;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
@@ -21,6 +23,7 @@ import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
+import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
@@ -187,6 +190,46 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("AMQPriority &gt; 3")))
                 .andExpect(content().string(containsString("live-client")))
                 .andExpect(content().string(containsString("conn-1")));
+    }
+
+    @Test
+    @DisplayName("the address page renders its settings and diverts, flagging a missing expiry address")
+    void rendersWhereElseMessagesGo() throws Exception
+    {
+        AddressOverview alerts = new AddressOverview("alerts", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        Subscription subscriber = Subscription.of("app.alerts", "alerts", "MULTICAST", "", "artemis", true, false,
+                false, 0, 0, 0, 1, 0, 0, 0, 0);
+        AddressRouting routing = new AddressRouting(
+                AddressSettings
+                        .of(Map.of("deadLetterAddress", "DLQ", "expiryAddress", "ExpiryGone",
+                                "addressFullMessagePolicy", "PAGE", "maxSizeBytes", "-1", "autoCreateQueues", "true")),
+                null,
+                List.of(new Divert("alerts-archive", "alerts", "alerts.archive", "severity = 'high'", true, "PASS",
+                        "")),
+                List.of(new Divert("fan-in", "legacy.alerts", "alerts", "", false, "PASS", "")),
+                java.util.Set.of("alerts", "DLQ"));
+        given(addressDetail.detail("alerts"))
+                .willReturn(new AddressDetail(alerts, List.of(subscriber), List.of(), List.of(), Map.of(), routing));
+
+        page("/address?name=alerts").andExpect(content().string(containsString("Where else its messages go")))
+                .andExpect(content().string(containsString("href=\"/address?name=DLQ\"")))
+                .andExpect(content().string(containsString("not on the broker")))
+                .andExpect(content().string(containsString("alerts-archive")))
+                .andExpect(content().string(containsString("An <strong>exclusive</strong> divert")))
+                .andExpect(content().string(containsString("legacy.alerts")))
+                .andExpect(content().string(containsString("not set")));
+    }
+
+    @Test
+    @DisplayName("settings that cannot be read say so without taking the address page down")
+    void rendersTheAddressPageWithoutSettings() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        given(addressDetail.detail("events")).willReturn(new AddressDetail(events, List.of(), List.of(), List.of(),
+                Map.of(), new AddressRouting(null, "refused", List.of(), List.of(), java.util.Set.of())));
+
+        page("/address?name=events").andExpect(content().string(containsString("could not be read: refused")))
+                .andExpect(content().string(containsString("Subscriptions")));
     }
 
     @Test
@@ -389,6 +432,17 @@ class PageRenderingTest
                 .willReturn(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)));
 
         page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")));
+    }
+
+    @Test
+    @DisplayName("a finding about a subscription links to both its queue and its address")
+    void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
+    {
+        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of(new Finding(Finding.STUCK,
+                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")));
+
+        page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
+                .andExpect(content().string(containsString("href=\"/address?name=events\"")));
     }
 
     @Test

@@ -114,7 +114,7 @@ never persisted). From there:
 | `/message` | Single message detail (full body, any message type) |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
-| `/address?name=` | One address: its subscriptions (kind, filter, client), the consumers on them, and who is sending |
+| `/address?name=` | One address: its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts |
 | `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
@@ -277,7 +277,8 @@ com.culberth.tools.artemisbrowser
 │   ├── QueueDirectory             Lists queues + counters in one listQueues call
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
-│   ├── AddressDetailService       One address: subscriptions, their consumers (with client ids), its producers
+│   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
+│   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
 │   ├── StuckDiagnosisService      Gathers "why is this not moving" from the cheap reads only
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
@@ -285,7 +286,8 @@ com.culberth.tools.artemisbrowser
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
 │   │                              Queue and message view models, including FQQN browse-name handling
-│   ├── AddressDetail / Subscription / SubscriberConsumer
+│   ├── AddressDetail / Subscription / SubscriberConsumer / SubscriptionSearch
+│   │   / AddressRouting / AddressSettings / Divert
 │   │                              One address as its subscribers see it; kinds and name hints from the broker's naming
 │   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
 │   │   / SearchResult / SavedConnection / Finding

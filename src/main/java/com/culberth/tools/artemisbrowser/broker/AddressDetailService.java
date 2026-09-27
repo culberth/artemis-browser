@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
  * <p>
  * Four listings — the address listing (through {@link AddressDirectory}), a {@code listQueues} filtered to the address,
  * {@code listConsumers}, {@code listProducersInfoAsJSON} — plus one {@code firstMessageAge} read per subscription that
- * has anything on it. That last is per queue, which is why lag lives on this page and not on the address index.
+ * has anything on it, the address's settings, and the broker's diverts. The per-queue and per-divert reads are why this
+ * is a page for one address and not part of the index.
  */
 @Service
 public class AddressDetailService
@@ -28,20 +29,24 @@ public class AddressDetailService
     private final QueueDirectory queueDirectory;
     private final BrokerInfoService brokerInfo;
     private final QueueBrowseService browseService;
+    private final DivertDirectory divertDirectory;
 
     public AddressDetailService(AddressDirectory addressDirectory, QueueDirectory queueDirectory,
-            BrokerInfoService brokerInfo, QueueBrowseService browseService)
+            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory)
     {
         this.addressDirectory = addressDirectory;
         this.queueDirectory = queueDirectory;
         this.brokerInfo = brokerInfo;
         this.browseService = browseService;
+        this.divertDirectory = divertDirectory;
     }
 
     /** The address by exact name, or null when the broker has no such address. */
     public AddressDetail detail(String name)
     {
-        AddressOverview address = addressDirectory.find(name);
+        List<AddressOverview> all = addressDirectory.overview();
+        AddressOverview address = all.stream().filter(candidate -> candidate.name().equals(name)).findFirst()
+                .orElse(null);
         if (address == null)
         {
             return null;
@@ -68,7 +73,26 @@ public class AddressDetailService
                 oldest.put(subscription.name(), age);
             }
         }
-        return new AddressDetail(address, subscriptions, consumers, producers, oldest);
+        return new AddressDetail(address, subscriptions, consumers, producers, oldest, routing(name, all));
+    }
+
+    private AddressRouting routing(String name, List<AddressOverview> all)
+    {
+        AddressSettings settings = null;
+        String settingsError = null;
+        try
+        {
+            settings = addressDirectory.settings(name);
+        }
+        catch (BrokerException e)
+        {
+            // Settings explain the page; they are not the page. A broker that refuses this one read
+            // should still show who is subscribed.
+            settingsError = e.getMessage();
+        }
+        List<Divert> diverts = divertDirectory.all();
+        return new AddressRouting(settings, settingsError, DivertDirectory.from(diverts, name),
+                DivertDirectory.to(diverts, name), all.stream().map(AddressOverview::name).collect(Collectors.toSet()));
     }
 
     /**

@@ -80,7 +80,7 @@ class SubscriberLagTest
         given(browse.matching("app.one", "orderId = 'A'", AddressDetailService.FIND_LIMIT))
                 .willReturn(List.of(mock(MessageSummary.class)));
         given(browse.matching("app.two", "orderId = 'A'", AddressDetailService.FIND_LIMIT)).willReturn(List.of());
-        AddressDetailService service = new AddressDetailService(null, null, null, browse);
+        AddressDetailService service = new AddressDetailService(null, null, null, browse, null);
         AddressDetail detail = new AddressDetail(null,
                 List.of(subscription("app.one", 1, 0, 0, 1), subscription("app.two", 0, 0, 0, 1)), List.of(),
                 List.of());
@@ -118,15 +118,18 @@ class SubscriberLagTest
         AddressDirectory addresses = mock(AddressDirectory.class);
         QueueDirectory queues = mock(QueueDirectory.class);
         BrokerInfoService info = mock(BrokerInfoService.class);
-        given(addresses.find("events"))
-                .willReturn(new AddressOverview("events", "MULTICAST", 1, 0, 1, 0, false, false, false, List.of()));
+        DivertDirectory diverts = mock(DivertDirectory.class);
+        given(addresses.overview()).willReturn(
+                List.of(new AddressOverview("events", "MULTICAST", 1, 0, 1, 0, false, false, false, List.of())));
+        given(addresses.settings("events")).willReturn(AddressSettings.of(Map.of()));
+        given(diverts.all()).willReturn(List.of());
         given(queues.onAddress("events"))
                 .willReturn(List.of(subscription("app.full", 1, 0, 0, 1), subscription("app.empty", 0, 0, 0, 1)));
         given(queues.oldestUndeliveredAgeMillis("app.full")).willReturn(5000L);
         given(info.consumersOn(org.mockito.ArgumentMatchers.anySet())).willReturn(List.of());
         given(info.producers()).willReturn(List.of());
 
-        AddressDetail detail = new AddressDetailService(addresses, queues, info, null).detail("events");
+        AddressDetail detail = new AddressDetailService(addresses, queues, info, null, diverts).detail("events");
 
         assertEquals(Map.of("app.full", 5000L), detail.oldestUndeliveredMillis());
         verify(queues, never()).oldestUndeliveredAgeMillis("app.empty");

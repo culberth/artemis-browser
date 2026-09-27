@@ -5,19 +5,26 @@ import java.util.Map;
 
 /**
  * Everything about one address: its counters, who is subscribed and how, who is attached to each subscription, who is
- * sending to it, and how far behind each subscriber is.
+ * sending to it, how far behind each subscriber is, and where else its messages can go.
  *
  * @param oldestUndeliveredMillis per queue name, the age of the oldest message not yet handed to a consumer; absent
  *                                when there is none or it could not be read
  */
 public record AddressDetail(AddressOverview address, List<Subscription> subscriptions,
-        List<SubscriberConsumer> consumers, List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis)
+        List<SubscriberConsumer> consumers, List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis,
+        AddressRouting routing)
 {
 
     public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
             List<BrokerProducer> producers)
     {
-        this(address, subscriptions, consumers, producers, Map.of());
+        this(address, subscriptions, consumers, producers, Map.of(), AddressRouting.NONE);
+    }
+
+    public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
+            List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis)
+    {
+        this(address, subscriptions, consumers, producers, oldestUndeliveredMillis, AddressRouting.NONE);
     }
 
     public List<SubscriberConsumer> consumersOf(Subscription subscription)
