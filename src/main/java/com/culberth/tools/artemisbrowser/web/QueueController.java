@@ -2,6 +2,7 @@ package com.culberth.tools.artemisbrowser.web;
 
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
+import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
@@ -42,12 +43,15 @@ public class QueueController
     private final BrokerSession brokerSession;
     private final QueueDirectory queueDirectory;
     private final QueueBrowseService browseService;
+    private final InFlightService inFlightService;
 
-    public QueueController(BrokerSession brokerSession, QueueDirectory queueDirectory, QueueBrowseService browseService)
+    public QueueController(BrokerSession brokerSession, QueueDirectory queueDirectory, QueueBrowseService browseService,
+            InFlightService inFlightService)
     {
         this.brokerSession = brokerSession;
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
+        this.inFlightService = inFlightService;
     }
 
     /** All queues and their counters at a glance, optionally refreshing on a timer. */
@@ -161,9 +165,10 @@ public class QueueController
         }
 
         model.addAttribute("selected", name);
+        QueueStats stats;
         try
         {
-            QueueStats stats = queueDirectory.stats(name);
+            stats = queueDirectory.stats(name);
             model.addAttribute("stats", stats);
             model.addAttribute("messages", browseService.page(name, filter, Math.max(1, page), pageSize));
             // Scheduled messages are counted by the queue but not returned by browse, so without
@@ -176,6 +181,20 @@ public class QueueController
         catch (BrokerException e)
         {
             model.addAttribute("error", filterHint(e.getMessage(), filter));
+            return "queues";
+        }
+        // In-flight messages are invisible to browse too. Its own try: failing to read them must not
+        // take the waiting messages off the page with it.
+        if (stats != null && stats.deliveringCount() > 0)
+        {
+            try
+            {
+                model.addAttribute("inFlight", inFlightService.inFlight(stats));
+            }
+            catch (BrokerException e)
+            {
+                model.addAttribute("inFlightError", e.getMessage());
+            }
         }
         return "queues";
     }

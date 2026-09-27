@@ -1,9 +1,12 @@
 package com.culberth.tools.artemisbrowser.broker;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,6 +21,12 @@ import org.springframework.stereotype.Service;
  * Built from the cheap reads only: one {@code listQueues}, one consumer listing, one address listing, the health
  * attributes, and a scheduled-message read for the few queues that have any. Nothing browses a message body, so this
  * page costs the same on a broker with a 50,000-message dead-letter queue as on an empty one.
+ *
+ * <p>
+ * The one exception is how long messages have been in flight, which only each queue's delivering list can say. Those
+ * lists have no paging, so they are read within a budget of {@link #IN_FLIGHT_BUDGET_FACTOR} times
+ * {@code artemis.in-flight-limit} messages for the whole page — about 20,000 by default, measured at roughly 5.6MB and
+ * 150ms — smallest queue first, and whatever that leaves unread is reported on the page.
  */
 @Service
 public class StuckDiagnosisService
@@ -28,37 +37,166 @@ public class StuckDiagnosisService
     private final BrokerInfoService brokerInfo;
     private final QueueBrowseService browseService;
     private final DivertDirectory divertDirectory;
+    private final InFlightService inFlightService;
+
+    /**
+     * Fewest in-flight messages one consumer must hold, with every other consumer on the queue holding none, to be
+     * called hoarding. One message in flight while the rest sit idle is a consumer working; ten is a buffer.
+     */
+    static final long HOARDING_MIN = 10;
+
+    /**
+     * How old, from its send time, the oldest in-flight message must be to be worth a finding. Send time because
+     * nothing reports a delivery time; ten minutes because a healthy consumer rarely holds one message that long.
+     */
+    static final long LONG_IN_FLIGHT_MILLIS = 10 * 60_000L;
+
+    /** The page's in-flight reading budget, as a multiple of the per-queue limit. */
+    static final int IN_FLIGHT_BUDGET_FACTOR = 4;
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
-            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory)
+            BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
+            InFlightService inFlightService)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
         this.brokerInfo = brokerInfo;
         this.browseService = browseService;
         this.divertDirectory = divertDirectory;
+        this.inFlightService = inFlightService;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
     {
+        return run(includeInternal).findings();
+    }
+
+    /** The findings, and what the page did not read to reach them. */
+    public Diagnosis run(boolean includeInternal)
+    {
         List<Finding> findings = new ArrayList<>();
         brokerLevel(findings);
 
-        List<QueueOverview> queues = queueDirectory.overview();
+        List<QueueOverview> queues = queueDirectory.overview().stream()
+                .filter(queue -> includeInternal || !queue.internalQueue()).toList();
         List<BrokerConsumer> consumers = brokerInfo.consumers();
         for (QueueOverview queue : queues)
         {
-            if (queue.internalQueue() && !includeInternal)
-            {
-                continue;
-            }
             queueLevel(findings, queue, consumers);
         }
+        hoarding(findings, queues, consumers);
+        Unread unread = longInFlight(findings, queues);
         addressLevel(findings, includeInternal);
 
         // Whatever is not moving now first; within that, the biggest backlog.
         findings.sort((left, right) -> left.isStuck() == right.isStuck() ? 0 : (left.isStuck() ? -1 : 1));
-        return findings;
+        return new Diagnosis(findings, unread.queues(), unread.messages());
+    }
+
+    /** In-flight messages the page's budget did not stretch to, and on how many queues. */
+    private record Unread(int queues, long messages)
+    {
+    }
+
+    /**
+     * One consumer holding everything in flight while the others on the queue hold nothing.
+     *
+     * <p>
+     * "In flight" includes a consumer's client-side buffer, and measured on 2.44.0 a CORE consumer on the default 1MB
+     * window buffers about 3,200 small messages: consumer A received two, the third sat in A's buffer, and consumer B
+     * on the same queue got nothing. From the counters that looks like two healthy consumers. Read from the consumer
+     * listing diagnose already has, so it costs one more listing only when it fires — to name the client.
+     */
+    private void hoarding(List<Finding> findings, List<QueueOverview> queues, List<BrokerConsumer> consumers)
+    {
+        Map<QueueOverview, BrokerConsumer> hoarders = new LinkedHashMap<>();
+        for (QueueOverview queue : queues)
+        {
+            List<BrokerConsumer> real = consumers.stream().filter(
+                    consumer -> queue.name().equals(consumer.queueName()) && !consumer.browseOnly() && !consumer.self())
+                    .toList();
+            List<BrokerConsumer> holding = real.stream().filter(consumer -> consumer.deliveringCount() > 0).toList();
+            if (real.size() >= 2 && holding.size() == 1 && holding.get(0).deliveringCount() >= HOARDING_MIN)
+            {
+                hoarders.put(queue, holding.get(0));
+            }
+        }
+        if (hoarders.isEmpty())
+        {
+            return;
+        }
+        Map<String, SubscriberConsumer> clients = brokerInfo
+                .consumersOn(hoarders.keySet().stream().map(QueueOverview::name).collect(Collectors.toSet())).stream()
+                .collect(Collectors.toMap(SubscriberConsumer::consumerId, client -> client, (a, b) -> a));
+        hoarders.forEach((queue, hoarder) ->
+        {
+            long others = consumers.stream().filter(consumer -> queue.name().equals(consumer.queueName())
+                    && !consumer.browseOnly() && !consumer.self() && !consumer.equals(hoarder)).count();
+            String who = who(clients.get(hoarder.sequentialId()), hoarder);
+            findings.add(Finding.watch("One consumer holds everything in flight on '" + queue.name() + "'",
+                    who + " holds " + hoarder.deliveringCount() + " message(s) in flight, and the other " + others
+                            + " consumer(s) on this queue hold none. In flight includes what sits in a consumer's"
+                            + " client-side buffer, so one consumer can take a backlog the others could be working"
+                            + " on — usually a consumer window or prefetch set too large for how slowly each message"
+                            + " is processed.",
+                    queue.name()));
+        });
+    }
+
+    /**
+     * The oldest message still in flight on each queue, flagged when it was sent long ago.
+     *
+     * <p>
+     * Measured from send time, because the broker reports no delivery time: on a queue with a backlog the message may
+     * have waited most of that time before a consumer took it, and the finding says so rather than blaming the consumer
+     * outright.
+     */
+    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues)
+    {
+        long budget = (long) inFlightService.limit() * IN_FLIGHT_BUDGET_FACTOR;
+        int queuesNotRead = 0;
+        long notRead = 0;
+        long now = System.currentTimeMillis();
+        List<QueueOverview> candidates = queues.stream().filter(queue -> queue.deliveringCount() > 0)
+                .sorted(Comparator.comparingLong(QueueOverview::deliveringCount)).toList();
+        for (QueueOverview queue : candidates)
+        {
+            if (queue.deliveringCount() > budget || queue.deliveringCount() > inFlightService.limit())
+            {
+                queuesNotRead++;
+                notRead += queue.deliveringCount();
+                continue;
+            }
+            budget -= queue.deliveringCount();
+            InFlightLookup oldest = inFlightService.oldest(queue.name(), queue.deliveringCount());
+            if (!oldest.found() || now - oldest.message().timestamp() < LONG_IN_FLIGHT_MILLIS)
+            {
+                continue;
+            }
+            long waiting = queue.messageCount() - queue.deliveringCount();
+            findings.add(Finding.watch(
+                    "A message on '" + queue.name() + "' sent "
+                            + AddressDetail.ageText(now - oldest.message().timestamp()) + " ago is still in flight",
+                    oldest.message().messageId() + " is held, unacknowledged, by " + oldest.holder().describe()
+                            + ". A consumer stuck partway through a message looks like this. The age is from when the"
+                            + " message was sent — the broker does not report when it was delivered"
+                            + (waiting > 0
+                                    ? ", and this queue has " + waiting + " message(s) waiting, so it may have"
+                                            + " spent most of that time in the backlog before a consumer took it."
+                                    : ", so it is how old the message is, not how long this consumer has held it."),
+                    queue.name()));
+        }
+        return new Unread(queuesNotRead, notRead);
+    }
+
+    private String who(SubscriberConsumer client, BrokerConsumer consumer)
+    {
+        if (client != null && !client.clientId().isEmpty())
+        {
+            return "Client '" + client.clientId() + "'"
+                    + (client.remoteAddress().isEmpty() ? "" : " from " + client.remoteAddress());
+        }
+        return "Consumer " + consumer.key();
     }
 
     /**
@@ -191,8 +329,8 @@ public class StuckDiagnosisService
     private void addressLevel(List<Finding> findings, boolean includeInternal)
     {
         List<AddressOverview> all = addressDirectory.overview();
-        exclusiveDiverts(findings, all.stream()
-                .collect(java.util.stream.Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
+        exclusiveDiverts(findings,
+                all.stream().collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
         for (AddressOverview address : all)
         {
             if (isBrokersOwn(address) && !includeInternal)

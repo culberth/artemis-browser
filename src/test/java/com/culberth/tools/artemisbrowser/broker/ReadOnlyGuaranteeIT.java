@@ -4,10 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.StringWriter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +35,7 @@ class ReadOnlyGuaranteeIT
     private static QueueDirectory queues;
     private static QueueBrowseService browse;
     private static MessageSearchService search;
+    private static InFlightService inFlight;
 
     @BeforeAll
     static void connect() throws Exception
@@ -37,7 +43,8 @@ class ReadOnlyGuaranteeIT
         brokerSession = ArtemisBrokerSupport.connect();
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
-        search = new MessageSearchService(brokerSession, queues, browse, 50);
+        inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
+        search = new MessageSearchService(brokerSession, queues, browse, inFlight, 50);
     }
 
     @AfterAll
@@ -61,6 +68,123 @@ class ReadOnlyGuaranteeIT
         }
 
         assertEquals(before, counters(), "a read path moved a counter");
+    }
+
+    @Test
+    @DisplayName("reading what a consumer holds unacknowledged moves no counter, on that queue or any other")
+    void readingInFlightChangesNothing() throws Exception
+    {
+        String queue = "it-held";
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(ArtemisBrokerSupport.url()))
+        {
+            Connection holder = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            try
+            {
+                holder.start();
+                Session session = holder.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+                try (MessageProducer producer = session.createProducer(session.createQueue(queue)))
+                {
+                    for (int i = 1; i <= 5; i++)
+                    {
+                        producer.send(session.createTextMessage("held-" + i));
+                    }
+                }
+                // Two received and never acknowledged; the other three sit in the consumer's buffer,
+                // which the broker counts as delivering too.
+                MessageConsumer consumer = session.createConsumer(session.createQueue(queue));
+                jakarta.jms.Message first = consumer.receive(5000);
+                assertTrue(first != null && consumer.receive(5000) != null);
+                awaitDelivering(queue, 5);
+
+                Map<String, String> before = counters();
+                InFlight held = null;
+                for (int round = 0; round < 3; round++)
+                {
+                    held = inFlight.inFlight(queues.stats(queue));
+                    readEverything();
+                }
+                // A search by its ID finds the held message in flight, where browse alone cannot see it.
+                SearchResult byId = search.search(first.getJMSMessageID(), false);
+                assertEquals(0, byId.totalMatches(), "browse should not see a message in flight");
+                assertEquals(1, byId.inFlight().size(), "the ID lookup did not find the message in flight");
+                assertEquals(queue, byId.inFlight().get(0).queueName());
+                assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
+
+                // The oldest in flight is the first one sent, which is also the first received.
+                assertEquals(first.getJMSMessageID(), inFlight.oldest(queue, 5).message().messageId());
+
+                assertEquals(before, counters(), "reading the in-flight messages moved a counter");
+
+                assertEquals(5, held.listedCount());
+                assertEquals(1, held.consumers().size());
+                assertTrue(held.consumers().get(0).identified(), held.consumers().get(0).consumerName());
+                assertTrue(held.consumers().get(0).client() != null, "the holder was not matched to a client");
+                assertEquals(5L, held.consumers().get(0).inTransit());
+            }
+            finally
+            {
+                holder.close();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("diagnose names a consumer whose buffer holds everything while another on the queue gets nothing")
+    void diagnosesAHoardingConsumer() throws Exception
+    {
+        String queue = "it-hoard";
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(ArtemisBrokerSupport.url()))
+        {
+            Connection hoarder = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            Connection starved = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            try
+            {
+                hoarder.setClientID("it-hoarder");
+                hoarder.start();
+                Session session = hoarder.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+                try (MessageProducer producer = session.createProducer(session.createQueue(queue)))
+                {
+                    for (int i = 1; i <= 20; i++)
+                    {
+                        producer.send(session.createTextMessage("hoarded-" + i));
+                    }
+                }
+                // One received; the default window pulls the other nineteen into this client's buffer
+                // before the second consumer exists, and it gets nothing.
+                assertTrue(session.createConsumer(session.createQueue(queue)).receive(5000) != null);
+                awaitDelivering(queue, 20);
+                starved.start();
+                starved.createSession(false, Session.CLIENT_ACKNOWLEDGE)
+                        .createConsumer(starved.createSession(false, Session.CLIENT_ACKNOWLEDGE).createQueue(queue));
+
+                Map<String, String> before = counters();
+                List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
+                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                        .diagnose(false);
+                assertEquals(before, counters(), "diagnosing moved a counter");
+
+                Finding hoarding = findings.stream()
+                        .filter(f -> queue.equals(f.queue()) && f.title().startsWith("One consumer holds")).findFirst()
+                        .orElseThrow(() -> new AssertionError("no hoarding finding in " + findings));
+                assertTrue(hoarding.detail().contains("Client 'it-hoarder'"), hoarding.detail());
+                assertTrue(hoarding.detail().contains("holds 20"), hoarding.detail());
+            }
+            finally
+            {
+                starved.close();
+                hoarder.close();
+            }
+        }
+    }
+
+    /** The consumer's buffer fills asynchronously after the first receive. */
+    private void awaitDelivering(String queue, long expected) throws InterruptedException
+    {
+        for (int attempt = 0; attempt < 50 && queues.stats(queue).deliveringCount() < expected; attempt++)
+        {
+            Thread.sleep(100);
+        }
+        assertEquals(expected, queues.stats(queue).deliveringCount());
     }
 
     @Test
@@ -133,6 +257,7 @@ class ReadOnlyGuaranteeIT
         {
             QueueStats stats = queues.stats(queue.name());
             MessagePage page = browse.page(queue.name(), null, 1, 100);
+            inFlight.inFlight(stats);
             browse.pageForExport(queue.name(), stats.browseName(), null, 1, 100);
 
             for (MessageSummary message : page.messages())
@@ -146,7 +271,7 @@ class ReadOnlyGuaranteeIT
         search.search("AMQPriority >= 0", true);
         new BrokerInfoService(brokerSession).consumers();
         AddressDetailService addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession));
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight);
         for (AddressOverview address : new AddressDirectory(brokerSession, queues).overview())
         {
             AddressDetail detail = addresses.detail(address.name());
@@ -156,7 +281,8 @@ class ReadOnlyGuaranteeIT
             }
         }
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession)).diagnose(true);
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                .diagnose(true);
     }
 
     /**

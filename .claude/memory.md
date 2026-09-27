@@ -156,6 +156,54 @@ from — a wrong parse here yields a believable number rather than an error.
   the browsable list. So "not found by browse" never means "not on the queue" while delivering > 0,
   and `firstMessageAge` is the age of the oldest message *not yet delivered*.
 
+### In-flight messages (2026-09-27, 2.44.0, before Phase 11 parsed any of it)
+
+- **`queue.<bare name>.listDeliveringMessagesAsJSON()`** → a JSON array, one entry per consumer:
+  `{"consumerName": "<ServerConsumer toString>", "elements": [ {...}, ... ]}`. Each element is the
+  message's headers (`messageID` bare number, `userID`, `address`, `durable`, `priority`, `timestamp`
+  bare epoch millis, `expiration`, `type`) with **its properties inline at the top level** — same
+  layout as `listScheduledMessagesAsJSON` — plus Artemis's own `__AMQ_CID`, `_AMQ_ROUTING_TYPE`.
+  **No body, no delivery time.** `listDeliveringMessages()` (non-JSON) → a HashMap keyed by the same
+  toString, values `Object[]`.
+- **`consumerName` is a `toString()`**, e.g. `ServerConsumer [id=800977e2:18098baf-…-00155d348692:0,
+  filter=null, binding=LocalQueueBinding [address=work, queue=QueueImpl[name=work, …]]]`. The `id` is
+  `<connectionID>:<sessionID>:<consumerID within session>` — which `listAllConsumersAsJSON`'s
+  `connectionID`/`sessionID`/`consumerID` can match, and whose `sequentialId` is `listConsumers`' `id`
+  (where the client id is). Only checked for CORE clients.
+- **No paging, no filter**: 300 in-flight messages = 65,813 chars in 11ms. A consumer's buffer
+  (consumer window, 1MB default) can hold thousands of small messages.
+- **"Delivering" includes the consumer's client-side buffer.** Consumer A called `receive()` twice;
+  the third message was also delivering to A, and consumer B on the same queue got nothing.
+  `listConsumers` showed A `messagesInTransit=3`, B `0`.
+- **Reading it is non-destructive**: messageCount/deliveringCount/messagesAcknowledged identical
+  before and after, on a plain queue, a buffered backlog and a durable subscription.
+- **Measured at scale (2026-09-27)**: ~280 chars per small message, linear. 1,000 → 278KB/~15ms;
+  3,214 → 900KB/~40ms; 20,000 → 5.6MB/~150ms; 100,000 → 28MB/~800ms. A CORE consumer on the
+  **default 1MB window saturates at ~3,200** small messages (5,000 sent, 3,214 delivering); only an
+  unbounded window (`consumerWindowSize=-1`) takes the lot. Cap is `artemis.in-flight-limit=5000`,
+  checked against `deliveringCount` *before* calling, since nothing broker-side shrinks the reply.
+- **Non-CORE consumers (2026-09-27)**: AMQP (`artemis consumer --protocol AMQP`) and STOMP give the
+  same `id=<conn>:<session>:<consumerID>` shape (STOMP's consumerID is a large number, e.g.
+  `126356`). **OpenWire's session id contains colons** — `id=d46364be:ID:HOST-63679-1790…-1:1:1:0` —
+  so split at the first and last colon only; that triple matches `listAllConsumersAsJSON` exactly for
+  all four. OpenWire elements also carry `__HDR_*` headers (`__HDR_MESSAGE_ID`, `__HDR_ARRIVAL`…)
+  as properties. `listConsumers` has `protocol` per consumer. The artemis CLI has no OpenWire
+  consumer; `activemq-client` 6.1.7 (jakarta) resolves through Nexus for a throwaway one.
+- **Message IDs agree across read paths (2026-09-27, CORE)**: browse's `userID`, the delivering
+  list's `userID` and the consumer's `JMSMessageID` are the same string. Core filter
+  `AMQUserID = 'ID:…'` finds it; without the `ID:` prefix, or as `JMSMessageID = '…'`, it silently
+  matches nothing. OpenWire differs: its own `JMSMessageID` travels as `__HDR_MESSAGE_ID`, while
+  `userID` is Artemis-generated — this tool shows and looks up `userID`. Unverified for lookup.
+- **Thymeleaf 3.1 in `th:text` rejects an apostrophe inside a string literal** (2026-09-27): prose
+  like "each queue's" in `th:text="'...'"` fails with "Could not parse as expression", and only when
+  that branch renders — `PageRenderingTest` caught it. Word around it, or use `&rsquo;`.
+- **The queue page's pager counts in-flight messages** (seen 2026-09-27, not yet fixed): 250 all in
+  flight showed "showing 0–0 of 250 … Page 1 of 5" over an empty table, because `countMessages`
+  includes delivering ones and `browse` does not. Whether a *filtered* count includes them is unchecked.
+- **`AddressDetailIT.measuresLagByAge` was red on `main`** from af9a664 to 2026-09-27: that commit's
+  60s-gap rule for "furthest behind" correctly returns null for a feed seeded in one burst, and the IT
+  still expected a mark. Run `-Pintegration` after changing a heuristic, not just unit tests.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

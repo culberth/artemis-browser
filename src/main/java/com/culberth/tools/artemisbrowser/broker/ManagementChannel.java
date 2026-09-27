@@ -68,7 +68,7 @@ public class ManagementChannel implements AutoCloseable
             "listQueues", "listAddresses", "getAcceptorsAsJSON", "listConnectionsAsJSON", "listAllConsumersAsJSON",
             "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON", "getDivertNames",
             // queue.*
-            "browse", "countMessages", "listScheduledMessagesAsJSON");
+            "browse", "countMessages", "listScheduledMessagesAsJSON", "listDeliveringMessagesAsJSON");
 
     /** Invoke a read-only management operation, e.g. {@code broker.listQueues(...)}. */
     public synchronized Object invoke(String resource, String operation, Object... params)

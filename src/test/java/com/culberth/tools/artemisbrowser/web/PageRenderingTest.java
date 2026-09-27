@@ -23,8 +23,14 @@ import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
+import com.culberth.tools.artemisbrowser.broker.Diagnosis;
 import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
+import com.culberth.tools.artemisbrowser.broker.InFlight;
+import com.culberth.tools.artemisbrowser.broker.InFlightConsumer;
+import com.culberth.tools.artemisbrowser.broker.InFlightLookup;
+import com.culberth.tools.artemisbrowser.broker.InFlightMessage;
+import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
@@ -117,6 +123,9 @@ class PageRenderingTest
     private QueueBrowseService browseService;
 
     @MockitoBean
+    private InFlightService inFlightService;
+
+    @MockitoBean
     private MessageSearchService searchService;
 
     @MockitoBean
@@ -196,6 +205,29 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("AMQPriority &gt; 3")))
                 .andExpect(content().string(containsString("live-client")))
                 .andExpect(content().string(containsString("conn-1")));
+    }
+
+    @Test
+    @DisplayName("an address lookup by message ID renders the subscription holding it in flight, linked to the panel")
+    void rendersTheAddressPageWithAnInFlightHit() throws Exception
+    {
+        Subscription held = Subscription.of("app-1.audit", "events", "MULTICAST", "", "artemis", true, false, false, 3,
+                3, 0, 1, 3, 0, 0, 0);
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 3, 2048, 3, 0, false, false, false,
+                List.of());
+        AddressDetail detail = new AddressDetail(events, List.of(held), List.of(), List.of());
+        given(addressDetail.detail("events")).willReturn(detail);
+        InFlightConsumer holder = new InFlightConsumer("", "c", "s", "0", List.of(), new SubscriberConsumer("7",
+                "app-1.audit", "audit-reader", "artemis", "10.0.0.9:6000", "CORE", "", 3, 0), 3L);
+        given(addressDetail.find(detail, "ID:held-1")).willReturn(
+                new SubscriptionSearch("AMQUserID = 'ID:held-1'", "ID:held-1", List.of(new SubscriptionSearch.Row(held,
+                        List.of(), false, new InFlightLookup("app-1.audit", true, holder, null)))));
+
+        page("/address?name=events&find=ID:held-1")
+                .andExpect(content().string(containsString("in flight to audit-reader (CORE, 10.0.0.9:6000)")))
+                .andExpect(content().string(containsString("href=\"/queues?name=app-1.audit#in-flight\"")))
+                .andExpect(content().string(containsString("ID:held-1 — in flight")))
+                .andExpect(content().string(containsString("Looking up one message by its ID")));
     }
 
     @Test
@@ -364,6 +396,69 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("the in-flight panel lists each consumer's messages, says why there is no body, and is linked to")
+    void rendersTheInFlightPanel() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 3, 0, 2, 3, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        InFlightMessage held = new InFlightMessage("ID:held-1", 30L, "Text", 4, true, 1L, "2026-09-27 10:00:00",
+                "4m 12s", Map.of("region", "eu"));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 3, 5000, false, false, List.of(
+                new InFlightConsumer("ServerConsumer [id=c:s:0, filter=null]", "c", "s", "0", List.of(held),
+                        new SubscriberConsumer("7", QUEUE, "billing-worker", "artemis", "10.0.0.7:5000", "AMQP", "", 3,
+                                0),
+                        3L),
+                new InFlightConsumer("Unrecognised [thing]", null, null, null, List.of(held)))));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("id=\"in-flight\"")))
+                .andExpect(content().string(containsString("href=\"#in-flight\"")))
+                .andExpect(content().string(containsString("billing-worker")))
+                .andExpect(content().string(containsString("10.0.0.7:5000")))
+                .andExpect(content().string(containsString("holding 3")))
+                .andExpect(content().string(containsString("ID:held-1")))
+                .andExpect(content().string(containsString("4m 12s ago")))
+                .andExpect(content().string(containsString("region=eu")))
+                .andExpect(content().string(containsString("no body")))
+                .andExpect(content().string(containsString("2 more held by this consumer")))
+                .andExpect(content().string(containsString("Unrecognised [thing]")));
+    }
+
+    @Test
+    @DisplayName("over the limit, the in-flight panel names the holders and says the messages were not read")
+    void rendersTheInFlightPanelOverTheLimit() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 9000, 9000, 0, 1, 9000, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, "region = 'eu'", 1, 50, 0, List.of()));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 9000, 5000, true, false,
+                List.of(new InFlightConsumer("", "c", "s", "0", List.of(), null, 9000L))));
+
+        page("/queues?name=" + QUEUE + "&filter=region = 'eu'")
+                .andExpect(content().string(containsString("more than the 5000 this page will list")))
+                .andExpect(content().string(containsString("c:s:0")))
+                .andExpect(content().string(containsString("holding 9000")))
+                .andExpect(content().string(containsString("filter above is not applied here")))
+                .andExpect(content().string(containsString("listed below")));
+    }
+
+    @Test
+    @DisplayName("a failure reading in-flight messages leaves the rest of the queue page standing")
+    void rendersTheQueuePageWhenInFlightFails() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 3, 1, 0, 1, 3, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(
+                new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"), summary(2, "ID:bbb"))));
+        given(inFlightService.inFlight(stats)).willThrow(new BrokerException("delivering list unavailable"));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("ID:aaa")))
+                .andExpect(content().string(containsString("delivering list unavailable")));
+    }
+
+    @Test
     @DisplayName("the queue page renders a filter rejected by the broker")
     void rendersTheQueuePageOnError() throws Exception
     {
@@ -420,6 +515,38 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a message-ID search renders where the message is in flight, and what it could not check")
+    void rendersTheSearchPageWithAnInFlightHit() throws Exception
+    {
+        InFlightMessage held = new InFlightMessage("ID:held-1", 30L, "Text", 4, true, 1L, "2026-09-27 10:00:00",
+                "4m 12s", Map.of("region", "eu"));
+        InFlightConsumer holder = new InFlightConsumer("", "c", "s", "0", List.of(held),
+                new SubscriberConsumer("7", QUEUE, "billing-worker", "artemis", "10.0.0.7:5000", "AMQP", "", 3, 0), 3L);
+        given(searchService.search(anyString(), anyBoolean())).willReturn(new SearchResult("AMQUserID = 'ID:held-1'", 3,
+                0, false, List.of(), "ID:held-1", List.of(new InFlightLookup(QUEUE, true, holder, held)), 9000));
+
+        page("/search?filter=ID:held-1")
+                .andExpect(content().string(containsString("in flight to billing-worker (AMQP, 10.0.0.7:5000)")))
+                .andExpect(content().string(containsString("href=\"/queues?name=orders#in-flight\"")))
+                .andExpect(content().string(containsString("4m 12s ago")))
+                .andExpect(content().string(containsString("0 in 0 of 3 queues, and in flight on 1")))
+                .andExpect(content().string(containsString("9000 message(s) in flight could not be checked")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Nothing matched"))));
+    }
+
+    @Test
+    @DisplayName("an ordinary search says how many in-flight messages it could not look at")
+    void rendersTheSearchPageWithInFlightNotSearched() throws Exception
+    {
+        given(searchService.search(anyString(), anyBoolean()))
+                .willReturn(new SearchResult("region = 'eu'", 3, 0, false, List.of(), null, List.of(), 7));
+
+        page("/search?filter=region = 'eu'").andExpect(content().string(containsString("Nothing matched")))
+                .andExpect(content().string(containsString("7 message(s) in flight to a consumer")))
+                .andExpect(content().string(containsString("Look up a single message by its ID")));
+    }
+
+    @Test
     @DisplayName("the search page renders a filter rejected by the broker")
     void rendersTheSearchPageOnError() throws Exception
     {
@@ -434,8 +561,8 @@ class PageRenderingTest
     @DisplayName("the diagnose page renders its findings")
     void rendersTheDiagnosePage() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean()))
-                .willReturn(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)));
+        given(diagnosis.run(anyBoolean())).willReturn(
+                new Diagnosis(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)), 0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")));
     }
@@ -444,8 +571,9 @@ class PageRenderingTest
     @DisplayName("a finding about a subscription links to both its queue and its address")
     void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of(new Finding(Finding.STUCK,
-                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")));
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(new Finding(Finding.STUCK,
+                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")),
+                0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
                 .andExpect(content().string(containsString("href=\"/address?name=events\"")));
@@ -455,9 +583,22 @@ class PageRenderingTest
     @DisplayName("the diagnose page renders when it finds nothing")
     void rendersTheDiagnosePageWithNoFindings() throws Exception
     {
-        given(diagnosis.diagnose(anyBoolean())).willReturn(List.of());
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(), 0, 0));
 
-        Assertions.assertDoesNotThrow(() -> page("/diagnose"));
+        page("/diagnose").andExpect(content().string(containsString("Nothing on this broker looks blocked")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("was not checked"))));
+    }
+
+    @Test
+    @DisplayName("the diagnose page says which queues' in-flight ages it did not read")
+    void rendersTheDiagnosePageWithInFlightNotRead() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(
+                List.of(Finding.watch("One consumer holds everything in flight on 'orders'", "hoarding", QUEUE)), 2,
+                31000));
+
+        page("/diagnose").andExpect(content().string(containsString("One consumer holds everything in flight")))
+                .andExpect(content().string(containsString("not checked on 2 queue(s) holding 31000 in flight")));
     }
 
     // --------------------------------------------------------------- helpers

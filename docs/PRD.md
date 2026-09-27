@@ -1,9 +1,10 @@
 # artemis-browser — Product Requirements
 
-Status: **feature-complete again, and in maintenance.** Phases 1–9 shipped and the project was
-declared feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection —
-rather than by a backlog creeping back, and Phase 10 merged the same day (PR #19). See *Phase 10*
-below. The tool is run by one person, which is what settles the open questions about replicas,
+Status: **Phase 11 in progress — reopened 2026-09-27 for in-flight messages.** Phases 1–9 shipped
+and the project was declared feature-complete; it was reopened on 2026-09-27 for one theme —
+subscription inspection — and Phase 10 merged the same day (PR #19). It was reopened again the same
+day, on request, for a second theme: messages delivered to a consumer and not yet acknowledged. See
+*Phase 10* and *Phase 11* below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
 Last updated: 2026-09-27.
 
@@ -46,6 +47,7 @@ Two consequences worth stating, because they come up every time:
 | Take the evidence away with me | `/export` |
 | See where a multicast address fans out to | `/addresses` |
 | See who is subscribed to one address, what each gets, and who is behind *(Phase 10)* | `/address` |
+| See which consumer is holding which messages it has not acknowledged *(Phase 11)* | `/queues` |
 | See whether the broker itself is healthy, and who is attached | `/broker` |
 
 ## Constraints
@@ -346,6 +348,126 @@ abandoned durable subscription, a live non-durable subscription, a shared durabl
 an exclusive divert — created by the test setup, never by the app. `ReadOnlyGuaranteeIT` loads the new
 pages three times and asserts the counters unchanged; `PageRenderingTest` gains the address page's
 empty, populated and broker-error states.
+
+## Phase 11 — In-flight messages: what a consumer has been given and not acknowledged
+
+Reopened 2026-09-27 on the author's request. Phase 10 found that a message delivered to a consumer
+and not yet acknowledged is invisible to `browse` and to `firstMessageAge`, so the tool could only
+say "N in flight could not be searched" — honest, and a dead end. Artemis does expose them, through
+`listDeliveringMessagesAsJSON`; this phase reads it.
+
+What a 2.44.0 broker returned before any of this was planned (details in `.claude/memory.md`):
+
+- **Per consumer, not per message.** Each entry names its consumer only by a `ServerConsumer`
+  `toString()` — `id=<connection>:<session>:<n>` inside a longer dump — with no client id and no field
+  the consumer listings share. Tying it to a client means parsing that text.
+- **Headers and properties, no body.** And the JMS browser cannot see these messages either, so a
+  body is not available from anywhere; an in-flight message can be listed, not opened.
+- **No paging, no filter.** 300 in-flight messages were a 65KB reply in 11ms. A consumer buffering
+  small messages can hold thousands, so the reply needs a cap on this side.
+- **"In flight" is "in the consumer's client buffer", not "the application has it".** Consumer A
+  received two messages; the third sat in A's buffer, counted as delivering to A, while consumer B on
+  the same queue received nothing. That is also exactly how one consumer starves the others.
+- Reading it moved no counter.
+
+### P0 — guard and verify
+
+- [x] **Allowlist `listDeliveringMessagesAsJSON`.**
+- [x] **Measure it at scale**: thousands of small messages in one consumer's buffer — reply size and
+      time — and set the cap from the measurement, not a guess.
+      Done 2026-09-27: linear at ~280 characters per small message, from 278KB/15ms at 1,000 to
+      28MB/800ms at 100,000. A consumer on the default 1MB window stops at about 3,200 small
+      messages; only an unbounded window takes more. So `artemis.in-flight-limit` is 5,000, and it is
+      checked against `deliveringCount` *before* the call — the reply cannot be made smaller, only
+      not asked for. Above it the page says how many are in flight and that they were not listed.
+- [x] **Check the consumer text from a non-CORE client.** If it does not parse, show it as it came
+      rather than guess a client.
+      Done 2026-09-27 with AMQP, STOMP and OpenWire consumers. All parse, but **OpenWire's session ID
+      contains colons** (`ID:host-…-1:1:1`), so the id is split at the first and last colon, never on
+      every one; the result matches `listAllConsumersAsJSON` for all four protocols. Text of any
+      other shape is kept verbatim with no ids.
+- [x] **`ReadOnlyGuaranteeIT` reads the delivering list** with messages in flight and asserts no
+      counter moved. Done 2026-09-27: two received and three buffered, unacknowledged, read three
+      times alongside every other read path.
+
+### P1 — an "In flight" panel on the queue page
+
+- [x] **Grouped by consumer**: client id, remote address and in-transit count where the consumer can
+      be matched; each message's ID, send time and properties. No body, and the panel says why.
+      Done 2026-09-27. Matching takes both listings: `listAllConsumersAsJSON` has the
+      connection/session/consumer triple the delivering list is keyed by, `listConsumers` has the
+      client under the same `sequentialId`. Over the limit the messages are not read but the
+      consumers holding them still are, with their counts — who holds them is most of the answer.
+      200 rows are drawn per consumer; the rest are counted. The filter box does not apply here,
+      and the panel says so.
+- [x] **The empty-queue note** that says messages are in flight links to the panel. So do the
+      *Delivering* counter and the filtered "could not be searched" note.
+- [x] **Ages are from send time.** There is no delivery time in the reply, so the page cannot say how
+      long a consumer has held a message, and does not pretend to. Shown as "sent … (4m 12s ago)",
+      with the reason under the heading.
+
+### P2 — search sees in-flight messages, by message ID
+
+- [x] **Exact message-ID lookup against the delivering lists.** Not general filters: evaluating
+      `region = 'eu'` against in-flight messages would mean reimplementing Artemis's filter language,
+      which this project declined in Phase 10 for being a new source of silently wrong answers.
+      Done 2026-09-27. A lookup is `AMQUserID = 'ID:…'` and nothing else, or a bare `ID:…` pasted in,
+      rewritten to that. Checked on 2.44.0 first: browse, the delivering list and the consumer's
+      `JMSMessageID` all carry the same ID; `AMQUserID` needs the `ID:` prefix; `JMSMessageID = '…'`
+      matches nothing. Cross-queue search uses it too, and every search now says how many in-flight
+      messages it could not look at — it said nothing about them before.
+- [x] **The address page's "which subscriptions hold a message"** turns "N in flight could not be
+      searched" into "in flight to consumer X" — a real yes — when the lookup is by message ID.
+      Done 2026-09-27, and it turns the other way too: a subscription whose in-flight messages were
+      checked and did not hold it is a clean "not on this queue". Only a queue over the in-flight limit
+      stays "could not be searched", and says why.
+
+### P3 — diagnose
+
+- [x] **A consumer hoarding the queue**: one consumer holds everything in flight while others on the
+      same queue hold nothing — usually a consumer window set too large.
+      Done 2026-09-27, from the consumer listing diagnose already reads — no new call unless it fires,
+      and then one, to name the client. It needs at least 10 held (`HOARDING_MIN`): one message in
+      flight while the others idle is a consumer working, not a buffer. Browsers and this tool's own
+      consumer are not counted as "the others". Verified against a real broker in `ReadOnlyGuaranteeIT`.
+- [x] **Messages in flight a long time**: the oldest in-flight message was sent long ago, suggesting
+      a consumer stuck mid-processing. Measured from send time, and the finding says so.
+      Done 2026-09-27: ten minutes from send time, naming the message and its holder. Where the queue
+      also has messages waiting, the finding says the message may have spent that time in the backlog.
+      This is the one diagnose check that reads delivering lists, so it has a budget — four times
+      `artemis.in-flight-limit` for the whole page, smallest queue first — and what it leaves unread
+      is a note on the page rather than a finding: a limit of this page is not a fault on the broker.
+
+### Considered and left out
+
+- **Bodies of in-flight messages.** The broker does not return them.
+- **Delivery times.** Not in the reply.
+- **Anything that releases, redelivers or re-routes an in-flight message.** Not read-only.
+
+## Queued after Phase 11
+
+Chosen 2026-09-27 from a list of candidates, to be taken up once Phase 11 merges. Not yet phases:
+each becomes one, or joins one, when it is started. Every item begins the way Phases 10 and 11 did —
+the broker is asked first and its answers recorded, before anything is parsed.
+
+- [ ] **Measure the new pages at scale.** Phase 7 measured every page at 100,000 messages; nothing
+      has measured `/address`, which makes one `firstMessageAge` read per non-empty subscription and
+      one read per divert field, or Phase 11's in-flight panel, whose reply has no paging. Seed an
+      address with a few hundred subscriptions and a consumer buffering thousands of messages, time
+      each page end to end, and add the rows to *Measured limits* in `.claude/memory.md`. Done means
+      numbers, not a feeling — and a fix, such as capping the per-subscription reads, only if a
+      number calls for one.
+- [ ] **A page per client.** Every view today starts from a queue or an address; this one starts
+      from "what is `billing-svc` doing?" — its connections, sessions, what it consumes and produces,
+      and what it holds in flight. Pairs with Phase 11. First establish what identifies a client
+      across the listings: whether `listConnectionsAsJSON` carries the client id, and what
+      `listSessionsAsJSON(connectionID)` and `listConsumersAsJSON(connectionID)` return.
+- [ ] **Show expired and killed counts.** `listQueues` already returns `messagesExpired` and
+      `messagesKilled` for every queue, quoted like the other counters; the tool reads neither. They
+      answer "where did my messages go" when the dead-letter queue is empty. First confirm on a
+      broker what each counts — killed is expected to mean "exceeded max delivery attempts", whether
+      then dead-lettered or dropped — then show them on the queue page, the overview and the address
+      page, with a diagnose finding for messages killed or expired with no address to go to.
 
 ## Open questions
 
