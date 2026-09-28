@@ -510,18 +510,28 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
 
 ### P2 — rates: is it moving?
 
-- [ ] **Messages in and out per second, per queue**, from the difference between two readings of
+- [x] **Messages in and out per second, per queue**, from the difference between two readings of
       `messagesAdded` and `messagesAcknowledged`. Recommended source: the previous reading kept in
       the HTTP session, so the overview's auto-refresh yields a rate on every refresh after the first
       at no extra cost, and a page with no previous reading says so rather than showing zero. A
       counter that went *down* means the broker restarted; that interval shows no rate.
-- [ ] **Shown on the overview and the queue page**, with the interval it was measured over.
-- [ ] **Diagnose uses them where one snapshot could not.** The abandoned-subscription finding can
+      Done 2026-09-27 (`RateTracker`, session-scoped), with one correction from the broker check:
+      **a restart does not make the counters go down reliably.** `messagesAdded` restarts at what
+      the journal reloads, so a queue holding 3 read added=3 on both sides of a restart. A restart is
+      caught instead from `broker.uptimeMillis` being shorter than the interval; a counter going down
+      still drops that one queue's rate (a reset, or a queue made again). Readings under 2s apart keep
+      the last rates rather than divide by almost nothing. "Out" is acknowledged — expiring and being
+      killed are counted separately.
+- [x] **Shown on the overview and the queue page**, with the interval it was measured over. Done
+      2026-09-27: a dash where a queue has no earlier reading, and a note saying what it takes to get
+      one. Checked live against steady traffic of 10/s in and 5/s out: 9.7 and 4.9 over 5s.
+- [x] **Diagnose uses them where one snapshot could not.** The abandoned-subscription finding can
       say "still growing" when it is; the long-in-flight finding can tell "this queue is
       acknowledging N/s" (working through a backlog) from "acknowledged nothing in the last N
       seconds" (stuck). Diagnose takes a second reading a few seconds after the first when the
       session has none recent enough — measured, and said on the page, since it makes the page
-      slower.
+      slower. Done 2026-09-27: "recent enough" is five minutes; the wait is 3s, and the page says
+      when it waited.
 
 ### P3 — a page per client
 

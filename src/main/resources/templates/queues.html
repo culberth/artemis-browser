@@ -76,6 +76,12 @@
             <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${stats.consumerCount()}">0</span></div>
             <div class="stat"><span class="k">Added</span><span class="v" th:text="${stats.messagesAdded()}">0</span></div>
             <div class="stat"><span class="k">Acknowledged</span><span class="v" th:text="${stats.messagesAcknowledged()}">0</span></div>
+            <th:block th:with="rate=${rates != null} ? ${rates.of(stats.name())} : null">
+                <div class="stat" th:title="${rate != null} ? 'Per second over the last ' + ${rates.intervalText()} : 'Needs an earlier reading in this session — reload, or turn on auto-refresh'">
+                    <span class="k">In/s</span><span class="v" th:text="${rate != null} ? ${rate.inText()} : '—'">—</span></div>
+                <div class="stat" th:title="${rate != null} ? 'Per second over the last ' + ${rates.intervalText()} : 'Needs an earlier reading in this session — reload, or turn on auto-refresh'">
+                    <span class="k">Acked/s</span><span class="v" th:text="${rate != null} ? ${rate.ackedText()} : '—'">—</span></div>
+            </th:block>
             <div class="stat" title="Expired past their time to live since the broker started — sent to the expiry address if there is one, dropped if not">
                 <span class="k">Expired</span><span class="v" th:text="${stats.messagesExpired()}">0</span></div>
             <div class="stat" title="Removed after too many failed delivery attempts since the broker started — dead-lettered if there is a dead-letter address, dropped if not">

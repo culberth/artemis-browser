@@ -224,6 +224,17 @@ from — a wrong parse here yields a believable number rather than an error.
 - Test setup can change settings through management: `broker.addAddressSettings(match, json)` with
   e.g. `{"maxDeliveryAttempts":2,"deadLetterAddress":""}`. Not something the app may call.
 
+### Counters across a restart (2026-09-27, 2.44.0, before Phase 12 P2 used them for rates)
+
+- **`messagesAdded` does not reset to zero on restart — it restarts at what the journal reloads.**
+  A durable queue holding 3 messages read added=3 before and after a `docker restart`; four
+  emptied durable queues went from added=1 (and killed=1) to 0. `messagesAcked`/`Killed` went to 0.
+  So a restart can look like a drop, like no change, or — with new traffic after it — like a
+  plausible rate. A per-queue "counter went down" check alone cannot see it.
+- **`broker.uptimeMillis`** is a `Long` attribute (`uptime` is a String like "39.079 seconds"). An
+  uptime shorter than the time since the previous reading means the broker restarted in between —
+  that, not the counters, is the restart test.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

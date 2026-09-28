@@ -38,6 +38,7 @@ public class StuckDiagnosisService
     private final QueueBrowseService browseService;
     private final DivertDirectory divertDirectory;
     private final InFlightService inFlightService;
+    private final RateService rateService;
 
     /**
      * Fewest in-flight messages one consumer must hold, with every other consumer on the queue holding none, to be
@@ -56,7 +57,7 @@ public class StuckDiagnosisService
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
             BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
-            InFlightService inFlightService)
+            InFlightService inFlightService, RateService rateService)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
@@ -64,6 +65,7 @@ public class StuckDiagnosisService
         this.browseService = browseService;
         this.divertDirectory = divertDirectory;
         this.inFlightService = inFlightService;
+        this.rateService = rateService;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
@@ -77,22 +79,25 @@ public class StuckDiagnosisService
         List<Finding> findings = new ArrayList<>();
         brokerLevel(findings);
 
-        List<QueueOverview> queues = queueDirectory.overview().stream()
-                .filter(queue -> includeInternal || !queue.internalQueue()).toList();
+        List<QueueOverview> all = queueDirectory.overview();
+        // Every queue, so the session's next reading on any page compares like with like.
+        Diagnosis.Measured measured = rateService.forDiagnosis(all);
+        Rates rates = measured.rates();
+        List<QueueOverview> queues = all.stream().filter(queue -> includeInternal || !queue.internalQueue()).toList();
         List<BrokerConsumer> consumers = brokerInfo.consumers();
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, queue, consumers);
+            queueLevel(findings, queue, consumers, rates);
         }
         hoarding(findings, queues, consumers);
-        Unread unread = longInFlight(findings, queues);
+        Unread unread = longInFlight(findings, queues, rates);
         List<AddressOverview> addresses = addressDirectory.overview();
         nowhereToGo(findings, queues, addresses);
         addressLevel(findings, includeInternal, addresses);
 
         // Whatever is not moving now first; within that, the biggest backlog.
         findings.sort((left, right) -> left.isStuck() == right.isStuck() ? 0 : (left.isStuck() ? -1 : 1));
-        return new Diagnosis(findings, unread.queues(), unread.messages());
+        return new Diagnosis(findings, unread.queues(), unread.messages(), measured);
     }
 
     /** In-flight messages the page's budget did not stretch to, and on how many queues. */
@@ -153,7 +158,7 @@ public class StuckDiagnosisService
      * have waited most of that time before a consumer took it, and the finding says so rather than blaming the consumer
      * outright.
      */
-    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues)
+    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues, Rates rates)
     {
         long budget = (long) inFlightService.limit() * IN_FLIGHT_BUDGET_FACTOR;
         int queuesNotRead = 0;
@@ -185,10 +190,44 @@ public class StuckDiagnosisService
                             + (waiting > 0
                                     ? ", and this queue has " + waiting + " message(s) waiting, so it may have"
                                             + " spent most of that time in the backlog before a consumer took it."
-                                    : ", so it is how old the message is, not how long this consumer has held it."),
+                                    : ", so it is how old the message is, not how long this consumer has held it.")
+                            + moving(queue, rates),
                     queue.name()));
         }
         return new Unread(queuesNotRead, notRead);
+    }
+
+    /**
+     * Whether an abandoned subscription is still growing — the one thing its finding could only suspect from a single
+     * snapshot.
+     */
+    private String growth(QueueOverview queue, Rates rates)
+    {
+        QueueRate rate = rates.of(queue.name());
+        if (rate == null)
+        {
+            return "";
+        }
+        return rate.inPerSecond() > 0
+                ? " It is still growing: " + rate.inText() + " message(s)/s over the last " + rates.intervalText() + "."
+                : " Nothing was added to it in the last " + rates.intervalText() + ".";
+    }
+
+    /**
+     * Whether the queue holding a long-in-flight message is acknowledging anything — which tells a consumer stuck on
+     * one message among working ones, or a queue that has stopped, from a queue simply working through a backlog.
+     */
+    private String moving(QueueOverview queue, Rates rates)
+    {
+        QueueRate rate = rates.of(queue.name());
+        if (rate == null)
+        {
+            return "";
+        }
+        return rate.ackedPerSecond() > 0
+                ? " The queue acknowledged " + rate.ackedText() + " message(s)/s over the last " + rates.intervalText()
+                        + ", so its consumers are working while this one is held."
+                : " Nothing on this queue was acknowledged in the last " + rates.intervalText() + ".";
     }
 
     private String who(SubscriberConsumer client, BrokerConsumer consumer)
@@ -231,7 +270,7 @@ public class StuckDiagnosisService
         }
     }
 
-    private void queueLevel(List<Finding> findings, QueueOverview queue, List<BrokerConsumer> consumers)
+    private void queueLevel(List<Finding> findings, QueueOverview queue, List<BrokerConsumer> consumers, Rates rates)
     {
         if (queue.paused())
         {
@@ -247,7 +286,8 @@ public class StuckDiagnosisService
                     queue.messageCount() + " message(s) kept for it. The broker stores a copy of every message sent"
                             + " to '" + queue.address() + "' for this subscription until its subscriber reconnects"
                             + " or the subscription is removed — so a subscriber that has gone for good leaves a"
-                            + " queue that only grows, and on a busy address that is how a disk fills.",
+                            + " queue that only grows, and on a busy address that is how a disk fills."
+                            + growth(queue, rates),
                     queue.name(), queue.address()));
         }
         else if (queue.messageCount() > 0 && queue.consumerCount() == 0)

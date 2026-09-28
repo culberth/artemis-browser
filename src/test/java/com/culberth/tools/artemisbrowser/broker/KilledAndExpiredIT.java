@@ -99,7 +99,8 @@ class KilledAndExpiredIT
                 new BrokerInfoService(brokerSession),
                 new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
                 new DivertDirectory(brokerSession),
-                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000)).diagnose(false);
+                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000),
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(false);
 
         Finding lost = findings.stream().filter(f -> LOST.equals(f.queue()) && f.title().contains("delivery attempts"))
                 .findFirst().orElseThrow(() -> new AssertionError("no finding for " + LOST + " in " + findings));

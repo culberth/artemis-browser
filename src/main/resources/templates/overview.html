@@ -63,6 +63,8 @@
                                      dir=${col[0] == sort} ? ${flip} : 'asc')}"
                            th:text="${col[1]} + (${col[0] == sort} ? ${arrow} : '')">Column</a>
                     </th>
+                    <th class="num" title="Messages added per second since the previous reading in this session">In/s</th>
+                    <th class="num" title="Messages acknowledged per second since the previous reading in this session">Acked/s</th>
                     <th>Flags</th>
                 </tr>
                 </thead>
@@ -82,6 +84,10 @@
                         th:text="${queue.messagesExpired()}">0</td>
                     <td class="num" th:classappend="${queue.messagesKilled() > 0} ? 'strong' : 'muted'"
                         th:text="${queue.messagesKilled()}">0</td>
+                    <td class="num" th:with="rate=${rates != null} ? ${rates.of(queue.name())} : null"
+                        th:text="${rate != null} ? ${rate.inText()} : '—'">—</td>
+                    <td class="num" th:with="rate=${rates != null} ? ${rates.of(queue.name())} : null"
+                        th:text="${rate != null} ? ${rate.ackedText()} : '—'">—</td>
                     <td>
                         <span class="badge" th:if="${queue.paused()}">paused</span>
                         <span class="badge" th:if="${queue.internalQueue()}">internal</span>
@@ -91,6 +97,12 @@
                 </tbody>
             </table>
         </div>
+        <p class="note" th:if="${rates != null and rates.measured()}"
+           th:text="'In/s and Acked/s are per second over the last ' + ${rates.intervalText()} + ', between this reading and the previous one in this session. A dash is a queue with no earlier reading to compare with.'">
+            Rates over the last interval.</p>
+        <p class="note" th:if="${rates != null and !rates.measured()}"
+           th:text="'In/s and Acked/s need two readings: ' + ${rates.unavailable()} + '. Load this page again, or turn on auto-refresh, and they appear.'">
+            Rates need two readings.</p>
         <p class="note">
             <strong>Expired</strong> and <strong>Killed</strong> are messages that left a queue without
             being consumed, since the broker started: expired past their time to live, or killed after

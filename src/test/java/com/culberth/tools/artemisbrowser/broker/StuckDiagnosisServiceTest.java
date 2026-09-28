@@ -30,6 +30,7 @@ class StuckDiagnosisServiceTest
     private QueueBrowseService browse;
     private DivertDirectory diverts;
     private InFlightService inFlight;
+    private RateService rates;
 
     @BeforeEach
     void mocks()
@@ -41,6 +42,9 @@ class StuckDiagnosisServiceTest
         diverts = mock(DivertDirectory.class);
         given(diverts.all()).willReturn(List.of());
         inFlight = mock(InFlightService.class);
+        rates = mock(RateService.class);
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList()))
+                .willReturn(new Diagnosis.Measured(Rates.none("not measured in this test"), false));
         given(inFlight.limit()).willReturn(5000);
         given(inFlight.oldest(anyString(), anyLong()))
                 .willAnswer(call -> InFlightLookup.notInFlight(call.getArgument(0)));
@@ -433,9 +437,55 @@ class StuckDiagnosisServiceTest
                 killed);
     }
 
+    @Test
+    @DisplayName("with a rate, an abandoned subscription is said to be still growing, or not")
+    void saysWhetherAnAbandonedSubscriptionIsGrowing()
+    {
+        QueueOverview growing = new QueueOverview("app.audit", "events", "MULTICAST", 90, 0, 0, 0, 90, 0, true, false,
+                false);
+        QueueOverview idle = new QueueOverview("app.old", "events", "MULTICAST", 40, 0, 0, 0, 40, 0, true, false,
+                false);
+        given(queues.overview()).willReturn(List.of(growing, idle));
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList())).willReturn(new Diagnosis.Measured(
+                new Rates(Map.of("app.audit", new QueueRate(2.5, 0), "app.old", new QueueRate(0, 0)), 30_000, null),
+                false));
+
+        List<Finding> findings = service().diagnose(false);
+
+        assertTrue(detailFor(findings, "app.audit").contains("still growing: 2.5 message(s)/s over the last 30s"));
+        assertTrue(detailFor(findings, "app.old").contains("Nothing was added to it in the last 30s"));
+    }
+
+    @Test
+    @DisplayName("with a rate, a long-in-flight message is told apart: queue still acknowledging, or stopped")
+    void saysWhetherTheQueueIsMovingAroundALongInFlightMessage()
+    {
+        given(queues.overview()).willReturn(List.of(queue("busy", 1, 1, 1, 40), queue("stopped", 1, 1, 1, 40)));
+        long sent = System.currentTimeMillis() - 42 * 60_000L;
+        InFlightMessage old = new InFlightMessage("ID:old", 1, "Text", 4, true, sent, "", "", Map.of());
+        InFlightConsumer holder = new InFlightConsumer("", "c", "s", "0", List.of(old));
+        given(inFlight.oldest("busy", 1)).willReturn(new InFlightLookup("busy", true, holder, old));
+        given(inFlight.oldest("stopped", 1)).willReturn(new InFlightLookup("stopped", true, holder, old));
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList())).willReturn(new Diagnosis.Measured(
+                new Rates(Map.of("busy", new QueueRate(3, 12), "stopped", new QueueRate(0, 0)), 15_000, null), true));
+
+        Diagnosis result = service().run(false);
+
+        assertTrue(detailFor(result.findings(), "busy").contains("acknowledged 12 message(s)/s over the last 15s"));
+        assertTrue(detailFor(result.findings(), "stopped")
+                .contains("Nothing on this queue was acknowledged in the last 15s"));
+        assertTrue(result.measured().sampled());
+    }
+
+    private String detailFor(List<Finding> findings, String queue)
+    {
+        return findings.stream().filter(f -> queue.equals(f.queue())).map(Finding::detail).findFirst()
+                .orElseThrow(() -> new AssertionError("no finding for " + queue + " in " + findings));
+    }
+
     private StuckDiagnosisService service()
     {
-        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight);
+        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates);
     }
 
     private Finding only(List<Finding> findings)

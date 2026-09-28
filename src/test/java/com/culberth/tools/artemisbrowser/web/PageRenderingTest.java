@@ -40,6 +40,8 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import com.culberth.tools.artemisbrowser.broker.RateService;
+import com.culberth.tools.artemisbrowser.broker.Rates;
 import com.culberth.tools.artemisbrowser.broker.SavedConnection;
 import com.culberth.tools.artemisbrowser.broker.ScheduledMessage;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
@@ -126,6 +128,9 @@ class PageRenderingTest
     private InFlightService inFlightService;
 
     @MockitoBean
+    private RateService rateService;
+
+    @MockitoBean
     private MessageSearchService searchService;
 
     @MockitoBean
@@ -134,6 +139,8 @@ class PageRenderingTest
     @BeforeEach
     void connected()
     {
+        given(rateService.observe(org.mockito.ArgumentMatchers.anyList()))
+                .willReturn(Rates.none("no earlier reading in this session yet"));
         given(brokerSession.isConnected()).willReturn(true);
         given(brokerSession.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(brokerInfo.health())
@@ -347,6 +354,41 @@ class PageRenderingTest
         given(queueDirectory.overview()).willThrow(new BrokerException("listQueues failed"));
 
         page("/overview").andExpect(content().string(containsString("listQueues failed")));
+    }
+
+    @Test
+    @DisplayName("rates render on the overview and the queue page with their interval, and a dash where there is none")
+    void rendersRates() throws Exception
+    {
+        given(rateService.observe(org.mockito.ArgumentMatchers.anyList())).willReturn(new Rates(
+                Map.of(QUEUE, new com.culberth.tools.artemisbrowser.broker.QueueRate(12.5, 0.04)), 15_000, null));
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"))));
+
+        page("/overview").andExpect(content().string(containsString(">13<")))
+                .andExpect(content().string(containsString("&lt;0.1")))
+                .andExpect(content().string(containsString("over the last 15s")));
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString(">In/s<")))
+                .andExpect(content().string(containsString("Per second over the last 15s")));
+    }
+
+    @Test
+    @DisplayName("before a second reading, the overview says how to get rates rather than showing zeros")
+    void rendersNoRatesYet() throws Exception
+    {
+        page("/overview").andExpect(content().string(containsString("need two readings")));
+    }
+
+    @Test
+    @DisplayName("diagnose says when it waited to measure rates itself")
+    void rendersDiagnoseSampledRates() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willReturn(
+                new Diagnosis(List.of(), 0, 0, new Diagnosis.Measured(new Rates(Map.of(), 3_000, null), true)));
+
+        page("/diagnose").andExpect(content().string(containsString("waited a few seconds to measure rates")))
+                .andExpect(content().string(containsString("over the last 3s")));
     }
 
     @Test

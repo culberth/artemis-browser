@@ -41,6 +41,8 @@ public class DiagnoseController
             model.addAttribute("stuckCount", result.stuckCount());
             model.addAttribute("inFlightQueuesNotRead", result.inFlightQueuesNotRead());
             model.addAttribute("inFlightNotRead", result.inFlightNotRead());
+            model.addAttribute("rates", result.measured().rates());
+            model.addAttribute("ratesSampled", result.measured().sampled());
         }
         catch (BrokerException e)
         {

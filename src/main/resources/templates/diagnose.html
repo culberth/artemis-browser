@@ -47,6 +47,10 @@
            th:text="'How long messages have been in flight was not checked on ' + ${inFlightQueuesNotRead} + ' queue(s) holding ' + ${inFlightNotRead} + ' in flight between them: the broker returns the in-flight messages of a queue all at once, so this page reads them within a budget, smallest queue first. The page for each queue can still show them.'">
             In-flight ages not checked on some queues.</p>
 
+        <p class="note" th:if="${rates != null and rates.measured()}"
+           th:text="(${ratesSampled} ? 'This page waited a few seconds to measure rates, since this session had no recent reading of the broker: ' : 'Rates are ') + 'per second over the last ' + ${rates.intervalText()} + '.'">
+            Rates measured.</p>
+
         <p class="note">
             These are observations, not verdicts. A queue with no consumer is a problem if something
             should be reading it and entirely normal if nothing is meant to be running yet &mdash;

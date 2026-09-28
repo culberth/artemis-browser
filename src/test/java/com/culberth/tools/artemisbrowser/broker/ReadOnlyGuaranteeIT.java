@@ -164,7 +164,8 @@ class ReadOnlyGuaranteeIT
 
                 Map<String, String> before = counters();
                 List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
+                        new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)))
                         .diagnose(false);
                 assertEquals(before, counters(), "diagnosing moved a counter");
 
@@ -286,8 +287,8 @@ class ReadOnlyGuaranteeIT
             }
         }
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
-                .diagnose(true);
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(true);
     }
 
     /**

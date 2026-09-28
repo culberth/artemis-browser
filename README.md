@@ -283,7 +283,8 @@ com.culberth.tools.artemisbrowser
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
-│   ├── StuckDiagnosisService      "Why is this not moving": cheap reads, plus in-flight ages within a budget
+│   ├── StuckDiagnosisService      "Why is this not moving": cheap reads, in-flight ages within a budget, rates
+│   ├── RateTracker / RateService  Per-session previous reading of queue counters, for in/acked per second
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
@@ -294,7 +295,7 @@ com.culberth.tools.artemisbrowser
 │   │   / AddressRouting / AddressSettings / Divert
 │   │                              One address as its subscribers see it; kinds and name hints from the broker's naming
 │   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
-│   │   / SearchResult / SavedConnection / Finding / Diagnosis
+│   │   / SearchResult / SavedConnection / Finding / Diagnosis / Rates / QueueRate
 │   │                              Broker, address, search and diagnosis view models
 │   └── BrokerException / NotConnectedException / ConnectionLostException
 │                                  Broker-facing error types; the last is deliberately not a BrokerException
