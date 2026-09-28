@@ -197,9 +197,13 @@ from — a wrong parse here yields a believable number rather than an error.
 - **Thymeleaf 3.1 in `th:text` rejects an apostrophe inside a string literal** (2026-09-27): prose
   like "each queue's" in `th:text="'...'"` fails with "Could not parse as expression", and only when
   that branch renders — `PageRenderingTest` caught it. Word around it, or use `&rsquo;`.
-- **The queue page's pager counts in-flight messages** (seen 2026-09-27, not yet fixed): 250 all in
-  flight showed "showing 0–0 of 250 … Page 1 of 5" over an empty table, because `countMessages`
-  includes delivering ones and `browse` does not. Whether a *filtered* count includes them is unchecked.
+- **What `countMessages` counts** (2026-09-27, 2.44.0; fixed in Phase 12 P0). Unfiltered it is the
+  whole queue: 7 waiting + 3 in flight + 2 scheduled counted 12, browse returned 7. **Filtered it
+  counts only waiting messages, and only among the first 200**: 500 matches in 1,000 messages
+  counted 100 while a filtered browse paged all ten pages of 50. That undercount also drove the
+  cross-queue *export*'s choice of queues, which left out any queue whose matches lay past its first
+  200 messages. Nothing now uses a filtered count; a page's next page is found by browsing one row
+  at the next offset (`browse(page*size+1, 1, filter)`).
 - **`AddressDetailIT.measuresLagByAge` was red on `main`** from af9a664 to 2026-09-27: that commit's
   60s-gap rule for "furthest behind" correctly returns null for a feed seeded in one burst, and the IT
   still expected a mark. Run `-Pintegration` after changing a heuristic, not just unit tests.
@@ -233,6 +237,31 @@ queue, with the other queues small. Times are end-to-end HTTP, not broker time.
 - **Seeding is the slow part**, not reading: 100,000 messages took 2m22s to produce through the CLI.
 - Nothing degraded with depth. The ceiling found at this size was not performance at all — it was
   the filtered-count window above, which made search silently wrong from about 200 messages.
+
+### Phase 10/11 pages at scale (2026-09-27, Phase 12 P0)
+
+One broker holding: an address with **300 durable subscriptions** × 20 messages; a default-window
+consumer buffering **4,434** tiny messages; an unbounded one holding **4,900** (under the 5,000
+limit) and one holding **8,000** (over it); **50 queues** × 100 in flight. ~355 queues in all.
+End-to-end HTTP from the browser, three runs each, warm.
+
+| What | Time | Page |
+|---|---|---|
+| `/address`, 300 subscriptions (300 `firstMessageAge` reads) | ~240ms | 453KB |
+| `/address` find by filter, 300 subscriptions | ~1.2s | 1MB |
+| `/address` find by message ID (300 browses + in-flight checks) | ~400ms | 626KB |
+| Queue page, 4,434 in flight (200 rows drawn) | ~110ms | 238KB |
+| Queue page, 4,900 in flight, one consumer | ~95ms | 188KB |
+| Queue page, 8,000 in flight (over the limit, not read) | ~40ms | 34KB |
+| Filtered queue page (with the next-page probe) | ~45ms | 111KB |
+| Cross-queue search by message ID (reads 52 delivering lists) | ~390ms | 5KB |
+| Cross-queue search, ordinary filter, 355 queues | ~1.05s | 2MB |
+| Diagnose (reads ~13,000 in flight within its 20,000 budget) | ~390ms | 288KB |
+
+- **No fix was called for.** The slowest, address find by filter, is one browse per subscription
+  plus 1MB of HTML for 300 rows of up to 20 matches — linear, and bounded by `FIND_LIMIT`.
+- The default 1MB window held 4,434 of these (~30-character bodies), not the ~3,200 measured for the
+  earlier probe's messages: the window is bytes, so the count depends on message size.
 
 ## Traps hit while working
 

@@ -457,13 +457,20 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
 
 ### P0 — correct what is there, and measure what is new
 
-- [ ] **The pager counts messages browse cannot return.** With 250 messages all in flight, the
+- [x] **The pager counts messages browse cannot return.** With 250 messages all in flight, the
       queue page reads "showing 0–0 of 250 … Page 1 of 5" over an empty table: the total comes from
       `countMessages`, which includes in-flight messages — and scheduled ones — while `browse`
       returns neither. First check on a broker what `countMessages(filter)` includes when a filter is
       given; then page by what browse can reach (waiting = messages − delivering − scheduled, when
       unfiltered), and let the in-flight panel and the scheduled list account for the rest.
-- [ ] **Measure the new pages at scale.** Phase 7 measured every page at 100,000 messages; nothing
+      Done 2026-09-27, and the check found two worse cases of the same thing. The filtered count
+      is waiting-only *and* a sample of the first 200 messages: 500 matches counted 100, so the
+      filtered pager stopped at page 2 of 10. And the cross-queue export chose its queues by that
+      count, leaving out any queue whose matches lay past its first 200 messages. A filtered page now
+      has no total — "showing 51–100, and more after these", no Last link — and finds its next page by
+      browsing one row at the next offset; export chooses queues by a one-row browse. Covered against
+      a real broker by `FilteredPagingIT`.
+- [x] **Measure the new pages at scale.** Phase 7 measured every page at 100,000 messages; nothing
       has measured `/address`, which makes one `firstMessageAge` read per non-empty subscription and
       one read per divert field; Phase 11's in-flight panel, whose reply has no paging; the ID
       lookup, which reads a delivering list on every queue with anything in flight; or diagnose's
@@ -471,6 +478,10 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
       thousands of messages, time each page end to end, and add the rows to *Measured limits* in
       `.claude/memory.md`. Done means numbers, not a feeling — and a fix, such as capping the
       per-subscription reads, only where a number calls for one.
+      Done 2026-09-27 on one broker with 300 subscriptions on an address, consumers holding 4,434,
+      4,900 and 8,000 messages, and 50 more queues with 100 in flight each (~355 queues). Every page
+      came in under 1.3s; the slowest was finding a filter across 300 subscriptions (~1.2s, 1MB of
+      page), which is linear and bounded. No number called for a fix. Table in `.claude/memory.md`.
 
 ### P1 — expired and killed: where messages went when they are not in the dead-letter queue
 

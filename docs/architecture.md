@@ -25,8 +25,11 @@ There are two ways to read messages here, and the split is deliberate.
 **The paged, filtered list** goes through Artemis management `browse(page, pageSize, filter)`. The
 broker does the paging, so opening a deep page of a 50,000-message dead-letter queue does not stream
 the preceding pages through this process — which is exactly what a client-side `QueueBrowser` that
-skips would do. An unfiltered `countMessages()` gives the total; a filtered one does not, for the
-reason under *A filtered count is a sample* below.
+skips would do. Neither count Artemis offers is the total the pager needs. An unfiltered
+`countMessages()` is the whole queue, including in-flight and scheduled messages that `browse` never
+returns, so the pager takes it less `deliveringCount` and `scheduledCount`. A filtered one is a
+sample (see *A filtered count is a sample* below), so a filtered page has no total at all: it
+browses one row at the next page's offset to learn whether a next page exists.
 
 **The single-message detail** uses a JMS `QueueBrowser` with a `JMSMessageID` selector. Management
 `browse` only exposes a `text` body, so bytes, map and stream messages would otherwise show nothing.
@@ -133,6 +136,12 @@ cheaply, then browse only the ones that matched. That made it silently blind pas
 messages of every queue, which is the precise failure the feature exists to prevent. It now browses
 every queue with the filter and reports how many it *found* — a floor, not a total. The cost is a
 broker-side scan per queue instead of a counter read, and the benefit is that the answer is true.
+
+The same count survived in two more places until Phase 12, both measured on 2.44.0: the queue
+page's filtered pager, which counted 500 matches as 100 and stopped paging at page 2 of 10; and the
+cross-queue export, which chose its queues by a count greater than zero and so left out any queue
+whose matches lay past its first 200 messages. Neither uses a count now. The rule is simply that a
+filtered `countMessages` is never used for anything.
 
 ## The session model
 
