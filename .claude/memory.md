@@ -208,6 +208,22 @@ from — a wrong parse here yields a believable number rather than an error.
   60s-gap rule for "furthest behind" correctly returns null for a feed seeded in one burst, and the IT
   still expected a mark. Run `-Pintegration` after changing a heuristic, not just unit tests.
 
+### Killed and expired (2026-09-27, 2.44.0, before Phase 12 P1 parsed any of it)
+
+- **`messagesKilled` counts a message that exceeded max delivery attempts, whether it was
+  dead-lettered or dropped.** Rolled back 10× on default settings: killed=1, DLQ +1. Rolled back 2×
+  on an address with `maxDeliveryAttempts=2` and no dead-letter address: killed=1, message gone.
+  **`messagesExpired` is the same**: TTL 1s with the default ExpiryQueue → expired=1, ExpiryQueue +1;
+  with no expiry address → expired=1, gone. So the counter never says where a message went; only
+  the address settings do.
+- **An unset dead-letter/expiry address reads as `""`** from `getAddressSettingsAsJSON` when set
+  that way, not only as an absent key. Treat blank and absent alike.
+- Both counters are on `listQueues`, string-quoted: `"messagesExpired":"0","messagesKilled":"1"`,
+  counted on the queue the message left. An expired message is expired on delivery — a consumer's
+  `receive` got nothing — as well as by the periodic scan.
+- Test setup can change settings through management: `broker.addAddressSettings(match, json)` with
+  e.g. `{"maxDeliveryAttempts":2,"deadLetterAddress":""}`. Not something the app may call.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

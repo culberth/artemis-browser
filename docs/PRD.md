@@ -485,17 +485,28 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
 
 ### P1 — expired and killed: where messages went when they are not in the dead-letter queue
 
-- [ ] **Confirm what each counter counts.** `listQueues` already returns `messagesExpired` and
+- [x] **Confirm what each counter counts.** `listQueues` already returns `messagesExpired` and
       `messagesKilled` for every queue, quoted like the other counters; the tool reads neither.
       Killed is expected to mean "exceeded max delivery attempts" — check whether it counts a message
       that was then dead-lettered, one that was dropped for want of a dead-letter address, or both.
       Likewise for expired and the expiry address.
-- [ ] **Show them** on the queue page, the overview (sortable, like the other counters) and the
-      address page's subscription table.
-- [ ] **A diagnose finding for messages killed or expired with nowhere to go**: a non-zero counter
+      Done 2026-09-27 on 2.44.0: **both, for both.** A message killed with a dead-letter address
+      counted 1 and reached DLQ; one killed with none counted 1 and was gone. Expired the same with
+      and without an expiry address. So the counter can never say a message was lost — only the
+      address settings can, which is what the finding below is built on. An unset address reads back
+      as `""` as well as absent; both mean none.
+- [x] **Show them** on the queue page, the overview (sortable, like the other counters) and the
+      address page's subscription table. Done 2026-09-27, with a note on each page that the count is
+      the same whether a message was kept or dropped, pointing at the address page and diagnose.
+- [x] **A diagnose finding for messages killed or expired with nowhere to go**: a non-zero counter
       on a queue whose address settings name no dead-letter or expiry address, or name one that does
       not exist (the address page already detects the latter). Those messages are gone, and nothing
       else reports it. The settings read is one per affected address, only when a counter is non-zero.
+      Done 2026-09-27, plus a third case: a dead-letter or expiry address that exists but has no
+      queues also drops what is sent to it. Killed-and-dropped is "not moving"; expired-and-dropped is
+      "worth a look", since dropping stale messages is often the intent. The settings are today's and
+      the counters run from broker start, so each finding says "if the settings were the same when it
+      happened". Verified against a real broker in `KilledAndExpiredIT`.
 
 ### P2 — rates: is it moving?
 

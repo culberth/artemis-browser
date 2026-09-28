@@ -13,8 +13,8 @@ a page per address with its subscriptions, lag, settings and diverts. Phase 11 (
 added in-flight messages: a panel on the queue page, lookup by message ID in both searches, and two
 diagnose findings. **Phase 12 is planned** on `phase12`: the pager fix and measuring at scale,
 expired/killed counts, in/out rates, and a page per client. Planned in [docs/PRD.md](docs/PRD.md); see *Closed as
-won't do* there before proposing more. 288 unit tests,
-26 integration.
+won't do* there before proposing more. 295 unit tests,
+28 integration.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read

@@ -1,6 +1,7 @@
 package com.culberth.tools.artemisbrowser.broker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
@@ -351,6 +352,85 @@ class StuckDiagnosisServiceTest
         verify(inFlight, never()).oldest("q900", 900);
         assertEquals(2, result.inFlightQueuesNotRead());
         assertEquals(1000, result.inFlightNotRead());
+    }
+
+    @Test
+    @DisplayName("messages killed with no dead-letter address to go to were dropped, and that is reported")
+    void flagsKilledWithNowhereToGo()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 3, 0)));
+        given(addresses.settings("orders")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "")));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.isStuck());
+        assertEquals("'orders' has dropped 3 message(s) after too many delivery attempts", finding.title());
+        assertTrue(finding.detail().contains("name no dead-letter address"), finding.detail());
+        assertTrue(finding.detail().contains("if the settings were the same"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("a dead-letter address that does not exist, or has no queues, loses the message just the same")
+    void flagsADeadLetterAddressThatCannotHoldAnything()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 2, 0), killedAndExpired("audit", 1, 0)));
+        given(addresses.settings("orders")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "GONE")));
+        given(addresses.settings("audit")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "EMPTY")));
+        given(addresses.overview()).willReturn(
+                List.of(new AddressOverview("EMPTY", "ANYCAST", 0, 0, 0, 0, false, false, false, List.of())));
+
+        List<Finding> findings = service().diagnose(false);
+
+        assertTrue(findings.stream().anyMatch(f -> f.detail().contains("'GONE' does not exist")),
+                String.valueOf(findings));
+        assertTrue(findings.stream().anyMatch(f -> f.detail().contains("'EMPTY' has no queues")),
+                String.valueOf(findings));
+    }
+
+    @Test
+    @DisplayName("killed messages that went to a real dead-letter queue are not lost, and not a finding here")
+    void doesNotFlagKilledThatWereKept()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 3, 5)));
+        given(addresses.settings("orders"))
+                .willReturn(AddressSettings.of(Map.of("deadLetterAddress", "DLQ", "expiryAddress", "ExpiryQueue")));
+        given(addresses.overview()).willReturn(List.of(
+                new AddressOverview("DLQ", "ANYCAST", 3, 0, 3, 0, false, false, false,
+                        List.of(queue("DLQ", 3, 0, 0, 0))),
+                new AddressOverview("ExpiryQueue", "ANYCAST", 5, 0, 5, 0, false, false, false,
+                        List.of(queue("ExpiryQueue", 5, 0, 0, 0)))));
+
+        assertTrue(service().diagnose(false).isEmpty());
+    }
+
+    @Test
+    @DisplayName("expired messages with no expiry address are worth a look, not an alarm: often meant to be dropped")
+    void flagsExpiredWithNowhereToGoAsWatch()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("prices", 0, 40)));
+        given(addresses.settings("prices")).willReturn(AddressSettings.of(Map.of()));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertFalse(finding.isStuck());
+        assertEquals("'prices' has dropped 40 expired message(s)", finding.title());
+    }
+
+    @Test
+    @DisplayName("a queue that has killed and expired nothing costs no settings read")
+    void readsNoSettingsWhenNothingWasLost()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 5, 0, 2, 100)));
+
+        service().diagnose(false);
+
+        verify(addresses, never()).settings(anyString());
+    }
+
+    private QueueOverview killedAndExpired(String name, long killed, long expired)
+    {
+        return new QueueOverview(name, name, "ANYCAST", 0, 0, 0, 1, killed + expired, 0, true, false, false, expired,
+                killed);
     }
 
     private StuckDiagnosisService service()

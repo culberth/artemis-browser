@@ -54,6 +54,25 @@ class QueueDirectoryTest
     }
 
     @Test
+    @DisplayName("expired and killed counters arrive quoted like the rest, in the shape 2.44.0 returns")
+    void readsExpiredAndKilled()
+    {
+        // Cut down from a real listQueues row after one message was killed on 2.44.0.
+        listQueuesReturns(1,
+                "{\"name\":\"p1-kill\",\"address\":\"p1-kill\",\"messagesAdded\":\"1\","
+                        + "\"messageCount\":\"0\",\"messagesAcked\":\"0\",\"messagesExpired\":\"4\","
+                        + "\"deliveringCount\":\"0\",\"messagesKilled\":\"1\",\"durable\":\"true\"}");
+
+        QueueOverview queue = new QueueDirectory(brokerSession).overview().get(0);
+        QueueStats stats = new QueueDirectory(brokerSession).stats("p1-kill");
+
+        assertEquals(4, queue.messagesExpired());
+        assertEquals(1, queue.messagesKilled());
+        assertEquals(4, stats.messagesExpired());
+        assertEquals(1, stats.messagesKilled());
+    }
+
+    @Test
     @DisplayName("the acked counter is called messagesAcked, not messagesAcknowledged")
     void acknowledgedIsNotTheFieldName()
     {

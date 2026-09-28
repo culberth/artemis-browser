@@ -76,7 +76,17 @@
             <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${stats.consumerCount()}">0</span></div>
             <div class="stat"><span class="k">Added</span><span class="v" th:text="${stats.messagesAdded()}">0</span></div>
             <div class="stat"><span class="k">Acknowledged</span><span class="v" th:text="${stats.messagesAcknowledged()}">0</span></div>
+            <div class="stat" title="Expired past their time to live since the broker started — sent to the expiry address if there is one, dropped if not">
+                <span class="k">Expired</span><span class="v" th:text="${stats.messagesExpired()}">0</span></div>
+            <div class="stat" title="Removed after too many failed delivery attempts since the broker started — dead-lettered if there is a dead-letter address, dropped if not">
+                <span class="k">Killed</span><span class="v" th:text="${stats.messagesKilled()}">0</span></div>
         </div>
+        <p class="note" th:if="${stats.messagesExpired() > 0 or stats.messagesKilled() > 0}">
+            <span th:text="${stats.messagesExpired() + stats.messagesKilled()}">0</span> message(s) left this
+            queue without being consumed. Where they went depends on the address's expiry and
+            dead-letter settings, which the <a th:href="@{/address(name=${stats.address()})}">address page</a>
+            shows &mdash; with neither set, they were dropped.
+        </p>
         <p class="note">
             Address <code th:text="${stats.address()}">address</code>.
             Browsing is read-only: messages are copied, never consumed or acknowledged.

@@ -35,7 +35,9 @@ public class QueueController
             Comparator.comparingLong(QueueOverview::scheduledCount), "consumers",
             Comparator.comparingInt(QueueOverview::consumerCount), "added",
             Comparator.comparingLong(QueueOverview::messagesAdded), "acked",
-            Comparator.comparingLong(QueueOverview::messagesAcked));
+            Comparator.comparingLong(QueueOverview::messagesAcked), "expired",
+            Comparator.comparingLong(QueueOverview::messagesExpired), "killed",
+            Comparator.comparingLong(QueueOverview::messagesKilled));
     private static final List<Integer> PAGE_SIZE_CHOICES = List.of(10, 25, 50, 100, 250, 500);
     /** Auto-refresh intervals in seconds; 0 is off. */
     private static final List<Integer> REFRESH_CHOICES = List.of(0, 5, 15, 30, 60);

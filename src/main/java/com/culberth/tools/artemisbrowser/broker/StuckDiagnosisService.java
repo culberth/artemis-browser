@@ -86,7 +86,9 @@ public class StuckDiagnosisService
         }
         hoarding(findings, queues, consumers);
         Unread unread = longInFlight(findings, queues);
-        addressLevel(findings, includeInternal);
+        List<AddressOverview> addresses = addressDirectory.overview();
+        nowhereToGo(findings, queues, addresses);
+        addressLevel(findings, includeInternal, addresses);
 
         // Whatever is not moving now first; within that, the biggest backlog.
         findings.sort((left, right) -> left.isStuck() == right.isStuck() ? 0 : (left.isStuck() ? -1 : 1));
@@ -325,10 +327,99 @@ public class StuckDiagnosisService
         }
     }
 
-    /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
-    private void addressLevel(List<Finding> findings, boolean includeInternal)
+    /**
+     * Messages killed or expired where there was nowhere to send them — gone, and reported by nothing else.
+     *
+     * <p>
+     * Verified on 2.44.0: {@code messagesKilled} counts a message that exceeded max delivery attempts whether it was
+     * then dead-lettered or dropped, and {@code messagesExpired} the same for the expiry address. The counter never
+     * says which; the address's settings do. So a non-zero counter is looked up against them: no address set, one that
+     * does not exist, or one with no queues to take the message. One settings read per affected address, only when a
+     * counter is non-zero. The settings are today's, and the counters run from broker start, so the finding says "if
+     * the settings were the same then".
+     */
+    private void nowhereToGo(List<Finding> findings, List<QueueOverview> queues, List<AddressOverview> addresses)
     {
-        List<AddressOverview> all = addressDirectory.overview();
+        Map<String, AddressOverview> byName = addresses.stream()
+                .collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a));
+        Map<String, AddressSettings> settings = new LinkedHashMap<>();
+        for (QueueOverview queue : queues)
+        {
+            if (queue.messagesKilled() == 0 && queue.messagesExpired() == 0)
+            {
+                continue;
+            }
+            AddressSettings forAddress = settings.computeIfAbsent(queue.address(), this::settingsOrNull);
+            if (forAddress == null)
+            {
+                continue;
+            }
+            if (queue.messagesKilled() > 0)
+            {
+                String problem = problem(forAddress.deadLetterAddress(), "dead-letter", byName);
+                if (problem != null)
+                {
+                    findings.add(Finding.stuck(
+                            "'" + queue.name() + "' has dropped " + queue.messagesKilled()
+                                    + " message(s) after too many delivery attempts",
+                            queue.messagesKilled() + " message(s) were killed here for exceeding their max delivery"
+                                    + " attempts, and " + problem + ", so they were discarded rather than kept"
+                                    + " for someone to look at — if the settings were the same when it happened. The"
+                                    + " counter runs from broker start and does not say where a message went.",
+                            queue.name()));
+                }
+            }
+            if (queue.messagesExpired() > 0)
+            {
+                String problem = problem(forAddress.expiryAddress(), "expiry", byName);
+                if (problem != null)
+                {
+                    findings.add(Finding.watch(
+                            "'" + queue.name() + "' has dropped " + queue.messagesExpired() + " expired message(s)",
+                            queue.messagesExpired() + " message(s) outlived their time to live here, and " + problem
+                                    + ", so they were discarded — if the settings were the same when it happened."
+                                    + " Often intended for messages that are worthless once stale; a loss if not.",
+                            queue.name()));
+                }
+            }
+        }
+    }
+
+    /** Why a message sent to {@code target} would be lost, or null when it would be kept. */
+    private String problem(String target, String kind, Map<String, AddressOverview> addresses)
+    {
+        if (target == null)
+        {
+            return "the address's settings name no " + kind + " address";
+        }
+        AddressOverview address = addresses.get(target);
+        if (address == null)
+        {
+            return "its " + kind + " address '" + target + "' does not exist";
+        }
+        if (address.queues().isEmpty())
+        {
+            return "its " + kind + " address '" + target + "' has no queues to hold them";
+        }
+        return null;
+    }
+
+    /** A queue's address settings, or null when they cannot be read — the rest of the page should not fail on it. */
+    private AddressSettings settingsOrNull(String address)
+    {
+        try
+        {
+            return addressDirectory.settings(address);
+        }
+        catch (BrokerException e)
+        {
+            return null;
+        }
+    }
+
+    /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
+    private void addressLevel(List<Finding> findings, boolean includeInternal, List<AddressOverview> all)
+    {
         exclusiveDiverts(findings,
                 all.stream().collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
         for (AddressOverview address : all)

@@ -56,7 +56,8 @@
                              flip=${dir == 'desc'} ? 'asc' : 'desc'">
                     <th th:each="col : ${ {{'name','Queue'},{'address','Address'},{'messages','Messages'},
                                           {'delivering','Delivering'},{'scheduled','Scheduled'},
-                                          {'consumers','Consumers'},{'added','Added'},{'acked','Acked'}} }"
+                                          {'consumers','Consumers'},{'added','Added'},{'acked','Acked'},
+                                          {'expired','Expired'},{'killed','Killed'}} }"
                         th:classappend="${col[0] == 'name' or col[0] == 'address'} ? '' : 'num'">
                         <a th:href="@{/overview(refresh=${refresh},q=${q},sort=${col[0]},
                                      dir=${col[0] == sort} ? ${flip} : 'asc')}"
@@ -77,6 +78,10 @@
                     <td class="num" th:text="${queue.consumerCount()}">0</td>
                     <td class="num muted" th:text="${queue.messagesAdded()}">0</td>
                     <td class="num muted" th:text="${queue.messagesAcked()}">0</td>
+                    <td class="num" th:classappend="${queue.messagesExpired() > 0} ? 'strong' : 'muted'"
+                        th:text="${queue.messagesExpired()}">0</td>
+                    <td class="num" th:classappend="${queue.messagesKilled() > 0} ? 'strong' : 'muted'"
+                        th:text="${queue.messagesKilled()}">0</td>
                     <td>
                         <span class="badge" th:if="${queue.paused()}">paused</span>
                         <span class="badge" th:if="${queue.internalQueue()}">internal</span>
@@ -86,6 +91,13 @@
                 </tbody>
             </table>
         </div>
+        <p class="note">
+            <strong>Expired</strong> and <strong>Killed</strong> are messages that left a queue without
+            being consumed, since the broker started: expired past their time to live, or killed after
+            too many failed delivery attempts. Each went on to the address's expiry or dead-letter
+            address when it has one &mdash; and was dropped when it has none. The counter is the same
+            either way; <a th:href="@{/diagnose}">Diagnose</a> checks which.
+        </p>
         <p class="note">
             Rows flagged <span class="badge warn">no consumer</span> have messages waiting with
             nothing attached to take them.

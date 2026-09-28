@@ -204,7 +204,8 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("durable subscription")))
                 .andExpect(content().string(containsString("AMQPriority &gt; 3")))
                 .andExpect(content().string(containsString("live-client")))
-                .andExpect(content().string(containsString("conn-1")));
+                .andExpect(content().string(containsString("conn-1")))
+                .andExpect(content().string(containsString("Removed after too many failed delivery attempts")));
     }
 
     @Test
@@ -346,6 +347,25 @@ class PageRenderingTest
         given(queueDirectory.overview()).willThrow(new BrokerException("listQueues failed"));
 
         page("/overview").andExpect(content().string(containsString("listQueues failed")));
+    }
+
+    @Test
+    @DisplayName("expired and killed counts render on the overview, sortable, and on the queue page with a note")
+    void rendersExpiredAndKilled() throws Exception
+    {
+        QueueOverview lossy = new QueueOverview("lossy", "lossy", "ANYCAST", 0, 0, 0, 1, 9, 2, true, false, false, 4,
+                3);
+        given(queueDirectory.overview()).willReturn(List.of(queue(QUEUE, 2, 0), lossy));
+        given(queueDirectory.stats("lossy"))
+                .willReturn(new QueueStats("lossy", "lossy", "ANYCAST", 0, 0, 0, 1, 9, 2, true, false, 4, 3));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage("lossy", null, 1, 50, 0, List.of()));
+
+        page("/overview?sort=killed&dir=desc").andExpect(content().string(containsString(">Killed ▾<")))
+                .andExpect(content().string(containsString("Expired</strong> and <strong>Killed")));
+        page("/queues?name=lossy").andExpect(content().string(containsString(">Killed<")))
+                .andExpect(content().string(containsString("7</span> message(s) left this")))
+                .andExpect(content().string(containsString("href=\"/address?name=lossy\"")));
     }
 
     @Test

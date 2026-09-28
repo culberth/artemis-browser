@@ -62,7 +62,10 @@
                     <th>Queue</th><th>Kind</th><th>Client / subscription</th><th>Filter</th>
                     <th class="num">Messages</th><th class="num">Delivering</th><th class="num">Oldest undelivered</th>
                     <th class="num">Consumers</th>
-                    <th class="num">Added</th><th class="num">Acked</th><th></th>
+                    <th class="num">Added</th><th class="num">Acked</th>
+                    <th class="num" title="Expired past their time to live, since the broker started">Expired</th>
+                    <th class="num" title="Removed after too many failed delivery attempts, since the broker started">Killed</th>
+                    <th></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -97,6 +100,10 @@
                     <td class="num" th:text="${s.consumerCount()}">0</td>
                     <td class="num muted" th:text="${s.messagesAdded()}">0</td>
                     <td class="num muted" th:text="${s.messagesAcked()}">0</td>
+                    <td class="num" th:classappend="${s.messagesExpired() > 0} ? 'strong' : 'muted'"
+                        th:text="${s.messagesExpired()}">0</td>
+                    <td class="num" th:classappend="${s.messagesKilled() > 0} ? 'strong' : 'muted'"
+                        th:text="${s.messagesKilled()}">0</td>
                     <td style="width:1%;white-space:nowrap">
                         <a class="badge-link" th:href="@{/queues(name=${s.name()})}">Browse</a>
                     </td>
