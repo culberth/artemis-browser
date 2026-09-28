@@ -1,6 +1,7 @@
 package com.culberth.tools.artemisbrowser.broker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
@@ -29,6 +30,7 @@ class StuckDiagnosisServiceTest
     private QueueBrowseService browse;
     private DivertDirectory diverts;
     private InFlightService inFlight;
+    private RateService rates;
 
     @BeforeEach
     void mocks()
@@ -40,6 +42,9 @@ class StuckDiagnosisServiceTest
         diverts = mock(DivertDirectory.class);
         given(diverts.all()).willReturn(List.of());
         inFlight = mock(InFlightService.class);
+        rates = mock(RateService.class);
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList()))
+                .willReturn(new Diagnosis.Measured(Rates.none("not measured in this test"), false));
         given(inFlight.limit()).willReturn(5000);
         given(inFlight.oldest(anyString(), anyLong()))
                 .willAnswer(call -> InFlightLookup.notInFlight(call.getArgument(0)));
@@ -277,6 +282,7 @@ class StuckDiagnosisServiceTest
         assertTrue(finding.detail().contains("Client 'billing-worker-a' from 172.17.0.1:35238 holds 250"),
                 finding.detail());
         assertTrue(finding.detail().contains("the other 1 consumer(s)"), finding.detail());
+        assertEquals("billing-worker-a", finding.clientId(), "the finding links to the client it names");
     }
 
     @Test
@@ -353,9 +359,134 @@ class StuckDiagnosisServiceTest
         assertEquals(1000, result.inFlightNotRead());
     }
 
+    @Test
+    @DisplayName("messages killed with no dead-letter address to go to were dropped, and that is reported")
+    void flagsKilledWithNowhereToGo()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 3, 0)));
+        given(addresses.settings("orders")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "")));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.isStuck());
+        assertEquals("'orders' has dropped 3 message(s) after too many delivery attempts", finding.title());
+        assertTrue(finding.detail().contains("name no dead-letter address"), finding.detail());
+        assertTrue(finding.detail().contains("if the settings were the same"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("a dead-letter address that does not exist, or has no queues, loses the message just the same")
+    void flagsADeadLetterAddressThatCannotHoldAnything()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 2, 0), killedAndExpired("audit", 1, 0)));
+        given(addresses.settings("orders")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "GONE")));
+        given(addresses.settings("audit")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "EMPTY")));
+        given(addresses.overview()).willReturn(
+                List.of(new AddressOverview("EMPTY", "ANYCAST", 0, 0, 0, 0, false, false, false, List.of())));
+
+        List<Finding> findings = service().diagnose(false);
+
+        assertTrue(findings.stream().anyMatch(f -> f.detail().contains("'GONE' does not exist")),
+                String.valueOf(findings));
+        assertTrue(findings.stream().anyMatch(f -> f.detail().contains("'EMPTY' has no queues")),
+                String.valueOf(findings));
+    }
+
+    @Test
+    @DisplayName("killed messages that went to a real dead-letter queue are not lost, and not a finding here")
+    void doesNotFlagKilledThatWereKept()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("orders", 3, 5)));
+        given(addresses.settings("orders"))
+                .willReturn(AddressSettings.of(Map.of("deadLetterAddress", "DLQ", "expiryAddress", "ExpiryQueue")));
+        given(addresses.overview()).willReturn(List.of(
+                new AddressOverview("DLQ", "ANYCAST", 3, 0, 3, 0, false, false, false,
+                        List.of(queue("DLQ", 3, 0, 0, 0))),
+                new AddressOverview("ExpiryQueue", "ANYCAST", 5, 0, 5, 0, false, false, false,
+                        List.of(queue("ExpiryQueue", 5, 0, 0, 0)))));
+
+        assertTrue(service().diagnose(false).isEmpty());
+    }
+
+    @Test
+    @DisplayName("expired messages with no expiry address are worth a look, not an alarm: often meant to be dropped")
+    void flagsExpiredWithNowhereToGoAsWatch()
+    {
+        given(queues.overview()).willReturn(List.of(killedAndExpired("prices", 0, 40)));
+        given(addresses.settings("prices")).willReturn(AddressSettings.of(Map.of()));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertFalse(finding.isStuck());
+        assertEquals("'prices' has dropped 40 expired message(s)", finding.title());
+    }
+
+    @Test
+    @DisplayName("a queue that has killed and expired nothing costs no settings read")
+    void readsNoSettingsWhenNothingWasLost()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 5, 0, 2, 100)));
+
+        service().diagnose(false);
+
+        verify(addresses, never()).settings(anyString());
+    }
+
+    private QueueOverview killedAndExpired(String name, long killed, long expired)
+    {
+        return new QueueOverview(name, name, "ANYCAST", 0, 0, 0, 1, killed + expired, 0, true, false, false, expired,
+                killed);
+    }
+
+    @Test
+    @DisplayName("with a rate, an abandoned subscription is said to be still growing, or not")
+    void saysWhetherAnAbandonedSubscriptionIsGrowing()
+    {
+        QueueOverview growing = new QueueOverview("app.audit", "events", "MULTICAST", 90, 0, 0, 0, 90, 0, true, false,
+                false);
+        QueueOverview idle = new QueueOverview("app.old", "events", "MULTICAST", 40, 0, 0, 0, 40, 0, true, false,
+                false);
+        given(queues.overview()).willReturn(List.of(growing, idle));
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList())).willReturn(new Diagnosis.Measured(
+                new Rates(Map.of("app.audit", new QueueRate(2.5, 0), "app.old", new QueueRate(0, 0)), 30_000, null),
+                false));
+
+        List<Finding> findings = service().diagnose(false);
+
+        assertTrue(detailFor(findings, "app.audit").contains("still growing: 2.5 message(s)/s over the last 30s"));
+        assertTrue(detailFor(findings, "app.old").contains("Nothing was added to it in the last 30s"));
+    }
+
+    @Test
+    @DisplayName("with a rate, a long-in-flight message is told apart: queue still acknowledging, or stopped")
+    void saysWhetherTheQueueIsMovingAroundALongInFlightMessage()
+    {
+        given(queues.overview()).willReturn(List.of(queue("busy", 1, 1, 1, 40), queue("stopped", 1, 1, 1, 40)));
+        long sent = System.currentTimeMillis() - 42 * 60_000L;
+        InFlightMessage old = new InFlightMessage("ID:old", 1, "Text", 4, true, sent, "", "", Map.of());
+        InFlightConsumer holder = new InFlightConsumer("", "c", "s", "0", List.of(old));
+        given(inFlight.oldest("busy", 1)).willReturn(new InFlightLookup("busy", true, holder, old));
+        given(inFlight.oldest("stopped", 1)).willReturn(new InFlightLookup("stopped", true, holder, old));
+        given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList())).willReturn(new Diagnosis.Measured(
+                new Rates(Map.of("busy", new QueueRate(3, 12), "stopped", new QueueRate(0, 0)), 15_000, null), true));
+
+        Diagnosis result = service().run(false);
+
+        assertTrue(detailFor(result.findings(), "busy").contains("acknowledged 12 message(s)/s over the last 15s"));
+        assertTrue(detailFor(result.findings(), "stopped")
+                .contains("Nothing on this queue was acknowledged in the last 15s"));
+        assertTrue(result.measured().sampled());
+    }
+
+    private String detailFor(List<Finding> findings, String queue)
+    {
+        return findings.stream().filter(f -> queue.equals(f.queue())).map(Finding::detail).findFirst()
+                .orElseThrow(() -> new AssertionError("no finding for " + queue + " in " + findings));
+    }
+
     private StuckDiagnosisService service()
     {
-        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight);
+        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates);
     }
 
     private Finding only(List<Finding> findings)

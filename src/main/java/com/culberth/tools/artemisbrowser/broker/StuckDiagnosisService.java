@@ -38,6 +38,7 @@ public class StuckDiagnosisService
     private final QueueBrowseService browseService;
     private final DivertDirectory divertDirectory;
     private final InFlightService inFlightService;
+    private final RateService rateService;
 
     /**
      * Fewest in-flight messages one consumer must hold, with every other consumer on the queue holding none, to be
@@ -56,7 +57,7 @@ public class StuckDiagnosisService
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
             BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
-            InFlightService inFlightService)
+            InFlightService inFlightService, RateService rateService)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
@@ -64,6 +65,7 @@ public class StuckDiagnosisService
         this.browseService = browseService;
         this.divertDirectory = divertDirectory;
         this.inFlightService = inFlightService;
+        this.rateService = rateService;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
@@ -77,20 +79,25 @@ public class StuckDiagnosisService
         List<Finding> findings = new ArrayList<>();
         brokerLevel(findings);
 
-        List<QueueOverview> queues = queueDirectory.overview().stream()
-                .filter(queue -> includeInternal || !queue.internalQueue()).toList();
+        List<QueueOverview> all = queueDirectory.overview();
+        // Every queue, so the session's next reading on any page compares like with like.
+        Diagnosis.Measured measured = rateService.forDiagnosis(all);
+        Rates rates = measured.rates();
+        List<QueueOverview> queues = all.stream().filter(queue -> includeInternal || !queue.internalQueue()).toList();
         List<BrokerConsumer> consumers = brokerInfo.consumers();
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, queue, consumers);
+            queueLevel(findings, queue, consumers, rates);
         }
         hoarding(findings, queues, consumers);
-        Unread unread = longInFlight(findings, queues);
-        addressLevel(findings, includeInternal);
+        Unread unread = longInFlight(findings, queues, rates);
+        List<AddressOverview> addresses = addressDirectory.overview();
+        nowhereToGo(findings, queues, addresses);
+        addressLevel(findings, includeInternal, addresses);
 
         // Whatever is not moving now first; within that, the biggest backlog.
         findings.sort((left, right) -> left.isStuck() == right.isStuck() ? 0 : (left.isStuck() ? -1 : 1));
-        return new Diagnosis(findings, unread.queues(), unread.messages());
+        return new Diagnosis(findings, unread.queues(), unread.messages(), measured);
     }
 
     /** In-flight messages the page's budget did not stretch to, and on how many queues. */
@@ -139,7 +146,7 @@ public class StuckDiagnosisService
                             + " client-side buffer, so one consumer can take a backlog the others could be working"
                             + " on — usually a consumer window or prefetch set too large for how slowly each message"
                             + " is processed.",
-                    queue.name()));
+                    queue.name()).aboutClient(clientOf(clients.get(hoarder.sequentialId())), hoarder.connectionId()));
         });
     }
 
@@ -151,7 +158,7 @@ public class StuckDiagnosisService
      * have waited most of that time before a consumer took it, and the finding says so rather than blaming the consumer
      * outright.
      */
-    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues)
+    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues, Rates rates)
     {
         long budget = (long) inFlightService.limit() * IN_FLIGHT_BUDGET_FACTOR;
         int queuesNotRead = 0;
@@ -174,19 +181,60 @@ public class StuckDiagnosisService
                 continue;
             }
             long waiting = queue.messageCount() - queue.deliveringCount();
-            findings.add(Finding.watch(
-                    "A message on '" + queue.name() + "' sent "
-                            + AddressDetail.ageText(now - oldest.message().timestamp()) + " ago is still in flight",
-                    oldest.message().messageId() + " is held, unacknowledged, by " + oldest.holder().describe()
-                            + ". A consumer stuck partway through a message looks like this. The age is from when the"
-                            + " message was sent — the broker does not report when it was delivered"
-                            + (waiting > 0
-                                    ? ", and this queue has " + waiting + " message(s) waiting, so it may have"
+            findings.add(Finding
+                    .watch("A message on '"
+                            + queue.name() + "' sent " + AddressDetail.ageText(now - oldest.message().timestamp())
+                            + " ago is still in flight",
+                            oldest.message().messageId() + " is held, unacknowledged, by " + oldest.holder().describe()
+                                    + ". A consumer stuck partway through a message looks like this. The age is from when the"
+                                    + " message was sent — the broker does not report when it was delivered"
+                                    + (waiting > 0 ? ", and this queue has " + waiting
+                                            + " message(s) waiting, so it may have"
                                             + " spent most of that time in the backlog before a consumer took it."
-                                    : ", so it is how old the message is, not how long this consumer has held it."),
-                    queue.name()));
+                                            : ", so it is how old the message is, not how long this consumer has held it.")
+                                    + moving(queue, rates),
+                            queue.name())
+                    .aboutClient(clientOf(oldest.holder().client()), oldest.holder().connectionId()));
         }
         return new Unread(queuesNotRead, notRead);
+    }
+
+    /**
+     * Whether an abandoned subscription is still growing — the one thing its finding could only suspect from a single
+     * snapshot.
+     */
+    private String growth(QueueOverview queue, Rates rates)
+    {
+        QueueRate rate = rates.of(queue.name());
+        if (rate == null)
+        {
+            return "";
+        }
+        return rate.inPerSecond() > 0
+                ? " It is still growing: " + rate.inText() + " message(s)/s over the last " + rates.intervalText() + "."
+                : " Nothing was added to it in the last " + rates.intervalText() + ".";
+    }
+
+    /**
+     * Whether the queue holding a long-in-flight message is acknowledging anything — which tells a consumer stuck on
+     * one message among working ones, or a queue that has stopped, from a queue simply working through a backlog.
+     */
+    private String moving(QueueOverview queue, Rates rates)
+    {
+        QueueRate rate = rates.of(queue.name());
+        if (rate == null)
+        {
+            return "";
+        }
+        return rate.ackedPerSecond() > 0
+                ? " The queue acknowledged " + rate.ackedText() + " message(s)/s over the last " + rates.intervalText()
+                        + ", so its consumers are working while this one is held."
+                : " Nothing on this queue was acknowledged in the last " + rates.intervalText() + ".";
+    }
+
+    private static String clientOf(SubscriberConsumer client)
+    {
+        return client == null ? null : client.clientId();
     }
 
     private String who(SubscriberConsumer client, BrokerConsumer consumer)
@@ -229,7 +277,7 @@ public class StuckDiagnosisService
         }
     }
 
-    private void queueLevel(List<Finding> findings, QueueOverview queue, List<BrokerConsumer> consumers)
+    private void queueLevel(List<Finding> findings, QueueOverview queue, List<BrokerConsumer> consumers, Rates rates)
     {
         if (queue.paused())
         {
@@ -245,7 +293,8 @@ public class StuckDiagnosisService
                     queue.messageCount() + " message(s) kept for it. The broker stores a copy of every message sent"
                             + " to '" + queue.address() + "' for this subscription until its subscriber reconnects"
                             + " or the subscription is removed — so a subscriber that has gone for good leaves a"
-                            + " queue that only grows, and on a busy address that is how a disk fills.",
+                            + " queue that only grows, and on a busy address that is how a disk fills."
+                            + growth(queue, rates),
                     queue.name(), queue.address()));
         }
         else if (queue.messageCount() > 0 && queue.consumerCount() == 0)
@@ -325,10 +374,99 @@ public class StuckDiagnosisService
         }
     }
 
-    /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
-    private void addressLevel(List<Finding> findings, boolean includeInternal)
+    /**
+     * Messages killed or expired where there was nowhere to send them — gone, and reported by nothing else.
+     *
+     * <p>
+     * Verified on 2.44.0: {@code messagesKilled} counts a message that exceeded max delivery attempts whether it was
+     * then dead-lettered or dropped, and {@code messagesExpired} the same for the expiry address. The counter never
+     * says which; the address's settings do. So a non-zero counter is looked up against them: no address set, one that
+     * does not exist, or one with no queues to take the message. One settings read per affected address, only when a
+     * counter is non-zero. The settings are today's, and the counters run from broker start, so the finding says "if
+     * the settings were the same then".
+     */
+    private void nowhereToGo(List<Finding> findings, List<QueueOverview> queues, List<AddressOverview> addresses)
     {
-        List<AddressOverview> all = addressDirectory.overview();
+        Map<String, AddressOverview> byName = addresses.stream()
+                .collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a));
+        Map<String, AddressSettings> settings = new LinkedHashMap<>();
+        for (QueueOverview queue : queues)
+        {
+            if (queue.messagesKilled() == 0 && queue.messagesExpired() == 0)
+            {
+                continue;
+            }
+            AddressSettings forAddress = settings.computeIfAbsent(queue.address(), this::settingsOrNull);
+            if (forAddress == null)
+            {
+                continue;
+            }
+            if (queue.messagesKilled() > 0)
+            {
+                String problem = problem(forAddress.deadLetterAddress(), "dead-letter", byName);
+                if (problem != null)
+                {
+                    findings.add(Finding.stuck(
+                            "'" + queue.name() + "' has dropped " + queue.messagesKilled()
+                                    + " message(s) after too many delivery attempts",
+                            queue.messagesKilled() + " message(s) were killed here for exceeding their max delivery"
+                                    + " attempts, and " + problem + ", so they were discarded rather than kept"
+                                    + " for someone to look at — if the settings were the same when it happened. The"
+                                    + " counter runs from broker start and does not say where a message went.",
+                            queue.name()));
+                }
+            }
+            if (queue.messagesExpired() > 0)
+            {
+                String problem = problem(forAddress.expiryAddress(), "expiry", byName);
+                if (problem != null)
+                {
+                    findings.add(Finding.watch(
+                            "'" + queue.name() + "' has dropped " + queue.messagesExpired() + " expired message(s)",
+                            queue.messagesExpired() + " message(s) outlived their time to live here, and " + problem
+                                    + ", so they were discarded — if the settings were the same when it happened."
+                                    + " Often intended for messages that are worthless once stale; a loss if not.",
+                            queue.name()));
+                }
+            }
+        }
+    }
+
+    /** Why a message sent to {@code target} would be lost, or null when it would be kept. */
+    private String problem(String target, String kind, Map<String, AddressOverview> addresses)
+    {
+        if (target == null)
+        {
+            return "the address's settings name no " + kind + " address";
+        }
+        AddressOverview address = addresses.get(target);
+        if (address == null)
+        {
+            return "its " + kind + " address '" + target + "' does not exist";
+        }
+        if (address.queues().isEmpty())
+        {
+            return "its " + kind + " address '" + target + "' has no queues to hold them";
+        }
+        return null;
+    }
+
+    /** A queue's address settings, or null when they cannot be read — the rest of the page should not fail on it. */
+    private AddressSettings settingsOrNull(String address)
+    {
+        try
+        {
+            return addressDirectory.settings(address);
+        }
+        catch (BrokerException e)
+        {
+            return null;
+        }
+    }
+
+    /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
+    private void addressLevel(List<Finding> findings, boolean includeInternal, List<AddressOverview> all)
+    {
         exclusiveDiverts(findings,
                 all.stream().collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
         for (AddressOverview address : all)

@@ -86,6 +86,8 @@
                 <span class="muted" style="font-weight:normal"
                       th:text="'— in flight to ' + ${f.holder().describe()} + ', delivered and not yet acknowledged'">
                     — in flight</span>
+                <a class="badge-link" style="font-weight:normal" th:if="${f.holder().identified()}"
+                   th:href="${f.holder().client() != null and !#strings.isEmpty(f.holder().client().clientId())} ? @{/client(id=${f.holder().client().clientId()})} : @{/client(connection=${f.holder().connectionId()})}">Open this client</a>
             </h3>
             <div class="table-scroll">
                 <table>

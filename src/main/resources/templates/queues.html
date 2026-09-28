@@ -76,7 +76,23 @@
             <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${stats.consumerCount()}">0</span></div>
             <div class="stat"><span class="k">Added</span><span class="v" th:text="${stats.messagesAdded()}">0</span></div>
             <div class="stat"><span class="k">Acknowledged</span><span class="v" th:text="${stats.messagesAcknowledged()}">0</span></div>
+            <th:block th:with="rate=${rates != null} ? ${rates.of(stats.name())} : null">
+                <div class="stat" th:title="${rate != null} ? 'Per second over the last ' + ${rates.intervalText()} : 'Needs an earlier reading in this session — reload, or turn on auto-refresh'">
+                    <span class="k">In/s</span><span class="v" th:text="${rate != null} ? ${rate.inText()} : '—'">—</span></div>
+                <div class="stat" th:title="${rate != null} ? 'Per second over the last ' + ${rates.intervalText()} : 'Needs an earlier reading in this session — reload, or turn on auto-refresh'">
+                    <span class="k">Acked/s</span><span class="v" th:text="${rate != null} ? ${rate.ackedText()} : '—'">—</span></div>
+            </th:block>
+            <div class="stat" title="Expired past their time to live since the broker started — sent to the expiry address if there is one, dropped if not">
+                <span class="k">Expired</span><span class="v" th:text="${stats.messagesExpired()}">0</span></div>
+            <div class="stat" title="Removed after too many failed delivery attempts since the broker started — dead-lettered if there is a dead-letter address, dropped if not">
+                <span class="k">Killed</span><span class="v" th:text="${stats.messagesKilled()}">0</span></div>
         </div>
+        <p class="note" th:if="${stats.messagesExpired() > 0 or stats.messagesKilled() > 0}">
+            <span th:text="${stats.messagesExpired() + stats.messagesKilled()}">0</span> message(s) left this
+            queue without being consumed. Where they went depends on the address's expiry and
+            dead-letter settings, which the <a th:href="@{/address(name=${stats.address()})}">address page</a>
+            shows &mdash; with neither set, they were dropped.
+        </p>
         <p class="note">
             Address <code th:text="${stats.address()}">address</code>.
             Browsing is read-only: messages are copied, never consumed or acknowledged.
@@ -87,8 +103,15 @@
         <div class="topbar" style="margin-bottom:.75rem">
             <h2 style="margin:0">
                 Messages
-                <span class="muted" th:if="${messages.totalMatching() > 0}"
-                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()}">range</span>
+                <span class="muted" th:if="${messages.totalKnown() and messages.totalMatching() > 0}"
+                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()} + ' waiting'">range</span>
+                <!--
+                  Filtered, there is no total: the broker's filtered count examines only its first 200
+                  messages, so it would stop the pager short of matches that are there.
+                -->
+                <span class="muted" th:if="${!messages.totalKnown() and !messages.messages().isEmpty()}"
+                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + (${messages.more()} ? ', and more after these' : '')"
+                      title="No total for a filter: the broker counts filtered messages only among its first 200, so pages carry on until the matches do">range</span>
                 <span class="muted" th:if="${!#strings.isEmpty(messages.filter())}">(filtered)</span>
             </h2>
             <div class="field-row">
@@ -100,10 +123,11 @@
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=1)}">&laquo; First</a>
                 <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.previousPage()})}">&lsaquo; Prev</a>
-                <span class="muted" th:text="'Page ' + ${messages.page()} + ' of ' + ${messages.totalPages()}">Page 1 of 1</span>
+                <span class="muted" th:text="${messages.totalKnown()} ? 'Page ' + ${messages.page()} + ' of ' + ${messages.totalPages()} : 'Page ' + ${messages.page()}">Page 1 of 1</span>
                 <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.nextPage()})}">Next &rsaquo;</a>
-                <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
+                <!-- No last page to jump to when there is no total. -->
+                <a class="tab" th:if="${messages.totalKnown()}" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.totalPages()})}">Last &raquo;</a>
             </div>
         </div>
@@ -278,6 +302,12 @@
                         <span class="muted" style="font-weight:normal">(not matched to a client)</span>
                     </th:block>
                     <span class="muted" style="font-weight:normal" th:text="'— holding ' + ${c.holding()}">&mdash; holding 0</span>
+                    <a class="badge-link" style="font-weight:normal"
+                       th:if="${c.client() != null and !#strings.isEmpty(c.client().clientId())}"
+                       th:href="@{/client(id=${c.client().clientId()})}">Open this client</a>
+                    <a class="badge-link" style="font-weight:normal"
+                       th:if="${c.identified() and (c.client() == null or #strings.isEmpty(c.client().clientId()))}"
+                       th:href="@{/client(connection=${c.connectionId()})}">Open this client</a>
                 </h3>
                 <p class="note" th:if="${!c.identified()}">
                     The broker described this consumer in a form this tool does not recognise, so it is shown

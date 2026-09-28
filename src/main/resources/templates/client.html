@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; client</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('broker')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <th:block th:if="${client}">
+        <div class="panel">
+            <h2>
+                <span th:text="${client.title()}">billing-svc</span>
+                <span class="badge" th:if="${client.named()}">client id</span>
+                <span class="badge" th:unless="${client.named()}">no client id</span>
+            </h2>
+            <div class="stats">
+                <div class="stat"><span class="k">Connections</span><span class="v" th:text="${client.connections().size()}">1</span></div>
+                <div class="stat"><span class="k">Sessions</span><span class="v" th:text="${client.sessions().size()}">1</span></div>
+                <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${client.consumers().size()}">1</span></div>
+                <div class="stat"><span class="k">Producers</span><span class="v" th:text="${client.producers().size()}">1</span></div>
+                <div class="stat"><span class="k">In flight</span><span class="v" th:text="${client.inFlight()}">0</span></div>
+            </div>
+            <p class="note" th:unless="${client.named()}">
+                This client set no client id, so the broker has nothing to call it but its connection &mdash;
+                shown by remote address. If it reconnects it gets a new connection, and this page will not
+                follow it.
+            </p>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0">Connections</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr><th>Connection</th><th>Remote address</th><th>User</th><th>Protocol</th><th>Since</th>
+                        <th class="num">Sessions</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="c : ${client.connections()}">
+                        <td><code th:text="${c.connectionId()}">id</code></td>
+                        <td th:text="${c.remoteAddress()}">10.0.0.1:5000</td>
+                        <td th:text="${c.user()}">artemis</td>
+                        <td><span class="badge" th:text="${c.protocol()}">CORE</span></td>
+                        <td class="muted" th:text="${c.createdText()}">since</td>
+                        <td class="num" th:text="${c.sessionCount()}">1</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0">Consumes from</h3>
+            <p class="muted" th:if="${client.consumers().isEmpty()}">No consumers: this client is not reading from any queue.</p>
+            <div class="table-scroll" th:unless="${client.consumers().isEmpty()}">
+                <table>
+                    <thead>
+                    <tr><th>Queue</th><th>Own selector</th><th class="num">Delivered</th><th class="num">Acknowledged</th>
+                        <th class="num">In flight</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="c : ${client.consumers()}">
+                        <td class="nowrap"><a th:href="@{/queues(name=${c.queue()})}" th:text="${c.queue()}">queue</a></td>
+                        <td>
+                            <code th:unless="${#strings.isEmpty(c.filter())}" th:text="${c.filter()}">region = 'eu'</code>
+                            <span class="muted" th:if="${#strings.isEmpty(c.filter())}">&mdash;</span>
+                        </td>
+                        <td class="num" th:text="${c.delivered()}">0</td>
+                        <td class="num" th:text="${c.acknowledged()}">0</td>
+                        <td class="num">
+                            <a th:if="${c.inTransit() > 0}" th:href="@{/queues(name=${c.queue()})} + '#in-flight'"
+                               th:text="${c.inTransit()}">3</a>
+                            <span class="muted" th:unless="${c.inTransit() > 0}">0</span>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note" th:unless="${client.consumers().isEmpty()}">
+                <strong>In flight</strong> is what the broker has delivered to this consumer and not had
+                acknowledged, including messages still sitting in its client-side buffer. Each number links
+                to that queue&rsquo;s in-flight list.
+            </p>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0">Sends to</h3>
+            <p class="muted" th:if="${client.producers().isEmpty()}">No producers: this client is not sending.</p>
+            <div class="table-scroll" th:unless="${client.producers().isEmpty()}">
+                <table>
+                    <thead>
+                    <tr><th>Address</th><th class="num">Sent</th><th class="num">Bytes sent</th><th>Since</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="p : ${client.producers()}">
+                        <td class="nowrap">
+                            <a th:unless="${#strings.isEmpty(p.address())}" th:href="@{/address(name=${p.address()})}"
+                               th:text="${p.address()}">address</a>
+                            <span class="muted" th:if="${#strings.isEmpty(p.address())}"
+                                  title="An anonymous producer names its address per message, not up front">any address</span>
+                        </td>
+                        <td class="num" th:text="${p.sent()}">0</td>
+                        <td class="num muted" th:text="${p.bytesSent()}">0</td>
+                        <td class="muted" th:text="${p.createdText()}">since</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3 style="margin-top:0">Sessions</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr><th>Session</th><th>Connection</th><th class="num">Consumers</th><th class="num">Producers</th><th>Since</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="s : ${client.sessions()}">
+                        <td><code class="muted" th:text="${s.sessionId()}">id</code></td>
+                        <td><code class="muted" th:text="${s.connectionId()}">id</code></td>
+                        <td class="num" th:text="${s.consumerCount()}">0</td>
+                        <td class="num" th:text="${s.producerCount()}">0</td>
+                        <td class="muted" th:text="${s.createdText()}">since</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </th:block>
+</div>
+</body>
+</html>

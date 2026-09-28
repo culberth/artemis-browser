@@ -21,6 +21,8 @@ import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
+import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
+import com.culberth.tools.artemisbrowser.broker.ClientView;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
 import com.culberth.tools.artemisbrowser.broker.Diagnosis;
@@ -40,6 +42,8 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import com.culberth.tools.artemisbrowser.broker.RateService;
+import com.culberth.tools.artemisbrowser.broker.Rates;
 import com.culberth.tools.artemisbrowser.broker.SavedConnection;
 import com.culberth.tools.artemisbrowser.broker.ScheduledMessage;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
@@ -126,6 +130,12 @@ class PageRenderingTest
     private InFlightService inFlightService;
 
     @MockitoBean
+    private RateService rateService;
+
+    @MockitoBean
+    private ClientDirectory clientDirectory;
+
+    @MockitoBean
     private MessageSearchService searchService;
 
     @MockitoBean
@@ -134,6 +144,8 @@ class PageRenderingTest
     @BeforeEach
     void connected()
     {
+        given(rateService.observe(org.mockito.ArgumentMatchers.anyList()))
+                .willReturn(Rates.none("no earlier reading in this session yet"));
         given(brokerSession.isConnected()).willReturn(true);
         given(brokerSession.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(brokerInfo.health())
@@ -165,6 +177,46 @@ class PageRenderingTest
         given(brokerInfo.health()).willThrow(new BrokerException("nope"));
 
         Assertions.assertDoesNotThrow(() -> page("/broker"));
+    }
+
+    @Test
+    @DisplayName("a client page renders its connections, what it consumes with in-flight links, and where it sends")
+    void rendersTheClientPage() throws Exception
+    {
+        given(clientDirectory.find("billing-svc", null)).willReturn(new ClientView("billing-svc", null,
+                List.of(new ClientView.Connection("a018fd3b", "172.17.0.1:52716", "artemis", "AMQP",
+                        "Mon Sep 28 01:59:40 GMT 2026", 2)),
+                List.of(new ClientView.Session("446d24d0", "a018fd3b", 1, 1, "Mon Sep 28 01:59:40 GMT 2026")),
+                List.of(new ClientView.Consumer("11", "446d24d0", "client-q", "client-q", "", 9, 5, 4)),
+                List.of(new ClientView.Producer("6", "446d24d0", "client-out", 12, 2048, "2026-09-28 01:59:40"),
+                        new ClientView.Producer("7", "446d24d0", "", 3, 300, ""))));
+
+        page("/client?id=billing-svc").andExpect(content().string(containsString("billing-svc")))
+                .andExpect(content().string(containsString("172.17.0.1:52716")))
+                .andExpect(content().string(containsString("href=\"/queues?name=client-q#in-flight\"")))
+                .andExpect(content().string(containsString("href=\"/address?name=client-out\"")))
+                .andExpect(content().string(containsString("any address")));
+    }
+
+    @Test
+    @DisplayName("a client with no client id is named by its connection, and the page says why")
+    void rendersAnAnonymousClientPage() throws Exception
+    {
+        given(clientDirectory.find(null, "ea82643f")).willReturn(new ClientView("", "ea82643f",
+                List.of(new ClientView.Connection("ea82643f", "172.17.0.1:52720", "artemis", "CORE", "", 1)), List.of(),
+                List.of(), List.of()));
+
+        page("/client?connection=ea82643f").andExpect(content().string(containsString("no client id")))
+                .andExpect(content().string(containsString("172.17.0.1:52720")))
+                .andExpect(content().string(containsString("not reading from any queue")));
+    }
+
+    @Test
+    @DisplayName("a client that has gone renders as not connected, not as an error page")
+    void rendersAMissingClient() throws Exception
+    {
+        page("/client?id=gone-svc").andExpect(content().string(containsString("No client with id &#39;gone-svc&#39;")))
+                .andExpect(content().string(containsString("is connected to this broker now")));
     }
 
     @Test
@@ -204,7 +256,8 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("durable subscription")))
                 .andExpect(content().string(containsString("AMQPriority &gt; 3")))
                 .andExpect(content().string(containsString("live-client")))
-                .andExpect(content().string(containsString("conn-1")));
+                .andExpect(content().string(containsString("conn-1")))
+                .andExpect(content().string(containsString("Removed after too many failed delivery attempts")));
     }
 
     @Test
@@ -349,6 +402,60 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("rates render on the overview and the queue page with their interval, and a dash where there is none")
+    void rendersRates() throws Exception
+    {
+        given(rateService.observe(org.mockito.ArgumentMatchers.anyList())).willReturn(new Rates(
+                Map.of(QUEUE, new com.culberth.tools.artemisbrowser.broker.QueueRate(12.5, 0.04)), 15_000, null));
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"))));
+
+        page("/overview").andExpect(content().string(containsString(">13<")))
+                .andExpect(content().string(containsString("&lt;0.1")))
+                .andExpect(content().string(containsString("over the last 15s")));
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString(">In/s<")))
+                .andExpect(content().string(containsString("Per second over the last 15s")));
+    }
+
+    @Test
+    @DisplayName("before a second reading, the overview says how to get rates rather than showing zeros")
+    void rendersNoRatesYet() throws Exception
+    {
+        page("/overview").andExpect(content().string(containsString("need two readings")));
+    }
+
+    @Test
+    @DisplayName("diagnose says when it waited to measure rates itself")
+    void rendersDiagnoseSampledRates() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willReturn(
+                new Diagnosis(List.of(), 0, 0, new Diagnosis.Measured(new Rates(Map.of(), 3_000, null), true)));
+
+        page("/diagnose").andExpect(content().string(containsString("waited a few seconds to measure rates")))
+                .andExpect(content().string(containsString("over the last 3s")));
+    }
+
+    @Test
+    @DisplayName("expired and killed counts render on the overview, sortable, and on the queue page with a note")
+    void rendersExpiredAndKilled() throws Exception
+    {
+        QueueOverview lossy = new QueueOverview("lossy", "lossy", "ANYCAST", 0, 0, 0, 1, 9, 2, true, false, false, 4,
+                3);
+        given(queueDirectory.overview()).willReturn(List.of(queue(QUEUE, 2, 0), lossy));
+        given(queueDirectory.stats("lossy"))
+                .willReturn(new QueueStats("lossy", "lossy", "ANYCAST", 0, 0, 0, 1, 9, 2, true, false, 4, 3));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage("lossy", null, 1, 50, 0, List.of()));
+
+        page("/overview?sort=killed&dir=desc").andExpect(content().string(containsString(">Killed ▾<")))
+                .andExpect(content().string(containsString("Expired</strong> and <strong>Killed")));
+        page("/queues?name=lossy").andExpect(content().string(containsString(">Killed<")))
+                .andExpect(content().string(containsString("7</span> message(s) left this")))
+                .andExpect(content().string(containsString("href=\"/address?name=lossy\"")));
+    }
+
+    @Test
     @DisplayName("the queue page renders with no queue chosen")
     void rendersTheQueuePageUnselected() throws Exception
     {
@@ -365,6 +472,21 @@ class PageRenderingTest
 
         page("/queues?name=" + QUEUE).andExpect(content().string(containsString("ID:aaa")))
                 .andExpect(content().string(containsString("ID:bbb")));
+    }
+
+    @Test
+    @DisplayName("a filtered page renders with no total: no 'of N', no Last, and Next only when a next page exists")
+    void rendersAFilteredPageWithoutATotal() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 1000, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(new MessagePage(QUEUE,
+                "region = 'eu'", 2, 2, MessagePage.UNKNOWN, true, List.of(summary(3, "ID:ccc"), summary(4, "ID:ddd"))));
+
+        page("/queues?name=" + QUEUE + "&filter=region = 'eu'&page=2&size=2")
+                .andExpect(content().string(containsString("showing 3–4, and more after these")))
+                .andExpect(content().string(containsString(">Page 2<")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Last &raquo;"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Last »"))));
     }
 
     @Test
@@ -571,12 +693,16 @@ class PageRenderingTest
     @DisplayName("a finding about a subscription links to both its queue and its address")
     void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
     {
-        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(new Finding(Finding.STUCK,
-                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")),
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(
+                new Finding(Finding.STUCK, "Durable subscription 'app.audit' has no subscriber attached", "kept for it",
+                        "app.audit", "events"),
+                Finding.watch("One consumer holds everything in flight on 'work'", "hoarding", "work")
+                        .aboutClient("billing-worker-a", "conn-a")),
                 0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
-                .andExpect(content().string(containsString("href=\"/address?name=events\"")));
+                .andExpect(content().string(containsString("href=\"/address?name=events\"")))
+                .andExpect(content().string(containsString("href=\"/client?id=billing-worker-a\"")));
     }
 
     @Test

@@ -248,7 +248,8 @@ class AddressDetailIT
         QueueBrowseService browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
                 new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession),
-                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000)).diagnose(false);
+                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000),
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(false);
 
         assertTrue(findings.stream().anyMatch(finding -> ArtemisBrokerSupport.FEED_ABANDONED.equals(finding.queue())
                 && finding.title().startsWith("Durable subscription")), findings.toString());

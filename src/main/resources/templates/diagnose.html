@@ -41,11 +41,19 @@
                th:href="@{/queues(name=${f.queue()})}">Open this queue</a>
             <a class="badge-link" th:if="${f.address() != null}"
                th:href="@{/address(name=${f.address()})}">Open this address</a>
+            <a class="badge-link" th:if="${f.clientId() != null}"
+               th:href="@{/client(id=${f.clientId()})}">Open this client</a>
+            <a class="badge-link" th:if="${f.connectionId() != null}"
+               th:href="@{/client(connection=${f.connectionId()})}">Open this client</a>
         </div>
 
         <p class="note" th:if="${inFlightQueuesNotRead != null and inFlightQueuesNotRead > 0}"
            th:text="'How long messages have been in flight was not checked on ' + ${inFlightQueuesNotRead} + ' queue(s) holding ' + ${inFlightNotRead} + ' in flight between them: the broker returns the in-flight messages of a queue all at once, so this page reads them within a budget, smallest queue first. The page for each queue can still show them.'">
             In-flight ages not checked on some queues.</p>
+
+        <p class="note" th:if="${rates != null and rates.measured()}"
+           th:text="(${ratesSampled} ? 'This page waited a few seconds to measure rates, since this session had no recent reading of the broker: ' : 'Rates are ') + 'per second over the last ' + ${rates.intervalText()} + '.'">
+            Rates measured.</p>
 
         <p class="note">
             These are observations, not verdicts. A queue with no consumer is a problem if something

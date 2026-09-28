@@ -44,7 +44,7 @@ class ReadOnlyGuaranteeIT
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
-        search = new MessageSearchService(brokerSession, queues, browse, inFlight, 50);
+        search = new MessageSearchService(queues, browse, inFlight, 50);
     }
 
     @AfterAll
@@ -110,6 +110,11 @@ class ReadOnlyGuaranteeIT
                 assertEquals(queue, byId.inFlight().get(0).queueName());
                 assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
 
+                // All five in flight: nothing for browse to page through, whatever countMessages says.
+                MessagePage page = browse.page(queue, null, 1, 50);
+                assertEquals(0, page.totalMatching(), "the pager counted messages browse cannot return");
+                assertFalse(page.hasNext());
+
                 // The oldest in flight is the first one sent, which is also the first received.
                 assertEquals(first.getJMSMessageID(), inFlight.oldest(queue, 5).message().messageId());
 
@@ -159,7 +164,8 @@ class ReadOnlyGuaranteeIT
 
                 Map<String, String> before = counters();
                 List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
+                        new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
+                        new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)))
                         .diagnose(false);
                 assertEquals(before, counters(), "diagnosing moved a counter");
 
@@ -270,6 +276,10 @@ class ReadOnlyGuaranteeIT
         }
         search.search("AMQPriority >= 0", true);
         new BrokerInfoService(brokerSession).consumers();
+        for (BrokerConnection connection : new BrokerInfoService(brokerSession).connections())
+        {
+            new ClientDirectory(brokerSession).find(null, connection.connectionId());
+        }
         AddressDetailService addresses = new AddressDetailService(new AddressDirectory(brokerSession, queues), queues,
                 new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight);
         for (AddressOverview address : new AddressDirectory(brokerSession, queues).overview())
@@ -281,8 +291,8 @@ class ReadOnlyGuaranteeIT
             }
         }
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
-                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight)
-                .diagnose(true);
+                new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(true);
     }
 
     /**

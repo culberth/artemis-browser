@@ -24,6 +24,8 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import com.culberth.tools.artemisbrowser.broker.RateService;
+import com.culberth.tools.artemisbrowser.broker.Rates;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,9 +55,14 @@ class QueueControllerTest
     @MockitoBean
     private InFlightService inFlightService;
 
+    @MockitoBean
+    private RateService rateService;
+
     @BeforeEach
     void connected()
     {
+        given(rateService.observe(org.mockito.ArgumentMatchers.anyList()))
+                .willReturn(Rates.none("no earlier reading in this session yet"));
         given(brokerSession.isConnected()).willReturn(true);
         given(brokerSession.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(queueDirectory.overview()).willReturn(List.of(overview("orders"), overview("payments")));

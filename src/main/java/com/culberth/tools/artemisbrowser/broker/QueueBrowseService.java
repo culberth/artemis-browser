@@ -128,7 +128,7 @@ public class QueueBrowseService
      */
     public MessagePage page(String queueName, String filter, int page, int pageSize)
     {
-        return page(queueName, filter, page, pageSize, bodyPreviewChars);
+        return page(queueName, filter, page, pageSize, bodyPreviewChars, true);
     }
 
     /**
@@ -156,7 +156,7 @@ public class QueueBrowseService
      */
     public MessagePage pageForExport(String queueName, String browseName, String filter, int page, int pageSize)
     {
-        MessagePage listing = page(queueName, filter, page, pageSize, bodyDetailChars);
+        MessagePage listing = page(queueName, filter, page, pageSize, bodyDetailChars, false);
 
         Set<String> wanted = listing.messages().stream().filter(this::needsFullBody).map(MessageSummary::messageId)
                 .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
@@ -173,7 +173,7 @@ public class QueueBrowseService
             filled.add(body == null ? message : message.withBody(body.text(), body.truncated()));
         }
         return new MessagePage(listing.queueName(), listing.filter(), listing.page(), listing.pageSize(),
-                listing.totalMatching(), filled);
+                listing.totalMatching(), listing.more(), filled);
     }
 
     /** A body management browse either cut short or never had. */
@@ -252,13 +252,25 @@ public class QueueBrowseService
     {
     }
 
-    private MessagePage page(String queueName, String filter, int page, int pageSize, int previewChars)
+    /**
+     * One page, and how the page relates to the rest — which is where both of Artemis's counts mislead.
+     *
+     * <p>
+     * Unfiltered, {@code countMessages} is the whole queue, in-flight and scheduled messages included, neither of which
+     * {@code browse} returns: 250 messages all in flight read "showing 0–0 of 250, page 1 of 5" over an empty table.
+     * Verified on 2.44.0 with 7 waiting, 3 in flight and 2 scheduled: count 12, browse 7. So the total here is the
+     * count less {@code deliveringCount} and {@code scheduledCount}. Filtered, the count is a sample of the first
+     * {@code management-browse-page-size} messages, so there is no total at all: whether a next page exists is found by
+     * browsing one row at the next page's offset, which scans for it the way the page itself was found.
+     *
+     * @param probeMore whether to look for a next page; an export reads one page and never pages on
+     */
+    private MessagePage page(String queueName, String filter, int page, int pageSize, int previewChars,
+            boolean probeMore)
     {
         ManagementChannel management = brokerSession.requireManagement();
         String resource = ResourceNames.QUEUE + queueName;
         String effectiveFilter = filter == null ? "" : filter.trim();
-
-        long total = asLong(management.invoke(resource, "countMessages", effectiveFilter));
 
         Object result = effectiveFilter.isEmpty() ? management.invoke(resource, "browse", page, pageSize)
                 : management.invoke(resource, "browse", page, pageSize, effectiveFilter);
@@ -269,7 +281,19 @@ public class QueueBrowseService
         {
             messages.add(toSummary(entry, firstPosition + messages.size(), previewChars));
         }
-        return new MessagePage(queueName, effectiveFilter, page, pageSize, total, messages);
+
+        if (effectiveFilter.isEmpty())
+        {
+            long waiting = asLong(management.invoke(resource, "countMessages", ""))
+                    - asLong(management.attribute(resource, "deliveringCount"))
+                    - asLong(management.attribute(resource, "scheduledCount"));
+            // Three reads a moment apart: never report fewer than the rows just returned.
+            long total = Math.max(waiting, messages.isEmpty() ? 0 : firstPosition - 1 + messages.size());
+            return new MessagePage(queueName, effectiveFilter, page, pageSize, total, messages);
+        }
+        boolean more = probeMore && messages.size() == pageSize && compositeData(
+                management.invoke(resource, "browse", page * pageSize + 1, 1, effectiveFilter)).length > 0;
+        return new MessagePage(queueName, effectiveFilter, page, pageSize, MessagePage.UNKNOWN, more, messages);
     }
 
     /**

@@ -13,11 +13,21 @@ package com.culberth.tools.artemisbrowser.broker;
  * @param address              the address this queue is bound to; differs from {@code name} for multicast
  *                             subscriptions, which is what forces FQQN addressing
  * @param routingType          ANYCAST or MULTICAST
+ * @param messagesExpired      expired here since the broker started, whether sent on to an expiry address or dropped
+ * @param messagesKilled       removed for exceeding max delivery attempts, whether dead-lettered or dropped
  */
 public record QueueStats(String name, String address, String routingType, long messageCount, long deliveringCount,
         long scheduledCount, int consumerCount, long messagesAdded, long messagesAcknowledged, boolean durable,
-        boolean paused)
+        boolean paused, long messagesExpired, long messagesKilled)
 {
+
+    public QueueStats(String name, String address, String routingType, long messageCount, long deliveringCount,
+            long scheduledCount, int consumerCount, long messagesAdded, long messagesAcknowledged, boolean durable,
+            boolean paused)
+    {
+        this(name, address, routingType, messageCount, deliveringCount, scheduledCount, consumerCount, messagesAdded,
+                messagesAcknowledged, durable, paused, 0, 0);
+    }
 
     /**
      * How this queue must be named when opening a browser on it. Artemis resolves a bare name against addresses first,

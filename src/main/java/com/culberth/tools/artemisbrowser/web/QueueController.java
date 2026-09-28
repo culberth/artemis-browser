@@ -8,6 +8,7 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
+import com.culberth.tools.artemisbrowser.broker.RateService;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -35,7 +36,9 @@ public class QueueController
             Comparator.comparingLong(QueueOverview::scheduledCount), "consumers",
             Comparator.comparingInt(QueueOverview::consumerCount), "added",
             Comparator.comparingLong(QueueOverview::messagesAdded), "acked",
-            Comparator.comparingLong(QueueOverview::messagesAcked));
+            Comparator.comparingLong(QueueOverview::messagesAcked), "expired",
+            Comparator.comparingLong(QueueOverview::messagesExpired), "killed",
+            Comparator.comparingLong(QueueOverview::messagesKilled));
     private static final List<Integer> PAGE_SIZE_CHOICES = List.of(10, 25, 50, 100, 250, 500);
     /** Auto-refresh intervals in seconds; 0 is off. */
     private static final List<Integer> REFRESH_CHOICES = List.of(0, 5, 15, 30, 60);
@@ -44,14 +47,16 @@ public class QueueController
     private final QueueDirectory queueDirectory;
     private final QueueBrowseService browseService;
     private final InFlightService inFlightService;
+    private final RateService rateService;
 
     public QueueController(BrokerSession brokerSession, QueueDirectory queueDirectory, QueueBrowseService browseService,
-            InFlightService inFlightService)
+            InFlightService inFlightService, RateService rateService)
     {
         this.brokerSession = brokerSession;
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
         this.inFlightService = inFlightService;
+        this.rateService = rateService;
     }
 
     /** All queues and their counters at a glance, optionally refreshing on a timer. */
@@ -83,6 +88,7 @@ public class QueueController
         try
         {
             List<QueueOverview> all = queueDirectory.overview();
+            model.addAttribute("rates", rateService.observe(all));
             List<QueueOverview> shown = all.stream().filter(queue -> matches(queue, search))
                     .sorted(order(sortKey, descending)).toList();
             model.addAttribute("queues", shown);
@@ -151,6 +157,7 @@ public class QueueController
             return "queues";
         }
         model.addAttribute("queueNames", queues.stream().map(QueueOverview::name).toList());
+        model.addAttribute("rates", rateService.observe(queues));
 
         if (name == null || name.isBlank())
         {

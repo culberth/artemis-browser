@@ -92,7 +92,8 @@ public class QueueDirectory
             {
                 return new QueueStats(queue.name(), queue.address(), queue.routingType(), queue.messageCount(),
                         queue.deliveringCount(), queue.scheduledCount(), queue.consumerCount(), queue.messagesAdded(),
-                        queue.messagesAcked(), queue.durable(), queue.paused());
+                        queue.messagesAcked(), queue.durable(), queue.paused(), queue.messagesExpired(),
+                        queue.messagesKilled());
             }
         }
         return null;
@@ -197,7 +198,8 @@ public class QueueDirectory
         return new QueueOverview(name, textOr(node, "address", name), textOr(node, "routingType", "ANYCAST"),
                 number(node, "messageCount"), number(node, "deliveringCount"), number(node, "scheduledCount"),
                 (int) number(node, "consumerCount"), number(node, "messagesAdded"), number(node, "messagesAcked"),
-                flag(node, "durable"), flag(node, "paused"), flag(node, "internalQueue"));
+                flag(node, "durable"), flag(node, "paused"), flag(node, "internalQueue"),
+                number(node, "messagesExpired"), number(node, "messagesKilled"));
     }
 
     private String text(JsonNode node, String field)
