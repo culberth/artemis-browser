@@ -1,6 +1,6 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 12 built on `phase12` 2026-09-27, not yet merged; Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
+Status: **Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See

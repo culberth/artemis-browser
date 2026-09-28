@@ -11,7 +11,7 @@ producers, address view, a diagnose page, a login for shared hosts, and a Helm c
 Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multicast addresses:
 a page per address with its subscriptions, lag, settings and diverts. Phase 11 (2026-09-27, PR #24)
 added in-flight messages: a panel on the queue page, lookup by message ID in both searches, and two
-diagnose findings. **Phase 12 is built** on `phase12`, not yet merged: the pager fix and
+diagnose findings. Phase 12 (PR #26) added the pager fix and
 measuring at scale, expired/killed counts, in/out rates, and a page per client. Planned in [docs/PRD.md](docs/PRD.md); see *Closed as
 won't do* there before proposing more. 313 unit tests,
 32 integration.
