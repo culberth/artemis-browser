@@ -41,6 +41,10 @@
                th:href="@{/queues(name=${f.queue()})}">Open this queue</a>
             <a class="badge-link" th:if="${f.address() != null}"
                th:href="@{/address(name=${f.address()})}">Open this address</a>
+            <a class="badge-link" th:if="${f.clientId() != null}"
+               th:href="@{/client(id=${f.clientId()})}">Open this client</a>
+            <a class="badge-link" th:if="${f.connectionId() != null}"
+               th:href="@{/client(connection=${f.connectionId()})}">Open this client</a>
         </div>
 
         <p class="note" th:if="${inFlightQueuesNotRead != null and inFlightQueuesNotRead > 0}"

@@ -235,6 +235,25 @@ from — a wrong parse here yields a believable number rather than an error.
   uptime shorter than the time since the previous reading means the broker restarted in between —
   that, not the counters, is the restart test.
 
+### Clients across the listings (2026-09-27, 2.44.0, before Phase 12 P3 parsed any of it)
+
+- **`listConnectionsAsJSON` has no client id and no protocol** — only `connectionID`,
+  `clientAddress`, `creationTime` (bare millis), `implementation`, `sessionCount`. Useless for "which
+  client"; the per-connection `listSessionsAsJSON(id)`/`listConsumersAsJSON(id)` route the PRD
+  planned was never needed.
+- **`broker.listConnections(filter, page, size)`** → `{"data":[...],"count":N}` with `connectionID`,
+  `remoteAddress`, `users`, `protocol`, **`clientID`** (`""` when unset), `localAddress`,
+  `sessionCount` (bare number), `creationTime` as a **`Date.toString()`** string.
+- **`broker.listSessions(filter, page, size)`** → `id` (the session id), `connectionID`, `clientID`,
+  `user`, `consumerCount`/`producerCount` (bare), `creationTime` a Date string. **The only listing that
+  ties a session to its connection.**
+- **`broker.listProducers(filter, page, size)`** → `id`, `name`, `session`, `clientID`, `protocol`,
+  `address`, `remoteAddress`, `msgSent`/`msgSizeSent` bare, `creationTime` **quoted epoch millis**
+  (unlike the other paged listings' Date strings), **no `connectionID`** — reach it through `session`.
+  `listConsumers` likewise carries `session`, not the connection.
+- A connection with no client id (2 of 3 here) can only be named by its connection id, remote
+  address and user.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

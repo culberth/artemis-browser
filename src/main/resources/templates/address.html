@@ -344,7 +344,7 @@
                 <tbody>
                 <tr th:each="c : ${detail.consumers()}">
                     <td class="nowrap" th:text="${c.queueName()}">queue</td>
-                    <td><code th:if="${!c.clientId().isEmpty()}" th:text="${c.clientId()}">client</code>
+                    <td><a th:if="${!c.clientId().isEmpty()}" th:href="@{/client(id=${c.clientId()})}"><code th:text="${c.clientId()}">client</code></a>
                         <span class="muted" th:if="${c.clientId().isEmpty()}">none set</span></td>
                     <td th:text="${c.user()}">user</td>
                     <td><code th:text="${c.remoteAddress()}">10.0.0.1:5000</code></td>

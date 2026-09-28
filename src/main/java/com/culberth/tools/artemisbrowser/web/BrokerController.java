@@ -6,6 +6,8 @@ import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
+import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
+import com.culberth.tools.artemisbrowser.broker.ClientView;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Controller;
@@ -24,14 +26,51 @@ public class BrokerController
     private final BrokerInfoService brokerInfo;
     private final AddressDirectory addressDirectory;
     private final AddressDetailService addressDetail;
+    private final ClientDirectory clientDirectory;
 
     public BrokerController(BrokerSession brokerSession, BrokerInfoService brokerInfo,
-            AddressDirectory addressDirectory, AddressDetailService addressDetail)
+            AddressDirectory addressDirectory, AddressDetailService addressDetail, ClientDirectory clientDirectory)
     {
         this.brokerSession = brokerSession;
         this.brokerInfo = brokerInfo;
         this.addressDirectory = addressDirectory;
         this.addressDetail = addressDetail;
+        this.clientDirectory = clientDirectory;
+    }
+
+    /**
+     * One client: by its client id, or — for the many that set none — by one of its connections. What it is connected
+     * with, what it consumes and holds in flight, and where it sends.
+     */
+    @GetMapping("/client")
+    public String client(@RequestParam(name = "id", required = false) String id,
+            @RequestParam(name = "connection", required = false) String connection, Model model)
+    {
+        if (!brokerSession.isConnected())
+        {
+            return "redirect:/";
+        }
+        if ((id == null || id.isBlank()) && (connection == null || connection.isBlank()))
+        {
+            return "redirect:/broker";
+        }
+        model.addAttribute("connection", brokerSession.info());
+        try
+        {
+            ClientView client = clientDirectory.find(id, connection);
+            if (client == null)
+            {
+                model.addAttribute("error", (id == null || id.isBlank() ? "No connection '" + connection + "'"
+                        : "No client with id '" + id + "'")
+                        + " is connected to this broker now. It may have disconnected since the link was drawn.");
+            }
+            model.addAttribute("client", client);
+        }
+        catch (BrokerException e)
+        {
+            model.addAttribute("error", e.getMessage());
+        }
+        return "client";
     }
 
     @GetMapping("/broker")

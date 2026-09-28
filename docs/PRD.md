@@ -1,6 +1,6 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 12 planned 2026-09-27; Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
+Status: **Phase 12 built on `phase12` 2026-09-27, not yet merged; Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
@@ -535,19 +535,30 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
 
 ### P3 — a page per client
 
-- [ ] **Establish what identifies a client across the listings**, on a broker, before building
+- [x] **Establish what identifies a client across the listings**, on a broker, before building
       anything: whether `listConnectionsAsJSON` carries the client id; what
       `listSessionsAsJSON(connectionID)` and `listConsumersAsJSON(connectionID)` return; and how a
       client with no client id — common for plain CORE and AMQP clients — can be named at all
       (user and remote address are the likely fallback). Each operation is added to
       `ManagementChannel`'s allowlist only once its shape is recorded.
-- [ ] **`/client`**: a client's connections (remote address, protocol, since when), sessions, the
+      Done 2026-09-27, and the route planned here was the wrong one: **`listConnectionsAsJSON` has
+      no client id and no protocol**, so the per-connection `…AsJSON` operations were never needed.
+      The paged listings do it: `listConnections` carries `clientID` and `protocol`, `listSessions`
+      ties each session to its connection, and `listConsumers` and `listProducers` carry the session
+      but not the connection. So the chain is client id → connections → sessions → consumers and
+      producers. A client with no client id (`""`) is found by its connection, and named by its remote
+      address. Allowlisted: `listConnections`, `listSessions`, `listProducers`.
+- [x] **`/client`**: a client's connections (remote address, protocol, since when), sessions, the
       queues it consumes from with each consumer's delivered, acknowledged and in-flight counts, and
       the addresses it produces to. Linked from every place a client is named today: the in-flight
       panel, the address page's consumer table, `/broker`, and the hoarding and long-in-flight
-      findings.
-- [ ] **What it holds in flight**, from the consumer listing's counts, linking to each queue's
-      in-flight panel rather than reading every delivering list again.
+      findings. Done 2026-09-27, plus the ID-search hit. `/client?id=` for a client id,
+      `/client?connection=` for one without; the page says why an unnamed one is named by address,
+      and that it will not follow the client across a reconnect.
+- [x] **What it holds in flight**, from the consumer listing's counts, linking to each queue's
+      in-flight panel rather than reading every delivering list again. Done 2026-09-27. Verified
+      against a real broker in `ClientIT`, and `ReadOnlyGuaranteeIT` now opens every connection's
+      client page.
 
 ### Considered and left out
 

@@ -302,6 +302,12 @@
                         <span class="muted" style="font-weight:normal">(not matched to a client)</span>
                     </th:block>
                     <span class="muted" style="font-weight:normal" th:text="'— holding ' + ${c.holding()}">&mdash; holding 0</span>
+                    <a class="badge-link" style="font-weight:normal"
+                       th:if="${c.client() != null and !#strings.isEmpty(c.client().clientId())}"
+                       th:href="@{/client(id=${c.client().clientId()})}">Open this client</a>
+                    <a class="badge-link" style="font-weight:normal"
+                       th:if="${c.identified() and (c.client() == null or #strings.isEmpty(c.client().clientId()))}"
+                       th:href="@{/client(connection=${c.connectionId()})}">Open this client</a>
                 </h3>
                 <p class="note" th:if="${!c.identified()}">
                     The broker described this consumer in a form this tool does not recognise, so it is shown

@@ -72,7 +72,7 @@
                 </thead>
                 <tbody>
                 <tr th:each="c : ${connections}">
-                    <td><code th:text="${c.connectionId()}">id</code></td>
+                    <td><a th:href="@{/client(connection=${c.connectionId()})}"><code th:text="${c.connectionId()}">id</code></a></td>
                     <td th:text="${c.clientAddress()}">host:port</td>
                     <td th:text="${c.createdText()}">—</td>
                     <td class="num" th:text="${c.sessionCount()}">1</td>
@@ -97,7 +97,7 @@
                 <tbody>
                 <tr th:each="c : ${consumers}">
                     <td th:text="${c.queueName()}">queue</td>
-                    <td><code th:text="${c.connectionId()}">id</code></td>
+                    <td><a th:href="@{/client(connection=${c.connectionId()})}"><code th:text="${c.connectionId()}">id</code></a></td>
                     <td class="num" th:text="${c.deliveringCount()}">0</td>
                     <td class="num muted" th:text="${c.messagesDelivered()}">0</td>
                     <td class="num muted" th:text="${c.messagesAcknowledged()}">0</td>
@@ -131,7 +131,7 @@
                 <tbody>
                 <tr th:each="p : ${producers}">
                     <td><a th:if="${p.address() != null}" th:href="@{/address(name=${p.address()})}" th:text="${p.address()}">orders</a></td>
-                    <td><code th:text="${p.connectionId()}">id</code></td>
+                    <td><a th:href="@{/client(connection=${p.connectionId()})}"><code th:text="${p.connectionId()}">id</code></a></td>
                     <td th:text="${p.createdText()}">—</td>
                     <td class="num" th:text="${p.messagesSent()}">0</td>
                     <td class="num muted" th:text="${p.bytesSent()}">0</td>

@@ -21,6 +21,8 @@ import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
 import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
+import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
+import com.culberth.tools.artemisbrowser.broker.ClientView;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
 import com.culberth.tools.artemisbrowser.broker.Diagnosis;
@@ -131,6 +133,9 @@ class PageRenderingTest
     private RateService rateService;
 
     @MockitoBean
+    private ClientDirectory clientDirectory;
+
+    @MockitoBean
     private MessageSearchService searchService;
 
     @MockitoBean
@@ -172,6 +177,46 @@ class PageRenderingTest
         given(brokerInfo.health()).willThrow(new BrokerException("nope"));
 
         Assertions.assertDoesNotThrow(() -> page("/broker"));
+    }
+
+    @Test
+    @DisplayName("a client page renders its connections, what it consumes with in-flight links, and where it sends")
+    void rendersTheClientPage() throws Exception
+    {
+        given(clientDirectory.find("billing-svc", null)).willReturn(new ClientView("billing-svc", null,
+                List.of(new ClientView.Connection("a018fd3b", "172.17.0.1:52716", "artemis", "AMQP",
+                        "Mon Sep 28 01:59:40 GMT 2026", 2)),
+                List.of(new ClientView.Session("446d24d0", "a018fd3b", 1, 1, "Mon Sep 28 01:59:40 GMT 2026")),
+                List.of(new ClientView.Consumer("11", "446d24d0", "client-q", "client-q", "", 9, 5, 4)),
+                List.of(new ClientView.Producer("6", "446d24d0", "client-out", 12, 2048, "2026-09-28 01:59:40"),
+                        new ClientView.Producer("7", "446d24d0", "", 3, 300, ""))));
+
+        page("/client?id=billing-svc").andExpect(content().string(containsString("billing-svc")))
+                .andExpect(content().string(containsString("172.17.0.1:52716")))
+                .andExpect(content().string(containsString("href=\"/queues?name=client-q#in-flight\"")))
+                .andExpect(content().string(containsString("href=\"/address?name=client-out\"")))
+                .andExpect(content().string(containsString("any address")));
+    }
+
+    @Test
+    @DisplayName("a client with no client id is named by its connection, and the page says why")
+    void rendersAnAnonymousClientPage() throws Exception
+    {
+        given(clientDirectory.find(null, "ea82643f")).willReturn(new ClientView("", "ea82643f",
+                List.of(new ClientView.Connection("ea82643f", "172.17.0.1:52720", "artemis", "CORE", "", 1)), List.of(),
+                List.of(), List.of()));
+
+        page("/client?connection=ea82643f").andExpect(content().string(containsString("no client id")))
+                .andExpect(content().string(containsString("172.17.0.1:52720")))
+                .andExpect(content().string(containsString("not reading from any queue")));
+    }
+
+    @Test
+    @DisplayName("a client that has gone renders as not connected, not as an error page")
+    void rendersAMissingClient() throws Exception
+    {
+        page("/client?id=gone-svc").andExpect(content().string(containsString("No client with id &#39;gone-svc&#39;")))
+                .andExpect(content().string(containsString("is connected to this broker now")));
     }
 
     @Test
@@ -648,12 +693,16 @@ class PageRenderingTest
     @DisplayName("a finding about a subscription links to both its queue and its address")
     void rendersADiagnoseFindingWithQueueAndAddress() throws Exception
     {
-        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(new Finding(Finding.STUCK,
-                "Durable subscription 'app.audit' has no subscriber attached", "kept for it", "app.audit", "events")),
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(
+                new Finding(Finding.STUCK, "Durable subscription 'app.audit' has no subscriber attached", "kept for it",
+                        "app.audit", "events"),
+                Finding.watch("One consumer holds everything in flight on 'work'", "hoarding", "work")
+                        .aboutClient("billing-worker-a", "conn-a")),
                 0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
-                .andExpect(content().string(containsString("href=\"/address?name=events\"")));
+                .andExpect(content().string(containsString("href=\"/address?name=events\"")))
+                .andExpect(content().string(containsString("href=\"/client?id=billing-worker-a\"")));
     }
 
     @Test

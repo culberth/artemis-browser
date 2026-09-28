@@ -66,7 +66,8 @@ public class ManagementChannel implements AutoCloseable
     static final Set<String> READ_OPERATIONS = Set.of(
             // broker.*
             "listQueues", "listAddresses", "getAcceptorsAsJSON", "listConnectionsAsJSON", "listAllConsumersAsJSON",
-            "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON", "getDivertNames",
+            "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON", "getDivertNames", "listConnections",
+            "listSessions", "listProducers",
             // queue.*
             "browse", "countMessages", "listScheduledMessagesAsJSON", "listDeliveringMessagesAsJSON");
 

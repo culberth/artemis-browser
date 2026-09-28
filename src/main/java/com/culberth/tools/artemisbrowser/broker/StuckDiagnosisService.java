@@ -146,7 +146,7 @@ public class StuckDiagnosisService
                             + " client-side buffer, so one consumer can take a backlog the others could be working"
                             + " on — usually a consumer window or prefetch set too large for how slowly each message"
                             + " is processed.",
-                    queue.name()));
+                    queue.name()).aboutClient(clientOf(clients.get(hoarder.sequentialId())), hoarder.connectionId()));
         });
     }
 
@@ -181,18 +181,20 @@ public class StuckDiagnosisService
                 continue;
             }
             long waiting = queue.messageCount() - queue.deliveringCount();
-            findings.add(Finding.watch(
-                    "A message on '" + queue.name() + "' sent "
-                            + AddressDetail.ageText(now - oldest.message().timestamp()) + " ago is still in flight",
-                    oldest.message().messageId() + " is held, unacknowledged, by " + oldest.holder().describe()
-                            + ". A consumer stuck partway through a message looks like this. The age is from when the"
-                            + " message was sent — the broker does not report when it was delivered"
-                            + (waiting > 0
-                                    ? ", and this queue has " + waiting + " message(s) waiting, so it may have"
+            findings.add(Finding
+                    .watch("A message on '"
+                            + queue.name() + "' sent " + AddressDetail.ageText(now - oldest.message().timestamp())
+                            + " ago is still in flight",
+                            oldest.message().messageId() + " is held, unacknowledged, by " + oldest.holder().describe()
+                                    + ". A consumer stuck partway through a message looks like this. The age is from when the"
+                                    + " message was sent — the broker does not report when it was delivered"
+                                    + (waiting > 0 ? ", and this queue has " + waiting
+                                            + " message(s) waiting, so it may have"
                                             + " spent most of that time in the backlog before a consumer took it."
-                                    : ", so it is how old the message is, not how long this consumer has held it.")
-                            + moving(queue, rates),
-                    queue.name()));
+                                            : ", so it is how old the message is, not how long this consumer has held it.")
+                                    + moving(queue, rates),
+                            queue.name())
+                    .aboutClient(clientOf(oldest.holder().client()), oldest.holder().connectionId()));
         }
         return new Unread(queuesNotRead, notRead);
     }
@@ -228,6 +230,11 @@ public class StuckDiagnosisService
                 ? " The queue acknowledged " + rate.ackedText() + " message(s)/s over the last " + rates.intervalText()
                         + ", so its consumers are working while this one is held."
                 : " Nothing on this queue was acknowledged in the last " + rates.intervalText() + ".";
+    }
+
+    private static String clientOf(SubscriberConsumer client)
+    {
+        return client == null ? null : client.clientId();
     }
 
     private String who(SubscriberConsumer client, BrokerConsumer consumer)

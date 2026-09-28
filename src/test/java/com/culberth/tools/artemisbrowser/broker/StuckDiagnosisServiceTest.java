@@ -282,6 +282,7 @@ class StuckDiagnosisServiceTest
         assertTrue(finding.detail().contains("Client 'billing-worker-a' from 172.17.0.1:35238 holds 250"),
                 finding.detail());
         assertTrue(finding.detail().contains("the other 1 consumer(s)"), finding.detail());
+        assertEquals("billing-worker-a", finding.clientId(), "the finding links to the client it names");
     }
 
     @Test
