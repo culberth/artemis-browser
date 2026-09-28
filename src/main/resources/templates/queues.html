@@ -87,8 +87,15 @@
         <div class="topbar" style="margin-bottom:.75rem">
             <h2 style="margin:0">
                 Messages
-                <span class="muted" th:if="${messages.totalMatching() > 0}"
-                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()}">range</span>
+                <span class="muted" th:if="${messages.totalKnown() and messages.totalMatching() > 0}"
+                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + ' of ' + ${messages.totalMatching()} + ' waiting'">range</span>
+                <!--
+                  Filtered, there is no total: the broker's filtered count examines only its first 200
+                  messages, so it would stop the pager short of matches that are there.
+                -->
+                <span class="muted" th:if="${!messages.totalKnown() and !messages.messages().isEmpty()}"
+                      th:text="'— showing ' + ${messages.firstIndex()} + '–' + ${messages.lastIndex()} + (${messages.more()} ? ', and more after these' : '')"
+                      title="No total for a filter: the broker counts filtered messages only among its first 200, so pages carry on until the matches do">range</span>
                 <span class="muted" th:if="${!#strings.isEmpty(messages.filter())}">(filtered)</span>
             </h2>
             <div class="field-row">
@@ -100,10 +107,11 @@
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=1)}">&laquo; First</a>
                 <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.previousPage()})}">&lsaquo; Prev</a>
-                <span class="muted" th:text="'Page ' + ${messages.page()} + ' of ' + ${messages.totalPages()}">Page 1 of 1</span>
+                <span class="muted" th:text="${messages.totalKnown()} ? 'Page ' + ${messages.page()} + ' of ' + ${messages.totalPages()} : 'Page ' + ${messages.page()}">Page 1 of 1</span>
                 <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.nextPage()})}">Next &rsaquo;</a>
-                <a class="tab" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
+                <!-- No last page to jump to when there is no total. -->
+                <a class="tab" th:if="${messages.totalKnown()}" th:classappend="${!messages.hasNext()} ? 'disabled' : ''"
                    th:href="@{/queues(name=${selected},filter=${filter},size=${size},refresh=${refresh},page=${messages.totalPages()})}">Last &raquo;</a>
             </div>
         </div>

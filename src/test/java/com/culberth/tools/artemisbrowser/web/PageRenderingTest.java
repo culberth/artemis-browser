@@ -368,6 +368,21 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a filtered page renders with no total: no 'of N', no Last, and Next only when a next page exists")
+    void rendersAFilteredPageWithoutATotal() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 1000, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(new MessagePage(QUEUE,
+                "region = 'eu'", 2, 2, MessagePage.UNKNOWN, true, List.of(summary(3, "ID:ccc"), summary(4, "ID:ddd"))));
+
+        page("/queues?name=" + QUEUE + "&filter=region = 'eu'&page=2&size=2")
+                .andExpect(content().string(containsString("showing 3–4, and more after these")))
+                .andExpect(content().string(containsString(">Page 2<")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Last &raquo;"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Last »"))));
+    }
+
+    @Test
     @DisplayName("the queue page renders the scheduled-messages panel")
     void rendersTheQueuePageWithScheduledMessages() throws Exception
     {

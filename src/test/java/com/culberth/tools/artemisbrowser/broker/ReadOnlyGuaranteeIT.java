@@ -110,6 +110,11 @@ class ReadOnlyGuaranteeIT
                 assertEquals(queue, byId.inFlight().get(0).queueName());
                 assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
 
+                // All five in flight: nothing for browse to page through, whatever countMessages says.
+                MessagePage page = browse.page(queue, null, 1, 50);
+                assertEquals(0, page.totalMatching(), "the pager counted messages browse cannot return");
+                assertFalse(page.hasNext());
+
                 // The oldest in flight is the first one sent, which is also the first received.
                 assertEquals(first.getJMSMessageID(), inFlight.oldest(queue, 5).message().messageId());
 

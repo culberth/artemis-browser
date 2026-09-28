@@ -86,6 +86,23 @@ class MessagePageTest
         return new MessagePage("q", "", page, size, total, rows(size));
     }
 
+    @Test
+    @DisplayName("with no total, the pager knows only whether there is a next page")
+    void pagesWithoutATotal()
+    {
+        MessagePage middle = new MessagePage("q", "region = 'eu'", 3, 50, MessagePage.UNKNOWN, true, rows(50));
+        MessagePage last = new MessagePage("q", "region = 'eu'", 4, 50, MessagePage.UNKNOWN, false, rows(7));
+
+        assertFalse(middle.totalKnown());
+        assertTrue(middle.hasNext());
+        assertEquals(4, middle.nextPage());
+        assertEquals(4, middle.totalPages(), "the pages seen, plus the one known to follow");
+        assertEquals(101, middle.firstIndex());
+        assertFalse(last.hasNext());
+        assertEquals(4, last.nextPage());
+        assertEquals(157, last.lastIndex());
+    }
+
     private List<MessageSummary> rows(int count)
     {
         return Collections.nCopies(count, new MessageSummary(1, "ID:1", "1", "Text", null, "", 4, true, false, 0,

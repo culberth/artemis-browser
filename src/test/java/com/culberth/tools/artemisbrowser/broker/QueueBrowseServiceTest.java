@@ -79,6 +79,87 @@ class QueueBrowseServiceTest
     }
 
     @Test
+    @DisplayName("an unfiltered total leaves out what browse cannot return: in-flight and scheduled messages")
+    void totalIsWhatBrowseCanReach()
+    {
+        // Measured on 2.44.0: 7 waiting, 3 in flight, 2 scheduled — countMessages 12, browse 7.
+        browseReturns();
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(12L);
+        given(management.attribute(QUEUE, "deliveringCount")).willReturn(3L);
+        given(management.attribute(QUEUE, "scheduledCount")).willReturn(2L);
+
+        assertEquals(7L, service().page("orders", null, 1, 50).totalMatching());
+    }
+
+    @Test
+    @DisplayName("everything in flight is an empty queue to page through, not five pages of nothing")
+    void everythingInFlightIsNoPages()
+    {
+        browseReturns();
+        given(management.invoke(QUEUE, "countMessages", "")).willReturn(250L);
+        given(management.attribute(QUEUE, "deliveringCount")).willReturn(250L);
+
+        MessagePage page = service().page("orders", null, 1, 50);
+
+        assertEquals(0L, page.totalMatching());
+        assertEquals(1, page.totalPages());
+        assertFalse(page.hasNext());
+    }
+
+    @Test
+    @DisplayName("a filtered page has no total, and finds its next page by browsing for it")
+    void filteredPageProbesForTheNextOne()
+    {
+        String filter = "region = 'eu'";
+        Map<String, Object>[] full = fifty();
+        given(management.invoke(QUEUE, "browse", 2, 50, filter)).willReturn(browseReply(full));
+        given(management.invoke(QUEUE, "browse", 101, 1, filter)).willReturn(browseReply(message("ID:101", "x")));
+
+        MessagePage page = service().page("orders", filter, 2, 50);
+
+        assertFalse(page.totalKnown());
+        assertTrue(page.hasNext());
+        assertEquals(3, page.nextPage());
+        // Never the filtered count: it samples the first 200 messages and would stop the pager short.
+        verify(management, never()).invoke(QUEUE, "countMessages", filter);
+    }
+
+    @Test
+    @DisplayName("a filtered page that is not full is the last, and costs no second browse")
+    void partFilteredPageIsTheLast()
+    {
+        String filter = "region = 'eu'";
+        given(management.invoke(QUEUE, "browse", 1, 50, filter)).willReturn(browseReply(message("ID:1", "a")));
+
+        MessagePage page = service().page("orders", filter, 1, 50);
+
+        assertFalse(page.hasNext());
+        verify(management, never()).invoke(QUEUE, "browse", 51, 1, filter);
+    }
+
+    @Test
+    @DisplayName("a full filtered page with nothing after it is the last")
+    void fullFilteredPageWithNothingAfter()
+    {
+        String filter = "region = 'eu'";
+        given(management.invoke(QUEUE, "browse", 1, 50, filter)).willReturn(browseReply(fifty()));
+        given(management.invoke(QUEUE, "browse", 51, 1, filter)).willReturn(browseReply());
+
+        assertFalse(service().page("orders", filter, 1, 50).hasNext());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object>[] fifty()
+    {
+        Map<String, Object>[] rows = new Map[50];
+        for (int i = 0; i < rows.length; i++)
+        {
+            rows[i] = message("ID:" + i, "m" + i);
+        }
+        return rows;
+    }
+
+    @Test
     @DisplayName("counters arrive as numbers or as strings and parse either way")
     void parsesMixedAttributeTypes()
     {
