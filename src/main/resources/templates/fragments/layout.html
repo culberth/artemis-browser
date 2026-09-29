@@ -69,6 +69,27 @@
     <span class="muted" th:if="${!reading.detail().isBlank()}" th:text="${reading.detail()}">AMQ229032 …</span>
 </p>
 
+<!--
+  An address's storage state from the listing alone. "paging" only when pages were written: the
+  broker's own paging flag also means "over its limit", which under FAIL or DROP is a full address
+  refusing or discarding sends, not paging at all. A limit percentage only when positive — the broker
+  reports 0 for an address with no limit of its own.
+-->
+<th:block th:fragment="storageBadges(a)">
+    <span class="badge" th:if="${a.pagedToDisk()}" th:text="'paging, ' + ${a.pages().value()} + ' pages'"
+          title="Over its limit and writing pages to disk. Under the PAGE policy that is how Artemis copes, and nothing is lost.">paging</span>
+    <span class="badge" th:if="${a.paging() and !a.pages().available()}"
+          title="The broker reports this address over its limit. Whether it is paging, refusing or dropping depends on its policy, on the address page.">over limit</span>
+    <span class="badge warn" th:if="${!a.pagedToDisk() and a.fullWithoutPaging()}"
+          title="Over its limit without writing pages: under FAIL sends are rejected, under DROP they are discarded.">full</span>
+    <span class="badge warn" th:if="${!a.pagedToDisk() and !a.fullWithoutPaging() and a.atByteLimit()}"
+          th:text="${a.measuredLimitPercent()} + '% of limit'"
+          title="At or past its byte limit. Under BLOCK producers wait; the address page shows its policy.">100% of limit</span>
+    <span class="badge" th:if="${!a.pagedToDisk() and a.nearByteLimit()}"
+          th:text="${a.measuredLimitPercent()} + '% of limit'"
+          title="Near its byte limit. What happens there depends on its policy, on the address page.">85% of limit</span>
+</th:block>
+
 <!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->
 <span th:fragment="collected(reading)" class="muted collected"
       th:text="'read ' + ${reading.collectedText()}">read 12:00:00</span>

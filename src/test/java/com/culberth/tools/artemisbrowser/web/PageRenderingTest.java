@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.culberth.tools.artemisbrowser.broker.AddressDetail;
 import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
+import com.culberth.tools.artemisbrowser.broker.AddressPressure;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.AddressOverview;
 import com.culberth.tools.artemisbrowser.broker.AddressRouting;
@@ -285,6 +286,80 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("live-client")))
                 .andExpect(content().string(containsString("conn-1")))
                 .andExpect(content().string(containsString("Removed after too many failed delivery attempts")));
+    }
+
+    @Test
+    @DisplayName("an address at its limit under BLOCK shows usage beside policy and says what producers go through")
+    void rendersAnAddressAtItsLimit() throws Exception
+    {
+        AddressOverview full = new AddressOverview("probe-block", "ANYCAST", 27, 83781, 27, 0, false, false, false,
+                List.of()).withStorage(418, 0);
+        AddressSettings settings = AddressSettings.of(Map.of("addressFullMessagePolicy", "BLOCK", "maxSizeBytes",
+                "20000", "maxSizeMessages", "-1", "pageLimitBytes", "-1", "pageLimitMessages", "-1"));
+        given(addressDetail.detail("probe-block"))
+                .willReturn(new AddressDetail(full, List.of(), List.of(), List.of(), Map.of(), AddressRouting.NONE,
+                        Map.of(), new AddressPressure(full, Reading.of(settings), Reading.of(false),
+                                BrokerHealth.of("2.55.0", "1m", "STARTED", "n", 1, 1, 1, 83781, 0, 10, 90))));
+
+        page("/address?name=probe-block").andExpect(content().string(containsString("Storage and limits")))
+                .andExpect(content().string(containsString("At its limit (418%)")))
+                .andExpect(content().string(containsString("producers are made to wait")))
+                .andExpect(content().string(containsString("19.5 KB")))
+                .andExpect(content().string(containsString("81.8 KB")))
+                .andExpect(content().string(containsString("418% of limit")))
+                .andExpect(content().string(containsString("of 1.0 GB")));
+    }
+
+    @Test
+    @DisplayName("an address paging under PAGE says it is normal, and a blocked one says an operator did it")
+    void rendersPagingAndBlockedAddresses() throws Exception
+    {
+        AddressOverview paging = new AddressOverview("probe-page", "ANYCAST", 40, 21679, 40, 0, true, false, false,
+                List.of()).withStorage(108, 9);
+        AddressSettings settings = AddressSettings
+                .of(Map.of("addressFullMessagePolicy", "PAGE", "maxSizeBytes", "20000"));
+        given(addressDetail.detail("probe-page"))
+                .willReturn(new AddressDetail(paging, List.of(), List.of(), List.of(), Map.of(), AddressRouting.NONE,
+                        Map.of(), new AddressPressure(paging, Reading.of(settings), Reading.of(false), null)));
+        given(addressDetail.detail("held"))
+                .willReturn(new AddressDetail(paging, List.of(), List.of(), List.of(), Map.of(), AddressRouting.NONE,
+                        Map.of(), new AddressPressure(paging, Reading.of(settings), Reading.of(true), null)));
+
+        page("/address?name=probe-page").andExpect(content().string(containsString("That is the policy working")))
+                .andExpect(content().string(containsString("paging, 9 pages")));
+        page("/address?name=held").andExpect(content().string(containsString("Blocked through management")));
+    }
+
+    @Test
+    @DisplayName("limits that could not be read say so, and the usage the listing gave still shows")
+    void rendersAnAddressWithoutItsLimits() throws Exception
+    {
+        AddressOverview address = new AddressOverview("events", "MULTICAST", 3, 2048, 3, 0, false, false, false,
+                List.of());
+        given(addressDetail.detail("events")).willReturn(
+                new AddressDetail(address, List.of(), List.of(), List.of(), Map.of(), AddressRouting.NONE, Map.of(),
+                        new AddressPressure(address, Reading.missing(Availability.DENIED, "AMQ229032 settings"),
+                                Reading.missing(Availability.UNAVAILABLE, "Problem while retrieving attribute"),
+                                null)));
+
+        page("/address?name=events").andExpect(content().string(containsString("Not shown: not permitted")))
+                .andExpect(content().string(containsString("2.0 KB")))
+                .andExpect(content().string(containsString("not available from this broker")));
+    }
+
+    @Test
+    @DisplayName("the address index marks a full address, and does not mark one merely paging as a problem")
+    void rendersStorageBadgesOnTheIndex() throws Exception
+    {
+        given(addressDirectory.overview()).willReturn(List.of(
+                new AddressOverview("probe-fail", "ANYCAST", 7, 21679, 8, 0, true, false, false, List.of())
+                        .withStorage(108, 0),
+                new AddressOverview("probe-page", "ANYCAST", 40, 21679, 40, 0, true, false, false, List.of())
+                        .withStorage(108, 9)));
+
+        page("/addresses").andExpect(content().string(containsString("badge warn\"")))
+                .andExpect(content().string(containsString(">full</span>")))
+                .andExpect(content().string(containsString("paging, 9 pages")));
     }
 
     @Test
@@ -762,6 +837,18 @@ class PageRenderingTest
         page("/diagnose").andExpect(content().string(containsString("href=\"/queues?name=app.audit\"")))
                 .andExpect(content().string(containsString("href=\"/address?name=events\"")))
                 .andExpect(content().string(containsString("href=\"/client?id=billing-worker-a\"")));
+    }
+
+    @Test
+    @DisplayName("an inferred finding is marked as inferred")
+    void rendersAnInferredFinding() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(Finding
+                .atAddress(Finding.STUCK, "'probe-fail' is full, so sends to it are rejected", "at 108%", "probe-fail")
+                .inferred()), 0, 0));
+
+        page("/diagnose").andExpect(content().string(containsString(">inferred</span>")))
+                .andExpect(content().string(containsString("href=\"/address?name=probe-fail\"")));
     }
 
     @Test

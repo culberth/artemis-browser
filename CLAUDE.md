@@ -13,9 +13,10 @@ a page per address with its subscriptions, lag, settings and diverts. Phase 11 (
 added in-flight messages: a panel on the queue page, lookup by message ID in both searches, and two
 diagnose findings. Phase 12 (PR #26) added the pager fix and
 measuring at scale, expired/killed counts, in/out rates, and a page per client. Phase 13 (broker
-visibility, six areas) is in progress on `phase13-broker-visibility`: P0 — explicit availability,
-isolated panels, a pinned version matrix — is done. Planned in [docs/PRD.md](docs/PRD.md); see
-*Closed as won't do* there before proposing more. 331 unit tests, 38 integration, run once per
+visibility, six areas) is in progress: P0 — explicit availability, isolated panels, a pinned version
+matrix — merged (PR #29); P1 — address pressure: usage beside policy, observed vs inferred findings —
+done on `phase13-p1-address-pressure`. Planned in [docs/PRD.md](docs/PRD.md); see
+*Closed as won't do* there before proposing more. 359 unit tests, 41 integration, run once per
 supported broker version.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

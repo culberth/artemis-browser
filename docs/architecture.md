@@ -113,6 +113,39 @@ address's own queues, with no error anywhere. Both are on `/address`, and the ex
 address that has subscribers is a diagnose finding, because "my subscriber is missing messages" is
 exactly the report it produces.
 
+### Address pressure: usage beside policy
+
+Why a producer to one address stalls, fails or loses messages is a question of three numbers that
+must not stand in for one another. **Address memory** (`addressSize`) is the broker's in-memory
+estimate of what the address holds, and it is what `max-size-bytes` and `global-max-size` are
+measured against. **Persistent size** is journal bytes per queue. **Disk use** is the whole store's
+filesystem, on `/broker`. The address page's *Storage and limits* panel shows the first against its
+limits, names the other two, and puts the full policy beside it, because a percentage says nothing
+until the policy turns it into a consequence.
+
+The listing's fields do not mean what their names suggest. Measured on 2.55.0 and 2.57.0 against
+20KB limits (shapes in `.claude/memory.md`):
+
+- **`paging` means "over its limit".** Under FAIL or DROP a full address reports paging with no
+  pages at all. So the index shows "paging" only when `numberOfPages` > 0, and "full" for the other case.
+- **`addressLimitPercent` counts bytes only, and reads 0 with no byte limit.** A 0 is therefore not
+  a measurement. An address full by `max-size-messages` reads 0 while it refuses sends, so the
+  message ratio is computed separately.
+- **Under BLOCK the flag stays false while the percentage passes 100.** 418% was measured, because
+  producer credit is granted ahead. The percentage, not the flag, shows it.
+
+Paging under PAGE is the policy working and never a finding. Diagnose flags an address only when
+its listing entry already shows it near or over a limit, or writing pages near a page limit, and
+reads settings only for those. That keeps the page one settings read per troubled address, not one per
+address. The one fact the listing lacks is an operator's `block()`, `blockedViaManagement`. It is
+read per address up to a cap of 500, and the scan stops at the first refusal, since a denial for one
+is a denial for all.
+
+Findings carry a **basis**. A management block is *observed*: the broker reports it. "Producers are
+made to wait" is *inferred* from a percentage and a policy, and is marked so. The broker-wide memory
+finding names the largest holders of address memory, and says that is where the memory is, not
+necessarily why it filled: every address shares that limit.
+
 ## Two filter dialects, and mixing them fails silently
 
 Management operations (`countMessages`, `browse`) take Artemis **core** filter syntax:

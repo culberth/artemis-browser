@@ -636,16 +636,30 @@ unaffected information usable, and the supported versions and feature difference
 
 ### P1 — Address pressure and storage detail
 
-- [ ] **Expand the existing address view.** Alongside its size and paging badge, show page count,
+- [x] **Expand the existing address view.** Alongside its size and paging badge, show page count,
       address limit utilization, management-blocked state, and relevant size, message and paging
       limits where supported. Explain units and distinguish estimated address memory, persistent
       message size and physical disk utilization; do not present one as another.
-- [ ] **Put usage beside policy.** Present current usage, the applicable configured threshold, and
+      Done 2026-09-29: a *Storage and limits* panel, and index badges from the listing alone. Probed on
+      2.55.0 and 2.57.0 first: `listAddresses` already carries `addressLimitPercent`, `numberOfPages`
+      and `paging`, but not the management block, which is the `address.<name>` attribute
+      `blockedViaManagement`. Three fields mean less than their names: `paging` is "over its limit"
+      (FAIL/DROP report it with no pages), `addressLimitPercent` is bytes only and 0 with no byte
+      limit, and BLOCK overshoots to 418% with `paging` false.
+- [x] **Put usage beside policy.** Present current usage, the applicable configured threshold, and
       the consequence of reaching it: PAGE, BLOCK, FAIL or DROP. Preserve absent/default/unlimited
       distinctions already used by address settings. Paging by itself is normal behavior, not a fault.
-- [ ] **Explain pressure in Diagnose.** Link findings to the affected address and observed evidence.
+      Done 2026-09-29: each limit in three states (not set, unlimited, a value) beside the policy's
+      consequence as measured: PAGE kept all, BLOCK stalled the sender, FAIL answered AMQ229102, DROP
+      accepted and kept nothing. The message-limit ratio is computed, since the broker's counts bytes.
+- [x] **Explain pressure in Diagnose.** Link findings to the affected address and observed evidence.
       Separate an observed management block from inferred pressure; identify which address is near
       a limit without claiming it is the sole cause of global disk or memory pressure.
+      Done 2026-09-29: findings carry a basis. A management block is observed; the rest are inferred.
+      Settings are read only for addresses the listing shows near or over a limit, and the block is
+      read per address up to 500, stopping at the first refusal. The global memory finding names the
+      three largest holders, "not necessarily why it filled". Exercised on both versions by
+      `AddressPressureIT`, and denied reads by `PartialAvailabilityIT`.
 
 Done means a user can identify the affected address, see the policy and limits behind its behavior,
 and distinguish normal paging from an observed block or a risk of rejecting/dropping messages.

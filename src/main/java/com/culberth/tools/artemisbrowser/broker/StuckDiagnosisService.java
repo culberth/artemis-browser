@@ -55,6 +55,16 @@ public class StuckDiagnosisService
     /** The page's in-flight reading budget, as a multiple of the per-queue limit. */
     static final int IN_FLIGHT_BUDGET_FACTOR = 4;
 
+    /**
+     * Most addresses whose {@code blockedViaManagement} flag one page reads — one round trip each, since the listing
+     * does not carry it. Past this the rest are named as not checked, so the page stays bounded on a broker with
+     * thousands of addresses.
+     */
+    static final int BLOCK_CHECK_LIMIT = 500;
+
+    /** How many of the largest addresses to name when global address memory is under pressure. */
+    static final int MEMORY_HOLDERS = 3;
+
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
             BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
             InFlightService inFlightService, RateService rateService)
@@ -85,7 +95,11 @@ public class StuckDiagnosisService
     {
         List<Finding> findings = new ArrayList<>();
         List<String> unchecked = new ArrayList<>();
-        brokerLevel(findings, unchecked);
+        BrokerHealth health = brokerInfo.health();
+        brokerLevel(findings, unchecked, health);
+        // The memory finding names the largest addresses, which are read below; its place is kept here,
+        // with the broker's other findings.
+        int memoryFindingAt = findings.size();
 
         List<QueueOverview> all = queueDirectory.overview();
         // Every queue, so the session's next reading on any page compares like with like.
@@ -109,15 +123,21 @@ public class StuckDiagnosisService
         }
         Unread unread = longInFlight(findings, unchecked, queues, rates);
         Reading<List<AddressOverview>> addresses = Reading.attempt(addressDirectory::overview);
+        Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         if (addresses.available())
         {
-            nowhereToGo(findings, unchecked, queues, addresses.value());
+            nowhereToGo(findings, unchecked, queues, addresses.value(), settings);
             addressLevel(findings, unchecked, includeInternal, addresses.value());
+            addressPressure(findings, unchecked, includeInternal, addresses.value(), settings, health);
         }
         else
         {
-            unchecked.add("Addresses — dropped messages, addresses with no queues, and where killed or expired"
-                    + " messages went: " + addresses.explained());
+            unchecked.add("Addresses — dropped messages, addresses with no queues, where killed or expired"
+                    + " messages went, and which addresses are at their limits: " + addresses.explained());
+        }
+        if (health.memoryPressure())
+        {
+            findings.add(memoryFindingAt, memoryPressure(health, addresses.orElse(List.of()), includeInternal));
         }
 
         // Whatever is not moving now first; within that, the biggest backlog.
@@ -286,9 +306,8 @@ public class StuckDiagnosisService
      * The broker refusing writes outranks anything a single queue is doing: when the disk or the address memory is at
      * its limit Artemis blocks producers, and every "nothing is arriving" report on the broker has the same cause.
      */
-    private void brokerLevel(List<Finding> findings, List<String> unchecked)
+    private void brokerLevel(List<Finding> findings, List<String> unchecked, BrokerHealth health)
     {
-        BrokerHealth health = brokerInfo.health();
         unchecked.addAll(health.unchecked());
         if (health.diskPressure())
         {
@@ -297,14 +316,6 @@ public class StuckDiagnosisService
                             "Disk store is %.1f%% used against a %d%% limit. Artemis blocks"
                                     + " producers at that limit, so senders stall rather than fail.",
                             health.diskUsedPercent().value(), health.maxDiskPercent().value()),
-                    null));
-        }
-        if (health.memoryPressure())
-        {
-            findings.add(Finding.stuck("The broker is near its address-memory limit",
-                    "Global address memory is " + health.memoryUsedPercent().value()
-                            + "% used. Addresses at their limit page"
-                            + " to disk or block producers, depending on how each is configured.",
                     null));
         }
         // Only when the state was read: "could not read it" is in unchecked, and is not "stopped".
@@ -432,11 +443,10 @@ public class StuckDiagnosisService
      * the settings were the same then".
      */
     private void nowhereToGo(List<Finding> findings, List<String> unchecked, List<QueueOverview> queues,
-            List<AddressOverview> addresses)
+            List<AddressOverview> addresses, Map<String, Reading<AddressSettings>> settings)
     {
         Map<String, AddressOverview> byName = addresses.stream()
                 .collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a));
-        Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         for (QueueOverview queue : queues)
         {
             if (queue.messagesKilled() == 0 && queue.messagesExpired() == 0)
@@ -541,6 +551,210 @@ public class StuckDiagnosisService
                         "Anything sent here now would be dropped rather than stored.", address.name()));
             }
         }
+    }
+
+    /**
+     * Global address memory near {@code global-max-size}, with the addresses holding the most of it. Every address
+     * shares that limit, so the largest are where the memory is — not necessarily why it filled, and the finding says
+     * so rather than blame one.
+     */
+    private Finding memoryPressure(BrokerHealth health, List<AddressOverview> addresses, boolean includeInternal)
+    {
+        List<AddressOverview> largest = addresses.stream().filter(address -> includeInternal || !isBrokersOwn(address))
+                .filter(address -> address.addressSize().available() && address.addressSize().value() > 0)
+                .sorted(Comparator.comparing((AddressOverview address) -> address.addressSize().value()).reversed())
+                .limit(MEMORY_HOLDERS).toList();
+        String holders = largest.isEmpty() ? ""
+                : " Largest holders: "
+                        + largest.stream().map(address -> "'" + address.name() + "' " + address.sizeText())
+                                .collect(Collectors.joining(", "))
+                        + ". Every address shares this limit, so these are where the memory is, not necessarily"
+                        + " why it filled.";
+        String limit = health.globalMaxBytes().available()
+                ? " of its " + AddressOverview.bytesText(health.globalMaxBytes().value()) + " limit"
+                : "";
+        return Finding.atAddress(Finding.STUCK, "The broker is near its address-memory limit",
+                "Global address memory is at " + health.memoryUsedPercent().value() + "%" + limit
+                        + ". Past it, every address applies its own policy: it pages, blocks producers, rejects"
+                        + " sends or drops messages." + holders,
+                largest.isEmpty() ? null : largest.get(0).name());
+    }
+
+    /**
+     * Addresses an operator blocked, and addresses at or near a limit whose policy costs a sender something.
+     *
+     * <p>
+     * The listing carries each address's size, limit percentage, page count and paging flag, so only addresses it
+     * already shows near or over a limit, or writing pages, have their settings read — to learn the policy that turns a
+     * percentage into a consequence. An address paging under PAGE is the policy working and gets no finding, unless a
+     * page limit is close. The management block is the exception: the listing does not carry it, so it is read per
+     * address, up to {@link #BLOCK_CHECK_LIMIT}.
+     *
+     * <p>
+     * A block is reported as observed — the broker says so. Everything else is inferred: the broker reports the usage
+     * and the policy, and what a producer is going through follows from those.
+     */
+    private void addressPressure(List<Finding> findings, List<String> unchecked, boolean includeInternal,
+            List<AddressOverview> all, Map<String, Reading<AddressSettings>> settings, BrokerHealth health)
+    {
+        List<AddressOverview> addresses = all.stream().filter(address -> includeInternal || !isBrokersOwn(address))
+                .toList();
+        Map<String, Reading<Boolean>> blocked = blockedAddresses(unchecked, addresses);
+        for (AddressOverview address : addresses)
+        {
+            Reading<Boolean> isBlocked = blocked.getOrDefault(address.name(),
+                    Reading.notCollected("past the block-check limit"));
+            if (isBlocked.available() && isBlocked.value())
+            {
+                findings.add(Finding.atAddress(Finding.STUCK, "'" + address.name() + "' is blocked by an operator",
+                        "The broker reports it blocked through management: someone called block() on it. A"
+                                + " producer sending here fails at once with \"address is full\", whatever its"
+                                + " limits. It is lifted on the broker with unblock().",
+                        address.name()));
+                continue;
+            }
+            if (!address.underPressure() && !address.pagedToDisk())
+            {
+                continue;
+            }
+            boolean first = !settings.containsKey(address.name());
+            Reading<AddressSettings> read = settings.computeIfAbsent(address.name(),
+                    name -> Reading.attempt(() -> addressDirectory.settings(name)));
+            if (!read.available())
+            {
+                if (first)
+                {
+                    unchecked.add("What happens at the limit of '" + address.name() + "': " + read.explained());
+                }
+                if (address.underPressure())
+                {
+                    findings.add(Finding.atAddress(Finding.WATCH, "'" + address.name() + "' is at or near its limit",
+                            "The broker reports it " + usage(address) + ". Whether that pages, blocks, rejects or"
+                                    + " drops depends on its policy, which could not be read.",
+                            address.name()));
+                }
+                continue;
+            }
+            Finding finding = pressureFinding(new AddressPressure(address, read, isBlocked, health));
+            if (finding != null)
+            {
+                findings.add(finding);
+            }
+        }
+    }
+
+    /**
+     * {@code blockedViaManagement} for each address, stopping at {@link #BLOCK_CHECK_LIMIT} or at the first read the
+     * broker will not give — a denial there is a denial for every address, and asking again per address would only
+     * repeat it.
+     */
+    private Map<String, Reading<Boolean>> blockedAddresses(List<String> unchecked, List<AddressOverview> addresses)
+    {
+        Map<String, Reading<Boolean>> blocked = new LinkedHashMap<>();
+        for (AddressOverview address : addresses)
+        {
+            if (blocked.size() >= BLOCK_CHECK_LIMIT)
+            {
+                unchecked.add("Whether " + (addresses.size() - BLOCK_CHECK_LIMIT) + " more address(es) are blocked by"
+                        + " an operator: not collected, past the first " + BLOCK_CHECK_LIMIT);
+                break;
+            }
+            Reading<Boolean> read = addressDirectory.blockedViaManagement(address.name());
+            if (!read.available())
+            {
+                unchecked.add("Whether addresses are blocked by an operator (stopped at '" + address.name() + "'): "
+                        + read.explained());
+                break;
+            }
+            blocked.put(address.name(), read);
+        }
+        return blocked;
+    }
+
+    private Finding pressureFinding(AddressPressure pressure)
+    {
+        AddressOverview address = pressure.address();
+        AddressSettings.FullPolicy policy = pressure.policy();
+        return switch (pressure.state())
+        {
+            case AT_LIMIT -> Finding.atAddress(Finding.STUCK, atLimitTitle(address.name(), policy),
+                    "The broker reports it " + usage(address) + limitsText(pressure) + ". Its policy is " + policy
+                            + ": " + policy.consequence() + "." + dropEvidence(address, policy),
+                    address.name()).inferred();
+            case NEAR_LIMIT -> Finding.atAddress(Finding.WATCH, "'" + address.name() + "' is near its limit",
+                    "The broker reports it " + usage(address) + limitsText(pressure) + ". When it gets there its"
+                            + " policy, " + policy + ", means " + policy.consequence() + ".",
+                    address.name()).inferred();
+            case NEAR_PAGE_LIMIT ->
+                Finding.atAddress(Finding.WATCH, "'" + address.name() + "' is paging and near its page limit",
+                        "It has " + address.pages().value() + " page file(s) and a page limit of "
+                                + pressure.pageLimitText() + ". Paging itself is normal; past the page limit "
+                                + (pressure.pagePolicy() != null ? pressure.pagePolicy().consequence()
+                                        : "the broker applies its page-full policy")
+                                + ". How near is estimated on the high side: nothing reports the paged count itself.",
+                        address.name()).inferred();
+            default -> null;
+        };
+    }
+
+    private static String atLimitTitle(String name, AddressSettings.FullPolicy policy)
+    {
+        return switch (policy)
+        {
+            case BLOCK -> "'" + name + "' is at its limit, so producers are made to wait";
+            case FAIL -> "'" + name + "' is full, so sends to it are rejected";
+            case DROP -> "'" + name + "' is full, so new messages are discarded";
+            case PAGE -> "'" + name + "' is at its limit";
+        };
+    }
+
+    /** "at 108% of its byte limit, holding 21.2 KB of address memory, 7 message(s)" — the listing, in its terms. */
+    private static String usage(AddressOverview address)
+    {
+        List<String> parts = new ArrayList<>();
+        if (address.measuredLimitPercent() != null)
+        {
+            parts.add("at " + address.measuredLimitPercent() + "% of its byte limit");
+        }
+        else if (address.fullWithoutPaging())
+        {
+            parts.add("over its limit");
+        }
+        if (address.sizeText() != null)
+        {
+            parts.add("holding " + address.sizeText() + " of address memory");
+        }
+        parts.add(address.messageCount() + " message(s)");
+        return String.join(", ", parts);
+    }
+
+    private static String limitsText(AddressPressure pressure)
+    {
+        List<String> limits = new ArrayList<>();
+        if (pressure.byteLimit() != null && pressure.byteLimit().limited())
+        {
+            limits.add(pressure.byteLimitText());
+        }
+        if (pressure.messageLimit() != null && pressure.messageLimit().limited())
+        {
+            limits.add(pressure.messageLimitText());
+        }
+        return limits.isEmpty() ? "" : " against a limit of " + String.join(" or ", limits);
+    }
+
+    /**
+     * Under DROP the only trace of a discarded message is routed running ahead of what is held. Not a count of what was
+     * dropped — consumers and expiry take messages too — so it is offered as context, never as a number dropped.
+     */
+    private static String dropEvidence(AddressOverview address, AddressSettings.FullPolicy policy)
+    {
+        if (policy != AddressSettings.FullPolicy.DROP || address.routedMessageCount() <= address.messageCount())
+        {
+            return "";
+        }
+        return " Since the broker started " + address.routedMessageCount() + " message(s) were routed here and "
+                + address.messageCount() + " are held; the difference includes anything consumed or expired as well"
+                + " as anything dropped.";
     }
 
     /**

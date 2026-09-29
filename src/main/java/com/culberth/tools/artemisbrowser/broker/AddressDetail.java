@@ -11,11 +11,21 @@ import java.util.Map;
  *                                when there is none or it could not be read
  * @param agesNotRead             per queue name, why its age could not be read — so an unread age is not taken for a
  *                                queue with nothing waiting
+ * @param pressure                its usage against its limits and policy
  */
 public record AddressDetail(AddressOverview address, List<Subscription> subscriptions,
         List<SubscriberConsumer> consumers, List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis,
-        AddressRouting routing, Map<String, String> agesNotRead)
+        AddressRouting routing, Map<String, String> agesNotRead, AddressPressure pressure)
 {
+
+    public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
+            List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis, AddressRouting routing,
+            Map<String, String> agesNotRead)
+    {
+        this(address, subscriptions, consumers, producers, oldestUndeliveredMillis, routing, agesNotRead,
+                new AddressPressure(address, Reading.notCollected("not asked for"),
+                        Reading.notCollected("not asked for"), null));
+    }
 
     public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
             List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis, AddressRouting routing)

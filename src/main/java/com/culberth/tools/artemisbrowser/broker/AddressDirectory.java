@@ -136,9 +136,55 @@ public class AddressDirectory
 
     private AddressOverview toOverview(JsonNode node, String name, List<QueueOverview> queues)
     {
-        return new AddressOverview(name, routingTypes(node), number(node, "messageCount"), number(node, "addressSize"),
+        return new AddressOverview(name, routingTypes(node), number(node, "messageCount"), reading(node, "addressSize"),
                 number(node, "routedMessageCount"), number(node, "unroutedMessageCount"), flag(node, "paging"),
-                flag(node, "internal"), flag(node, "temporary"), queues);
+                flag(node, "internal"), flag(node, "temporary"), queues, reading(node, "addressLimitPercent"),
+                reading(node, "numberOfPages"));
+    }
+
+    /**
+     * Whether an operator blocked this address through management — the one pressure fact the listing leaves out, so
+     * one round trip per address. Only an explicit block sets it: an address blocked by its BLOCK policy reads false.
+     */
+    public Reading<Boolean> blockedViaManagement(String name)
+    {
+        Reading<Object> raw = Reading.attempt(() -> brokerSession.requireManagement()
+                .attribute(ResourceNames.ADDRESS + name, "blockedViaManagement"));
+        if (!raw.available())
+        {
+            return raw.absent();
+        }
+        if (raw.value() instanceof Boolean flag)
+        {
+            return Reading.of(flag);
+        }
+        String text = raw.value() == null ? "" : raw.value().toString().trim();
+        if (text.equalsIgnoreCase("true") || text.equalsIgnoreCase("false"))
+        {
+            return Reading.of(Boolean.parseBoolean(text));
+        }
+        return Reading.failed("'" + raw.value() + "' is not true or false");
+    }
+
+    /**
+     * A counter the listing may or may not carry. Absent means this broker's listing does not have it, and a value that
+     * is not a number could not be read — neither is a zero, since these feed a limit check.
+     */
+    static Reading<Long> reading(JsonNode node, String field)
+    {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull())
+        {
+            return Reading.missing(Availability.UNSUPPORTED, "'" + field + "' is not in this broker's address listing");
+        }
+        try
+        {
+            return Reading.of(Long.parseLong(value.asText().trim()));
+        }
+        catch (NumberFormatException e)
+        {
+            return Reading.failed("'" + value.asText() + "' is not a number");
+        }
     }
 
     /**

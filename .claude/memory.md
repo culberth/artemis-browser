@@ -285,6 +285,32 @@ from — a wrong parse here yields a believable number rather than an error.
 - **`localhost` resolves to `::1` first for Java here**, and `wslrelay` holds `[::1]` on Docker's
   published ports; it forwards to the same container, so it is not the cause above — checked by node id.
 
+### Address pressure (2026-09-29, 2.55.0 and 2.57.0 identical, before Phase 13 P1 parsed any of it)
+
+- **`listAddresses` already carries the pressure fields**, string-quoted like the rest:
+  `addressLimitPercent`, `numberOfPages`, `numberOfBytesPerPage`, `paging`, `addressSize`, `paused`,
+  `queueCount`, `maxPageReadBytes`/`Messages`, `prefetchPageBytes`/`Messages`. **Not** the management
+  block: that is only the `address.<name>` attribute **`blockedViaManagement`** (Boolean), one round trip each.
+- **`addressLimitPercent` is `addressSize / maxSizeBytes` × 100, bytes only, and `"0"` when there is
+  no byte limit** (`maxSizeBytes=-1`) — a zero that is not a measurement. An address full at
+  `maxSizeMessages=10` also reads 0 while it refuses sends. Compute a message-limit ratio separately.
+- **`paging` means "over its limit", not "writing pages".** Filled past a 20KB limit with 40×1KB:
+  PAGE → paging=true, 9 pages, all 40 kept. FAIL → paging=true, **0 pages**, 7 kept, sender got
+  `AMQ229102: Address "…" is full`. DROP → paging=true, 0 pages, 7 kept, **routed 40** — the silent
+  loss shows only as routed ≫ messages. BLOCK → **paging=false** at **418%** (producer credits granted
+  ahead overshoot), sender stalled on `AMQ212054 … is blocked`, `blockedViaManagement` still false.
+- **A management `block()`** sets `blockedViaManagement=true`; a CORE producer then fails fast with
+  `AMQ219058: Address "…" is full` rather than waiting. The listing does not change.
+- **Page limit**: PAGE + `pageLimitMessages=30` + `pageFullMessagePolicy=FAIL` → 8 pages, 37 kept, then
+  AMQ229102. `pageFullMessagePolicy` is **absent** from `getAddressSettingsAsJSON` when unset;
+  `pageLimitBytes`/`pageLimitMessages`/`maxSizeMessages` read `-1` at default.
+- **`addAddressSettings` rejects `maxSizeBytes` below `pageSizeBytes`** (10MB default):
+  "pageSize has to be lower than maxSizeBytes". Test fixtures set both. It returns the stored settings.
+- Broker `globalMaxSize` → Long bytes (1073741824 = 1GB default here); `addressMemoryUsagePercentage`
+  is a whole percent of it, so small brokers read 0.
+- Jolokia on the console port is the quickest probe: `curl -u artemis:artemis -H "Origin: http://localhost"
+  http://localhost:8162/console/jolokia/list/org.apache.activemq.artemis` lists every attribute/op.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
