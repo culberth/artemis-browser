@@ -32,22 +32,80 @@ public class BrokerInfoService
         this.brokerSession = brokerSession;
     }
 
+    /**
+     * One read per attribute, each on its own: an attribute this broker will not return — an older version, or a user
+     * that may read some and not others — leaves the rest of the panel standing and says why it is missing. A value in
+     * a shape other than the verified one is "could not be read", never 0.
+     */
     public BrokerHealth health()
     {
         ManagementChannel management = brokerSession.requireManagement();
-        String statusJson = string(management.attribute(ResourceNames.BROKER, "status"));
+        Instant started = Instant.now();
+        Reading<Object> status = read(management, "status");
+        Reading<JsonNode> server = status.available() ? Reading.attempt(() -> statusServer(status.value()))
+                : status.absent();
+        if (server.available() && server.value() == null)
+        {
+            server = Reading.failed("the status attribute has no 'server' section");
+        }
 
-        return new BrokerHealth(string(management.attribute(ResourceNames.BROKER, "version")),
-                string(management.attribute(ResourceNames.BROKER, "uptime")),
-                fromStatus(statusJson, "state", "UNKNOWN"), fromStatus(statusJson, "nodeId", ""),
-                number(management.attribute(ResourceNames.BROKER, "connectionCount")),
-                number(management.attribute(ResourceNames.BROKER, "sessionCount")),
-                number(management.attribute(ResourceNames.BROKER, "totalConsumerCount")),
-                number(management.attribute(ResourceNames.BROKER, "addressMemoryUsage")),
-                number(management.attribute(ResourceNames.BROKER, "addressMemoryUsagePercentage")),
+        return new BrokerHealth(read(management, "version").map(String::valueOf),
+                read(management, "uptime").map(String::valueOf), fromStatus(server, "state"),
+                fromStatus(server, "nodeId"), whole(read(management, "connectionCount")),
+                whole(read(management, "sessionCount")), whole(read(management, "totalConsumerCount")),
+                whole(read(management, "addressMemoryUsage")), whole(read(management, "addressMemoryUsagePercentage")),
                 // diskStoreUsage is a 0..1 ratio; maxDiskUsage and diskPressure() work in 0..100.
-                decimal(management.attribute(ResourceNames.BROKER, "diskStoreUsage")) * 100,
-                number(management.attribute(ResourceNames.BROKER, "maxDiskUsage")));
+                fraction(read(management, "diskStoreUsage")).map(ratio -> ratio * 100),
+                whole(read(management, "maxDiskUsage")), started);
+    }
+
+    private Reading<Object> read(ManagementChannel management, String attribute)
+    {
+        Reading<Object> reading = Reading.attempt(() -> management.attribute(ResourceNames.BROKER, attribute));
+        return reading.available() && reading.value() == null
+                ? Reading.failed("the broker returned no value for " + attribute)
+                : reading;
+    }
+
+    /** A Long, or a string holding one — broker attributes are typed inconsistently across versions. */
+    static Reading<Long> whole(Reading<Object> raw)
+    {
+        if (!raw.available())
+        {
+            return raw.absent();
+        }
+        if (raw.value() instanceof Number number)
+        {
+            return Reading.of(number.longValue());
+        }
+        try
+        {
+            return Reading.of(Long.parseLong(raw.value().toString().trim()));
+        }
+        catch (NumberFormatException e)
+        {
+            return Reading.failed("'" + raw.value() + "' is not a number");
+        }
+    }
+
+    static Reading<Double> fraction(Reading<Object> raw)
+    {
+        if (!raw.available())
+        {
+            return raw.absent();
+        }
+        if (raw.value() instanceof Number number)
+        {
+            return Reading.of(number.doubleValue());
+        }
+        try
+        {
+            return Reading.of(Double.parseDouble(raw.value().toString().trim()));
+        }
+        catch (NumberFormatException e)
+        {
+            return Reading.failed("'" + raw.value() + "' is not a number");
+        }
     }
 
     public List<AcceptorInfo> acceptors()
@@ -201,26 +259,29 @@ public class BrokerInfoService
         }
     }
 
-    private String fromStatus(String statusJson, String field, String fallback)
+    /** The {@code server} object of the status attribute's JSON, or null when it has none. */
+    private JsonNode statusServer(Object status)
     {
-        if (statusJson == null || statusJson.isBlank())
-        {
-            return fallback;
-        }
         try
         {
-            JsonNode server = objectMapper.readTree(statusJson).get("server");
-            if (server == null)
-            {
-                return fallback;
-            }
-            JsonNode value = server.get(field);
-            return value == null || value.isNull() ? fallback : value.asText();
+            return objectMapper.readTree(status.toString()).get("server");
         }
         catch (Exception e)
         {
-            return fallback;
+            throw new BrokerException("the status attribute is not JSON: " + e.getMessage(), e);
         }
+    }
+
+    private Reading<String> fromStatus(Reading<JsonNode> server, String field)
+    {
+        if (!server.available())
+        {
+            return server.absent();
+        }
+        JsonNode value = server.value().get(field);
+        return value == null || value.isNull() || value.asText().isBlank()
+                ? Reading.failed("the status attribute has no server." + field)
+                : Reading.of(value.asText());
     }
 
     /** The {@code data} array of a paged {@code {"data":[...],"count":N}} reply. */
@@ -278,29 +339,4 @@ public class BrokerInfoService
         }
     }
 
-    private String string(Object value)
-    {
-        return value == null ? "" : value.toString();
-    }
-
-    private long number(Object value)
-    {
-        return value instanceof Number n ? n.longValue() : asLong(string(value));
-    }
-
-    private double decimal(Object value)
-    {
-        if (value instanceof Number n)
-        {
-            return n.doubleValue();
-        }
-        try
-        {
-            return Double.parseDouble(string(value));
-        }
-        catch (NumberFormatException e)
-        {
-            return 0d;
-        }
-    }
 }

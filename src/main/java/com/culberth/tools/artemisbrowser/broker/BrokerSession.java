@@ -56,6 +56,13 @@ public class BrokerSession implements AutoCloseable
             // than hang the request thread while the client retries in the background.
             factory.setInitialConnectAttempts(1);
             factory.setReconnectAttempts(0);
+            // Only ever the broker the user named. By default the client load-balances further
+            // connections across the topology the broker announces, and 2.57.0 announces its
+            // 0.0.0.0 acceptor — which, seen from the client, can be a different broker entirely.
+            // Checked 2026-09-29: a second concurrent connection to a 2.57.0 container landed on
+            // the broker behind localhost:61616. This session opens one connection, but that is an
+            // accident of today's code, not a guarantee; this is the guarantee.
+            factory.setUseTopologyForLoadBalancing(false);
 
             connection = factory.createConnection(credentials.username(), credentials.password());
             // Required before a consumer — including the management reply consumer — will receive.

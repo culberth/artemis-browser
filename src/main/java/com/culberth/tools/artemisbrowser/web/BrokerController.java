@@ -8,6 +8,7 @@ import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
 import com.culberth.tools.artemisbrowser.broker.ClientView;
+import com.culberth.tools.artemisbrowser.broker.Reading;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Controller;
@@ -87,18 +88,14 @@ public class BrokerController
         // to keep. Supplied from here rather than written as an empty literal in the template,
         // because Thymeleaf's fragment-expression parser cannot read SpEL's `{:}`.
         model.addAttribute("viewParams", Map.of());
-        try
-        {
-            model.addAttribute("health", brokerInfo.health());
-            model.addAttribute("acceptors", brokerInfo.acceptors());
-            model.addAttribute("connections", brokerInfo.connections());
-            model.addAttribute("consumers", brokerInfo.consumers());
-            model.addAttribute("producers", brokerInfo.producers());
-        }
-        catch (BrokerException e)
-        {
-            model.addAttribute("error", e.getMessage());
-        }
+        // Each panel on its own: a broker that will not list its acceptors to this user — or a
+        // version without one of these operations — still shows its connections. Health isolates
+        // per attribute inside; only a lost connection ends the page, via the advice.
+        model.addAttribute("health", brokerInfo.health());
+        model.addAttribute("acceptors", Reading.attempt(brokerInfo::acceptors));
+        model.addAttribute("connections", Reading.attempt(brokerInfo::connections));
+        model.addAttribute("consumers", Reading.attempt(brokerInfo::consumers));
+        model.addAttribute("producers", Reading.attempt(brokerInfo::producers));
         return "broker";
     }
 

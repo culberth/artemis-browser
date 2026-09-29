@@ -3,6 +3,8 @@ package com.culberth.tools.artemisbrowser.broker;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -72,6 +74,39 @@ class ManagementChannelIT
 
         assertTrue(thrown.getMessage().contains("no-such-queue-here.countMessages"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("'manage' permission"), thrown.getMessage());
+    }
+
+    @Test
+    @DisplayName("a broker attribute it will not return is 'unavailable', and not asked for again on this connection")
+    void remembersAnUnavailableBrokerAttribute()
+    {
+        ManagementChannel channel = brokerSession.requireManagement();
+
+        ManagementRefusal first = assertThrows(ManagementRefusal.class,
+                () -> channel.attribute(ResourceNames.BROKER, "noSuchAttributeOnAnyVersion"));
+        ManagementRefusal second = assertThrows(ManagementRefusal.class,
+                () -> channel.attribute(ResourceNames.BROKER, "noSuchAttributeOnAnyVersion"));
+
+        assertEquals(Availability.UNAVAILABLE, first.availability());
+        // The same instance: the second came from memory, not from a second round trip.
+        assertSame(first, second);
+        assertEquals(Reading.attempt(() -> channel.attribute(ResourceNames.BROKER, "noSuchAttributeOnAnyVersion"))
+                .availability(), Availability.UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("an attribute of a queue that is not there is unavailable, and not remembered — the queue may come back")
+    void doesNotRememberAQueueAttribute()
+    {
+        ManagementChannel channel = brokerSession.requireManagement();
+
+        ManagementRefusal first = assertThrows(ManagementRefusal.class,
+                () -> channel.attribute(ResourceNames.QUEUE + "it-not-here-yet", "messageCount"));
+        ManagementRefusal second = assertThrows(ManagementRefusal.class,
+                () -> channel.attribute(ResourceNames.QUEUE + "it-not-here-yet", "messageCount"));
+
+        assertEquals(Availability.UNAVAILABLE, first.availability());
+        assertNotSame(first, second);
     }
 
     @Test

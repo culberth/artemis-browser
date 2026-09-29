@@ -8,14 +8,21 @@ import java.util.Set;
  * settings name, and the diverts reading from it or writing to it.
  *
  * @param settings       null when they could not be read — the rest of the page does not depend on them
+ * @param divertsError   why the diverts could not be read, or null; then both divert lists are empty and say nothing
  * @param knownAddresses every address currently on the broker, to tell whether a named dead-letter or expiry address
  *                       exists. One that does not is where undeliverable messages go to be dropped.
  */
 public record AddressRouting(AddressSettings settings, String settingsError, List<Divert> divertsFrom,
-        List<Divert> divertsTo, Set<String> knownAddresses)
+        List<Divert> divertsTo, Set<String> knownAddresses, String divertsError)
 {
 
     public static final AddressRouting NONE = new AddressRouting(null, null, List.of(), List.of(), Set.of());
+
+    public AddressRouting(AddressSettings settings, String settingsError, List<Divert> divertsFrom,
+            List<Divert> divertsTo, Set<String> knownAddresses)
+    {
+        this(settings, settingsError, divertsFrom, divertsTo, knownAddresses, null);
+    }
 
     public boolean exists(String address)
     {

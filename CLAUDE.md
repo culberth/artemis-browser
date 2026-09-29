@@ -12,15 +12,17 @@ Kubernetes cluster. Phase 10 (2026-09-27) added subscription inspection on multi
 a page per address with its subscriptions, lag, settings and diverts. Phase 11 (2026-09-27, PR #24)
 added in-flight messages: a panel on the queue page, lookup by message ID in both searches, and two
 diagnose findings. Phase 12 (PR #26) added the pager fix and
-measuring at scale, expired/killed counts, in/out rates, and a page per client. Planned in [docs/PRD.md](docs/PRD.md); see *Closed as
-won't do* there before proposing more. 313 unit tests,
-32 integration.
+measuring at scale, expired/killed counts, in/out rates, and a page per client. Phase 13 (broker
+visibility, six areas) is in progress on `phase13-broker-visibility`: P0 — explicit availability,
+isolated panels, a pinned version matrix — is done. Planned in [docs/PRD.md](docs/PRD.md); see
+*Closed as won't do* there before proposing more. 331 unit tests, 38 integration, run once per
+supported broker version.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
 paths are verified non-destructive against a real broker, not assumed.
 
-## The six things that cause silent bugs here
+## The seven things that cause silent bugs here
 
 Silent, meaning a wrong answer rather than an error. Each is one line plus where the reasoning
 lives — read [docs/architecture.md](docs/architecture.md) before changing any of them.
@@ -44,6 +46,11 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
    queue and read through `listScheduledMessagesAsJSON`; ones delivered to a consumer and not yet
    acked cannot be read at all. Either way a queue can report messages and browse as empty — and a
    search that finds nothing has not shown the message is gone while `deliveringCount` > 0.
+7. **A value the broker did not give is a `Reading`, never a zero.** Unsupported, denied and failed
+   reads are told apart where the broker allows (an attribute failure it does not: "unavailable"),
+   and a page or diagnose check that could not look says so. Any connection factory — app or test —
+   sets `useTopologyForLoadBalancing=false`: on 2.57.0 a second connection otherwise lands on
+   whatever broker the topology names, which on this machine is the kind cluster's.
 
 ## Security posture
 
@@ -74,11 +81,13 @@ mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
 mvn test -Dtest=OneTest,TwoTest       # several (comma, not +)
 mvn spring-boot:run                   # run the app on http://localhost:8080
-mvn verify -Pintegration              # + integration tests: starts a real broker in Docker
+mvn clean verify -Pintegration        # + integration tests, once per supported broker version (Docker)
 ```
 
 - `*IT` tests run only under `-Pintegration`, so `mvn clean install` needs nothing but Maven. They
-  cover what a mock cannot: the management round trip, and that reading consumes nothing.
+  cover what a mock cannot: the management round trip, and that reading consumes nothing. Each runs
+  against every image in the pom's matrix (`artemis.image.deployed`, `artemis.image.newest`); skip
+  one with `-Dit.newest.skip=true`. Run it after `clean` — failsafe merges a stale summary.
 - Dependency resolution goes through a local Nexus (`mirrorOf *`), configured in Maven's own
   `conf/settings.xml` rather than `~/.m2`. If Nexus is down, nothing resolves.
 - `java-formatter-maven-plugin` reformats sources on every build, so expect `git status` to show

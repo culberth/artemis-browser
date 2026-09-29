@@ -254,6 +254,54 @@ lives in `templates/fragments/layout.html`, so adding a page means editing it in
 `javafx-ribbon-view-switcher`, `track-generator-system`) are JavaFX desktop apps. Their scene-graph,
 FXML, TestFX/Monocle and ribbon-CSS patterns are a trap to copy from here.
 
+## A missing value is not a zero
+
+Phase 13 P0. Every read that a page can do without is a `Reading<T>`: a value, or an `Availability`
+saying why there is none, with the time it was collected. `Reading.attempt` catches a
+`BrokerException` — so a refused or failed read becomes a missing value beside the rest of the page —
+and deliberately not `ConnectionLostException`, which still ends the page through the advice.
+
+How far the reasons can be told apart is the broker's decision, not ours, and was checked on 2.44.0,
+2.55.0 and 2.57.0 before anything parsed it:
+
+| The broker says | Means | `Availability` |
+|---|---|---|
+| `AMQ229069: no operation x/n` | the version has no such operation | `UNSUPPORTED` |
+| `AMQ229032 … permission='VIEW' on address mops.…` | this user may not (per-operation RBAC only) | `DENIED` |
+| `JMSSecurityException` on send, AMQ229032 `MANAGE` | this user may not manage at all | `DENIED` |
+| `Problem while retrieving attribute x` | missing attribute, gone resource, *or* denied | `UNAVAILABLE` |
+| anything else, a timeout, a malformed value | — | `FAILED` |
+
+The attribute row is why `UNAVAILABLE` exists rather than a guess: the broker gives one phrase for all
+three causes. The no-`manage` row used to be treated as a lost connection, which closed the session
+and sent a user with a merely under-privileged account back to the connect form for good.
+
+`ManagementChannel` remembers, for the life of its connection, what cannot change while connected:
+an unsupported operation (per resource type and arity) and a broker attribute that would not be read.
+Not a queue's attribute, whose failure also means "queue gone", and not a denial, which a reloaded
+security setting can lift. A different broker is a new channel and is asked afresh.
+
+What this changed on the pages: health reads each attribute on its own, and its pressure checks
+answer false only alongside `unchecked()`, which names what could not be checked; `/broker` reads
+each panel independently with its read time; diagnose skips only the checks whose input was
+refused and lists them under *Could not check*, so no findings never reads as "all is well" when it
+means "could not look"; the queue page's scheduled list, the address page's diverts and each
+subscription's age stand alone. `DivertDirectory` used to leave out a divert whose attributes failed,
+on the theory it had just been destroyed; it now lists the names again and, if the divert is still
+there, reports the list as incomplete instead of silently short.
+
+Not converted: the `listQueues` counters. Their shape is verified on every supported version, every
+counter is always present, and a queue listing the broker refuses is the page's failure anyway.
+
+## One broker, and only the one named
+
+The Artemis client load-balances a factory's connections across the topology the broker announces,
+by default. A standalone broker announces its acceptor, `0.0.0.0:61616`, and from the client's side
+that address can be a different broker entirely. On 2.57.0 (not 2.55.0) a second connection opened
+while the first was open landed on the broker behind `localhost:61616` — on this machine, the kind
+cluster's. The app opens one connection per session so it was never exposed, but that was an accident
+of the code; `BrokerSession` now sets `useTopologyForLoadBalancing=false`, and so does every test URL.
+
 ## Testing approach
 
 The services that parse management JSON are tested by mocking `BrokerSession` and
@@ -267,6 +315,13 @@ attribute reads, refusals and timeout live in `ManagementChannelIT`, against a r
 by Testcontainers under `mvn verify -Pintegration`. `ReadOnlyGuaranteeIT` runs there too, driving
 every read path three times over and asserting messageCount, delivering, acked and added are
 unchanged — the non-destructive guarantee is checked by the build rather than by hand.
+
+Every IT runs once per supported broker version, from pinned images in the pom, in separate failsafe
+executions. The fixture refuses to seed unless two connections held open together report the same
+node id — added after an unguarded 2.57.0 run put test queues into the cluster broker (see above).
+`PartialAvailabilityIT` runs its own broker with `management-message-rbac` on, which the broker
+reads only at startup, so its entrypoint writes the configuration between creating the instance and
+running it: one user denied specific reads, one without `manage` at all.
 
 Neither of those renders a template, and neither do the controller tests, which assert on model
 attributes — those populate perfectly right up until the view fails. That gap let `/broker` return

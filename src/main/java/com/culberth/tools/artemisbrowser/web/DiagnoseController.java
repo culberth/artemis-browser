@@ -43,11 +43,13 @@ public class DiagnoseController
             model.addAttribute("inFlightNotRead", result.inFlightNotRead());
             model.addAttribute("rates", result.measured().rates());
             model.addAttribute("ratesSampled", result.measured().sampled());
+            model.addAttribute("unchecked", result.unchecked());
         }
         catch (BrokerException e)
         {
             model.addAttribute("findings", List.of());
             model.addAttribute("stuckCount", 0L);
+            model.addAttribute("unchecked", List.of());
             model.addAttribute("error", e.getMessage());
         }
         return "diagnose";

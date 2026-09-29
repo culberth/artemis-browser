@@ -28,7 +28,7 @@ Last consolidated 2026-09-19, covering work through Phase 4.
 
 ```
 docker run -d --name artemis-test -p 62616:61616 -p 8162:8161 \
-  -e ARTEMIS_USER=artemis -e ARTEMIS_PASSWORD=artemis apache/activemq-artemis:latest-alpine
+  -e ARTEMIS_USER=artemis -e ARTEMIS_PASSWORD=artemis apache/artemis:2.55.0-alpine
 ```
 
 - Readiness log line is "Server is now active", not "live".
@@ -253,6 +253,37 @@ from — a wrong parse here yields a believable number rather than an error.
   `listConsumers` likewise carries `session`, not the connection.
 - A connection with no client id (2 of 3 here) can only be named by its connection id, remote
   address and user.
+
+### Failure replies: unsupported, missing, denied (2026-09-29, 2.55.0 and 2.44.0, before Phase 13 P0)
+
+- **Images moved**: the cluster runs `apache/artemis:2.55.0-alpine`; `apache/activemq-artemis:latest-alpine`
+  on this machine is **2.44.0** and is no longer the current repository. Docker Hub's newest is 2.57.0.
+- **Unknown operation** → failed reply `AMQ229069: no operation <name>/<arity>`, on both versions.
+- **Unknown attribute, attribute on a missing resource, and an attribute denied by RBAC all read
+  the same**: failed reply `Problem while retrieving attribute <name>`. The broker does not say
+  which, so an attribute failure can only be shown as "unavailable", never as "unsupported".
+- **No `manage` permission** → `JMSSecurityException` (AMQ229032 `permission='MANAGE' on address
+  activemq.management`) thrown **from `producer.send`**, and the session stays usable. Before Phase 13
+  `ManagementChannel` mapped every `JMSException` to connection-lost.
+- **Per-operation denial needs `<management-message-rbac>true`** (off by default; default security
+  is all-or-nothing `manage`). Then a denied operation is a failed reply `AMQ229032: User: x does not
+  have permission='VIEW' on address mops.broker.<operation>`; attributes are checked as their getter
+  (`mops.broker.getUptime`, not `.uptime`). A user also needs createAddress/createNonDurableQueue/
+  consume on `#` for the temporary reply queue, or connecting fails with AMQ229213.
+- Properties files in the image end without a newline — `echo >>` glues the new line onto the last.
+- **`management-message-rbac` is read only at broker startup.** Security settings and users reload live
+  from `etc/` (AMQ221056), this flag does not — the RBAC fixture writes it before `artemis run`.
+- **2.57.0 splits a factory's connections across brokers (2026-09-29).** With the client default
+  `useTopologyForLoadBalancing=true`, a second connection opened while the first is still open
+  follows the topology the broker announces — built from its `0.0.0.0:61616` acceptor — and from
+  this machine that is **localhost:61616, the kind cluster's broker** (`claude-app/artemis`, node
+  `547151d5…`, reached through ingress-nginx). 2.55.0 does not do it. The first 2.57.0 matrix runs
+  seeded `it-client-in`, `it-hoard`, `it-inflight.sub` (6 msgs) and `it-shared` into that broker, and
+  the "failures" were tests whose data had gone there. IT URLs now carry
+  `?useTopologyForLoadBalancing=false`, the fixture refuses to seed unless two concurrent
+  connections reach one node id, and `BrokerSession` sets it off too.
+- **`localhost` resolves to `::1` first for Java here**, and `wslrelay` holds `[::1]` on Docker's
+  published ports; it forwards to the same container, so it is not the cause above — checked by node id.
 
 ## Verified behaviour
 

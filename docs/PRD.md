@@ -596,21 +596,40 @@ introduce background monitoring, alerting or an external session store.
 
 ### P0 — Trustworthy availability and reproducible compatibility
 
-- [ ] **Represent data availability explicitly.** Distinguish a real zero or false from an
+- [x] **Represent data availability explicitly.** Distinguish a real zero or false from an
       unsupported attribute/operation, permission denial, a failed read, and a value not collected.
       Replace silent numeric fallbacks in the affected parsing paths; missing or malformed health
       values must not look healthy. Carry availability through the view models, findings and exports.
-- [ ] **Isolate optional reads.** One unsupported or denied panel must not stop later panels from
+      Done 2026-09-29: `Reading<T>` and `Availability`, from the broker's own wording, checked on
+      2.44.0, 2.55.0 and 2.57.0 first. One limit found there: an attribute that does not exist, one
+      on a gone resource and one RBAC denies all read "Problem while retrieving attribute", so an
+      attribute can only ever be "unavailable". Health is a reading per attribute; diagnose lists
+      what it could not check rather than let a missing disk figure pass as a healthy one. Exports
+      of messages carry no health; availability reaches exports with the P4 snapshot.
+- [x] **Isolate optional reads.** One unsupported or denied panel must not stop later panels from
       loading. Show each panel's collection time and relevant failure, while a genuinely lost
       connection still uses the existing connection-loss handling. Do not repeatedly probe a known
       unsupported capability on every refresh; scope cached capability information to the connection.
-- [ ] **Define and test supported broker versions.** Pin integration-test images instead of
+      Done 2026-09-29 for `/broker`, diagnose, the queue page's scheduled list and the address page's
+      diverts and ages. Found on the way: a user without `manage` got a `JMSSecurityException` from
+      send, which was treated as a lost connection — it is now a denial and the session survives.
+      And a divert that could not be read was silently left out; the list now says it is incomplete.
+- [x] **Define and test supported broker versions.** Pin integration-test images instead of
       `latest-alpine`, record the exact versions tested, and run the supported-version matrix.
       Include the deployed broker version and the selected newer supported version; treat the
       existing 2.44.0 measurements as historical evidence, not a universal API contract.
-- [ ] **Verify every new read.** Record response shapes and units, add only verified read operations
+      Done 2026-09-29: 2.55.0 (deployed) and 2.57.0 (newest), one failsafe execution each, all ITs
+      green on both. The image moved to `apache/artemis`. The first 2.57.0 run found something worse
+      than an API difference: the client's topology load balancing sent a second concurrent connection
+      to the broker behind `localhost:61616` — the kind cluster's — so tests seeded queues there and
+      failed on data that had gone elsewhere. Turned off in every factory, app and tests, with a
+      fixture guard that refuses to seed unless two connections reach one node.
+- [x] **Verify every new read.** Record response shapes and units, add only verified read operations
       to the management allowlist, and cover unsupported, denied, empty and malformed responses.
       Current API documentation guides discovery; tests establish actual compatibility.
+      Done 2026-09-29 for P0's reads (no operation was added to the allowlist). Denied is covered
+      against a real broker by `PartialAvailabilityIT`, on both versions; unsupported, unavailable,
+      empty and malformed by unit tests built from the recorded replies. Standing rule for P1–P6.
 
 Done means an unavailable measurement is never presented as zero, an optional failure leaves
 unaffected information usable, and the supported versions and feature differences are documented.

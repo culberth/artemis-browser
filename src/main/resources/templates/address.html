@@ -93,8 +93,10 @@
                     <td class="num" th:text="${s.deliveringCount()}">0</td>
                     <td class="num" style="white-space:nowrap">
                         <span th:text="${detail.oldestUndeliveredText(s)}">4m 12s</span>
-                        <span class="muted" th:if="${detail.oldestUndelivered(s) == null and s.messageCount() > 0}"
+                        <span class="muted" th:if="${detail.oldestUndelivered(s) == null and s.messageCount() > 0 and detail.ageNotRead(s) == null}"
                               title="Everything on this queue is in flight to a consumer or scheduled, and the broker reports no age for those">&mdash;</span>
+                        <span class="unavailable" th:if="${detail.ageNotRead(s) != null}"
+                              th:title="${detail.ageNotRead(s)}">not read</span>
                         <span class="badge warn" th:if="${s.name() == detail.furthestBehind()}">furthest behind</span>
                     </td>
                     <td class="num" th:text="${s.consumerCount()}">0</td>
@@ -219,7 +221,10 @@
         </details>
 
         <h3 style="margin-top:1.25rem">Diverts from here</h3>
-        <p class="muted" th:if="${r.divertsFrom().isEmpty()}">None. Every message sent here routes only to the
+        <p class="unavailable" th:if="${r.divertsError() != null}"
+           th:text="'Diverts could not be read: ' + ${r.divertsError()} + '. None are shown here, which does not mean there are none.'">
+            Diverts could not be read.</p>
+        <p class="muted" th:if="${r.divertsError() == null and r.divertsFrom().isEmpty()}">None. Every message sent here routes only to the
             subscriptions above.</p>
         <div class="table-scroll" th:unless="${r.divertsFrom().isEmpty()}">
             <table>
@@ -253,7 +258,7 @@
         </p>
 
         <h3 style="margin-top:1.25rem">Diverts to here</h3>
-        <p class="muted" th:if="${r.divertsTo().isEmpty()}">None.</p>
+        <p class="muted" th:if="${r.divertsError() == null and r.divertsTo().isEmpty()}">None.</p>
         <ul th:unless="${r.divertsTo().isEmpty()}">
             <li th:each="d : ${r.divertsTo()}">
                 <code th:text="${d.name()}">divert</code> from
