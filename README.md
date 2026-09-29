@@ -2,8 +2,8 @@
 
 A read-only web browser for ActiveMQ Artemis queues: connect to a broker, list its queues and
 addresses, inspect a queue's counters and messages, search across queues, export results, check
-broker health and producers, and ask why something is not moving — all without ever consuming,
-acknowledging, moving or deleting a message. Spring Boot, Thymeleaf server-rendered, no npm and no
+broker health, subscribers and clients, and ask why something is not moving — all without consuming,
+acknowledging, moving or deleting business messages. Spring Boot, Thymeleaf server-rendered, no npm and no
 frontend build step.
 
 It runs on localhost with no login by default. It can also run on a shared host, behind its own
@@ -18,8 +18,8 @@ Shipped so far:
   per-message detail view, and remembered broker locations.
 - **Phase 3** — cross-queue search, CSV/JSON export, a broker health and connections view, and an
   address view showing multicast fan-out.
-- **Phase 4** — a producers panel on the broker health page, and exports that carry whole message
-  bodies of any type rather than the broker's truncated preview.
+- **Phase 4** — a producers panel on the broker health page, and exports that read supported
+  message bodies through JMS rather than relying on the broker's truncated preview.
 - **Phase 5** — a bounded export that says which rows it cut, large-message flags, integration tests
   against a real broker in Docker (including one that proves reading consumes nothing), exporting a
   whole cross-queue search, and a sortable, filterable overview.
@@ -31,6 +31,31 @@ Shipped so far:
   *Diagnose* page answering "why is this stuck"; and a measured answer to how large a broker this
   stays usable on — which turned up a correctness bug in cross-queue search rather than a
   performance ceiling (see **Searching** below).
+- **Phase 8** — Docker packaging and a Helm chart for a single-user local Kubernetes deployment.
+- **Phase 9** — rendered-page tests to catch template failures as well as service/controller errors.
+- **Phase 10** — address drilldowns with subscription kinds and filters, consumers, oldest-waiting
+  message age, per-subscription search, address settings and diverts.
+- **Phase 11** — bounded in-flight message inspection, exact message-ID lookup for in-flight
+  messages, and diagnostic findings for consumer imbalance and old messages still in flight.
+- **Phase 12** — corrected filtered paging and search exports, expired/killed counters, measured
+  ingress and acknowledgment rates, client drilldowns, and scale measurements for the newer views.
+
+## Next: Phase 13 (planned)
+
+Phase 13 expands broker visibility and explains operational behavior. It is planned, not implemented:
+
+1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
+2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
+3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
+4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
+5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
+6. Read-only prepared-transaction and address-permission inspection.
+
+The phase also adds explicit unavailable/unsupported/denied states, independent optional panels,
+and pinned broker-version compatibility tests. Address pressure and queue behavior come first;
+all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
+for delivery order and acceptance criteria.
 
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
@@ -52,7 +77,7 @@ This is a single-module project — there is no reactor.
 
 ```bash
 mvn clean install    # full build
-mvn test              # all tests
+mvn test              # unit and web tests; excludes *IT
 mvn test -Dtest=SomeTest              # one test class
 mvn test -Dtest=SomeTest#someMethod   # one test method
 mvn verify -Pintegration              # unit tests + integration tests (needs Docker)
@@ -64,6 +89,10 @@ things a mock cannot: that the management request/reply plumbing works against a
 that browsing, searching and exporting leave every counter exactly where they found it. That second
 one is the product's central claim, and `ReadOnlyGuaranteeIT` is what stops it being merely
 believed.
+
+The integration fixture currently uses `apache/activemq-artemis:latest-alpine`, so the broker
+version depends on the image resolved by Docker. A pinned supported-version matrix is planned in
+Phase 13; historical measurements against 2.44.0 are not a compatibility guarantee for every version.
 
 `java-formatter-maven-plugin` reformats all Java sources on every build (Allman braces, its own
 wrapping), bound to the default lifecycle — expect `git status` to show modified source files after
@@ -109,15 +138,16 @@ never persisted). From there:
 | Path | Page |
 |---|---|
 | `/` | Connect / disconnect, saved broker locations |
-| `/overview` | All queues, optional auto-refresh, paged and filtered |
-| `/queues` | One queue's messages (paged, filtered) |
-| `/message` | Single message detail (full body, any message type) |
+| `/overview` | Sortable/filterable queue overview, counters, ingress/acknowledgment rates and optional auto-refresh |
+| `/queues?name=` | One queue's counters and rates, paged/filtered waiting messages, scheduled and in-flight panels |
+| `/message` | Single message headers, properties and supported body content, subject to the detail limit |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
 | `/address?name=` | One address: its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts |
 | `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
+| `/client?id=` or `/client?connection=` | A client's connections, sessions, consumers, producers and links to queues holding its in-flight messages |
 | `/diagnose` | Why is this stuck: what on the broker is not moving, and what that usually means |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
@@ -194,13 +224,15 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.auth.username` | *(blank)* | The tool's own login. Blank on loopback means no sign-in; anywhere else it must be set |
 | `artemis.auth.password-hash` | *(blank)* | bcrypt hash for that account, with or without a `{bcrypt}` prefix. Generate with `--hash-password=` |
 | `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
-| `artemis.export-body-total-chars` | `20000000` | Total body characters a single export will hold in memory (~40MB); rows past it keep a truncated body |
+| `artemis.export-body-total-chars` | `20000000` | Body characters retained per queue's export pass (~40MB); rows past it keep a truncated body |
 | `artemis.in-flight-limit` | `5000` | Most in-flight (delivered, unacknowledged) messages a queue page lists. The broker returns them all at once, so above this they are not read; their consumers are still named |
 
 ## Security posture
 
-Read-only is the product, not a detail: nothing in this codebase consumes, acknowledges, moves, or
-deletes a message. That is checked rather than asserted — `ReadOnlyGuaranteeIT` drives every read
+Read-only is the product, not a detail: the tool never consumes, acknowledges, moves, or
+deletes business messages. Its management channel sends requests and receives replies through its
+own temporary reply queue; those management clients are labeled in the broker views. The business
+message guarantee is checked rather than asserted — `ReadOnlyGuaranteeIT` drives every read
 path against a real broker and compares the counters before and after.
 
 Reachability is three controls, each load-bearing on its own:
@@ -221,12 +253,12 @@ See [docs/architecture.md](docs/architecture.md) and `.claude/memory.md` for the
 already found and fixed — for instance a naive `startsWith("127.")` check, which accepts
 `127.0.0.1.attacker.com`, a hostname an attacker owns.
 
-Filters exposed to users (overview, queue, search) use Artemis **core** filter syntax
+Message filters (queue browsing, cross-queue search and subscription search) use Artemis **core** filter syntax
 (`AMQPriority`, `AMQTimestamp`, `AMQDurable`, `AMQSize`, or a property by its bare name) — not JMS
 selector syntax. A JMS-style `JMSPriority = 4` is not rejected, it silently matches nothing. JMS
 selector syntax applies only to the single-message detail path.
 
-CSV/JSON exports treat message bodies as untrusted content: every field is quoted, and a leading
+CSV exports treat message bodies as untrusted content: every field is quoted, and a leading
 `=`, `+`, `-` or `@` is prefixed with an apostrophe so a downloaded file isn't evaluated as
 spreadsheet formulas (`MessageExporterTest` covers it).
 
@@ -241,6 +273,28 @@ So the number shown per queue is how many were **found**, capped at `artemis.sea
 and the page says "at least N" when that cap was reached. The broker will not tell us the true total
 without scanning, and a number that looks exact and isn't is worse than one that admits its limits.
 
+Filtered queue pages likewise avoid that sampled count: they show whether another page exists,
+without claiming an exact total. Unfiltered paging excludes scheduled and in-flight messages from
+the browsable total. Those states have their own panels because management browse returns neither.
+
+An exact message-ID search can also check in-flight messages within the configured reading limit.
+General property filters cannot search that state, and scheduled messages are not included in the
+browse search. An empty search result therefore does not prove that a message is absent; inspect
+the reported unsearched states and limits. In-flight bodies are not available through this view.
+
+## Rates and diagnostic evidence
+
+Ingress and acknowledgment rates compare two readings in the current HTTP session. The first
+reading has no rate; the page shows the measurement interval. A broker restart or counter reset
+invalidates the affected interval. Acknowledgments are separate from expired and killed messages,
+and the current implementation keeps one interval, not a trend history.
+
+The address page measures subscriber lag using the oldest undelivered message's age. In-flight
+message age is measured from send time, not delivery time, so it cannot prove how long a consumer
+has held that message. In-flight inspection is bounded, and Diagnose reports what its budget
+left unread. Expired/killed counters record removals whether messages were forwarded or dropped;
+current address settings help explain their destination but cannot establish historical settings.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -248,8 +302,10 @@ broker's `management-message-attribute-size-limit` (256 characters by default) a
 `", + N more"` to the value itself — and which has no body at all for bytes, map or stream messages.
 That is fine for a table cell and wrong for a download, so `/export` builds its list from management
 browse (the broker still does the paging and the core filtering) and then fills in the bodies that
-need it from a single JMS browser pass, which reads real bodies of any type. `bodyTruncated` says
-whether what you got is the whole body. The pass is bounded by `artemis.export-body-scan-limit`;
+need it from a single JMS browser pass. Text, bytes and map bodies are supported; object bodies
+are deliberately not deserialized, and stream bodies are not read. Those types carry explanatory
+placeholders. `bodyTruncated` flags shortened content; it does not turn a placeholder into a body.
+The per-message limit is `artemis.body-detail-chars`. The pass is bounded by `artemis.export-body-scan-limit`;
 anything it doesn't reach keeps its management body, flagged truncated rather than passed off as
 complete. Like every other read here, it consumes nothing — verified against a live broker with
 counters unchanged after repeated exports.
@@ -259,9 +315,13 @@ export bodies and written out before the next is fetched, so a search that match
 never holds thirty queues' worth of bodies at once. CSV names the queue on every row; JSON groups
 messages under their queue.
 
-That pass is the one place in the app that holds real message bodies in memory, so it is bounded
+`artemis.export-max-messages` caps the total rows across the export. These exports contain browsable
+messages, not the scheduled or in-flight panels, and re-read the broker rather than freezing the
+earlier search results.
+
+That pass retains multiple message bodies in memory, so it is bounded
 twice: `artemis.export-body-scan-limit` caps how far it walks, and `artemis.export-body-total-chars`
-caps what it keeps. Once the character budget is spent, remaining rows keep their management body
+caps what it keeps for each queue's export pass. Once the character budget is spent, remaining rows keep their management body
 and are flagged truncated, so the file always says which rows were cut. Both the CSV and the JSON
 writers stream to the response rather than building the document in memory first.
 
@@ -275,7 +335,7 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerCredentials          Password carrier from the connect form to connect(), not retained
 │   ├── ConnectionInfo             What the session keeps after connecting: host/port/username only
 │   ├── ManagementChannel          Request/reply plumbing over activemq.management; refuses any non-read operation
-│   ├── QueueDirectory             Lists queues + counters in one listQueues call
+│   ├── QueueDirectory             Lists queues + counters through paged listQueues calls
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── InFlightService            Delivered-not-acked messages, which browse cannot see; capped, tied to their clients
 │   ├── MessageIdLookup            Recognises an exact message-ID search, the one kind in-flight messages can answer
@@ -319,11 +379,11 @@ com.culberth.tools.artemisbrowser
 │   └── scripts/build-image.ps1    jar -> image -> `kind load` into the local cluster
 └── (resources)
     ├── application.properties     See Configuration above
-    └── templates/
-        ├── fragments/layout.html  Shared nav — edited once when a page is added
-        ├── login.html, connect.html, overview.html, queues.html, message.html,
-        │   addresses.html, address.html, broker.html, search.html, diagnose.html
-        └── static/app.css
+    ├── templates/
+    │   ├── fragments/layout.html  Shared nav — edited once when a page is added
+    │   └── login.html, connect.html, overview.html, queues.html, message.html,
+    │       addresses.html, address.html, broker.html, client.html, search.html, diagnose.html
+    └── static/app.css
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the deeper rationale behind these boundaries
