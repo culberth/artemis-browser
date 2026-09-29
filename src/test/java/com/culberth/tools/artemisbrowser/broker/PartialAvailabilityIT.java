@@ -71,7 +71,7 @@ class PartialAvailabilityIT
                         + "<permission type=\"view\" roles=\"amq,viewer\"/><permission type=\"edit\" roles=\"amq\"/>"
                         + "</security-setting>" + deniedToViewer("mops.broker." + DENIED_OPERATION)
                         + deniedToViewer("mops.broker.getDiskStoreUsage") + deniedToViewer("mops.broker.getDivertNames")
-                        + "#' etc/broker.xml",
+                        + deniedToViewer("mops.address.\\#") + "#' etc/broker.xml",
                 "exec ./bin/artemis run", "");
     }
 
@@ -140,6 +140,10 @@ class PartialAvailabilityIT
         assertTrue(diagnosis.unchecked().stream().anyMatch(line -> line.startsWith("Disk use")),
                 diagnosis.unchecked().toString());
         assertTrue(diagnosis.unchecked().stream().anyMatch(line -> line.startsWith("Exclusive diverts")),
+                diagnosis.unchecked().toString());
+        // Address attributes denied: whether any address is blocked could not be looked at, and the
+        // scan stopped at the first refusal rather than asking every address.
+        assertEquals(1, diagnosis.unchecked().stream().filter(line -> line.contains("blocked by an operator")).count(),
                 diagnosis.unchecked().toString());
     }
 

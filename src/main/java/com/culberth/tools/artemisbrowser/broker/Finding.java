@@ -15,10 +15,22 @@ package com.culberth.tools.artemisbrowser.broker;
  * @param address      the address to open to see more, or null; a finding about a subscription carries both
  * @param clientId     the client the finding is about, when it has a client id; else null
  * @param connectionId the client's connection, for one with no client id; else null
+ * @param basis        {@link #OBSERVED} when the broker reported the thing itself, {@link #INFERRED} when the finding
+ *                     reasons from what it reported — a percentage and a policy, say, to what a producer is going
+ *                     through
  */
 public record Finding(String severity, String title, String detail, String queue, String address, String clientId,
-        String connectionId)
+        String connectionId, String basis)
 {
+
+    public static final String OBSERVED = "observed";
+    public static final String INFERRED = "inferred";
+
+    public Finding(String severity, String title, String detail, String queue, String address, String clientId,
+            String connectionId)
+    {
+        this(severity, title, detail, queue, address, clientId, connectionId, OBSERVED);
+    }
 
     public Finding(String severity, String title, String detail, String queue, String address)
     {
@@ -30,7 +42,18 @@ public record Finding(String severity, String title, String detail, String queue
     {
         boolean named = clientId != null && !clientId.isEmpty();
         return new Finding(severity, title, detail, queue, address, named ? clientId : null,
-                named ? null : connectionId);
+                named ? null : connectionId, basis);
+    }
+
+    /** The same finding, marked as reasoned from what the broker reported rather than reported by it. */
+    public Finding inferred()
+    {
+        return new Finding(severity, title, detail, queue, address, clientId, connectionId, INFERRED);
+    }
+
+    public boolean isInferred()
+    {
+        return INFERRED.equals(basis);
     }
 
     public boolean hasClient()

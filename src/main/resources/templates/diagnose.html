@@ -26,7 +26,8 @@
 
         <p class="muted" th:if="${findings.isEmpty() and unchecked.isEmpty()}">
             Nothing on this broker looks blocked: no paused queues, nothing waiting without a
-            consumer, no unrouted addresses, and the broker is not near its disk or memory limits.
+            consumer, no unrouted addresses, no address blocked or at a limit that blocks, rejects or
+            drops, and the broker is not near its disk or memory limits.
         </p>
         <p class="muted" th:if="${findings.isEmpty() and !unchecked.isEmpty()}">
             Nothing looks blocked in what this page could check &mdash; but not everything could be
@@ -38,6 +39,8 @@
             <h3 style="margin:0 0 .35rem">
                 <span class="badge" th:classappend="${f.isStuck()} ? 'warn' : ''"
                       th:text="${f.isStuck()} ? 'not moving' : 'worth a look'">not moving</span>
+                <span class="badge" th:if="${f.isInferred()}"
+                      title="Reasoned from what the broker reported &mdash; a usage figure and a policy, say &mdash; rather than reported by it">inferred</span>
                 <span th:text="${f.title()}">title</span>
             </h3>
             <p class="muted" style="margin:0 0 .5rem" th:text="${f.detail()}">detail</p>

@@ -15,8 +15,9 @@ import org.springframework.stereotype.Service;
  * <p>
  * Four listings — the address listing (through {@link AddressDirectory}), a {@code listQueues} filtered to the address,
  * {@code listConsumers}, {@code listProducersInfoAsJSON} — plus one {@code firstMessageAge} read per subscription that
- * has anything on it, the address's settings, and the broker's diverts. The per-queue and per-divert reads are why this
- * is a page for one address and not part of the index.
+ * has anything on it, the address's settings, its {@code blockedViaManagement} flag, the broker's health attributes for
+ * the global memory limit, and the broker's diverts. The per-queue and per-divert reads are why this is a page for one
+ * address and not part of the index.
  */
 @Service
 public class AddressDetailService
@@ -82,27 +83,22 @@ public class AddressDetailService
                 oldest.put(subscription.name(), age.value());
             }
         }
-        return new AddressDetail(address, subscriptions, consumers, producers, oldest, routing(name, all), notRead);
+        // Settings explain the page; they are not the page. A broker that refuses this one read
+        // should still show who is subscribed. Read once, for both panels that use them.
+        Reading<AddressSettings> settings = Reading.attempt(() -> addressDirectory.settings(name));
+        AddressPressure pressure = new AddressPressure(address, settings, addressDirectory.blockedViaManagement(name),
+                brokerInfo.health());
+        return new AddressDetail(address, subscriptions, consumers, producers, oldest, routing(name, all, settings),
+                notRead, pressure);
     }
 
-    private AddressRouting routing(String name, List<AddressOverview> all)
+    private AddressRouting routing(String name, List<AddressOverview> all, Reading<AddressSettings> settings)
     {
-        AddressSettings settings = null;
-        String settingsError = null;
-        try
-        {
-            settings = addressDirectory.settings(name);
-        }
-        catch (BrokerException e)
-        {
-            // Settings explain the page; they are not the page. A broker that refuses this one read
-            // should still show who is subscribed.
-            settingsError = e.getMessage();
-        }
         Reading<List<Divert>> diverts = Reading.attempt(divertDirectory::all);
         List<Divert> known = diverts.orElse(List.of());
-        return new AddressRouting(settings, settingsError, DivertDirectory.from(known, name),
-                DivertDirectory.to(known, name), all.stream().map(AddressOverview::name).collect(Collectors.toSet()),
+        return new AddressRouting(settings.orElse(null), settings.available() ? null : settings.explained(),
+                DivertDirectory.from(known, name), DivertDirectory.to(known, name),
+                all.stream().map(AddressOverview::name).collect(Collectors.toSet()),
                 diverts.available() ? null : diverts.explained());
     }
 

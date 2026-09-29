@@ -29,7 +29,7 @@
             <span class="badge" th:text="${a.routingTypes()}">ANYCAST</span>
             <span class="badge" th:if="${a.internal()}">internal</span>
             <span class="badge" th:if="${a.temporary()}">temporary</span>
-            <span class="badge" th:if="${a.paging()}">paging</span>
+            <th:block th:replace="~{fragments/layout :: storageBadges(${a})}"></th:block>
             <span class="badge warn" th:if="${a.hasUnrouted()}">unrouted</span>
         </h2>
 
@@ -40,7 +40,11 @@
             <div class="stat" th:classappend="${a.hasUnrouted()} ? 'stat-warn' : ''">
                 <span class="k">Unrouted</span><span class="v" th:text="${a.unroutedMessageCount()}">0</span>
             </div>
-            <div class="stat"><span class="k">Size</span><span class="v" th:text="${a.addressSizeBytes()}">0</span></div>
+            <div class="stat" title="The broker's in-memory estimate of what this address holds &mdash; what its limits are measured against. Not journal bytes, and not disk use.">
+                <span class="k">Address memory</span>
+                <span class="v" th:if="${a.sizeText() != null}" th:text="${a.sizeText()}">0 B</span>
+                <span class="v" th:if="${a.sizeText() == null}"><span th:replace="~{fragments/layout :: missing(${a.addressSize()})}"></span></span>
+            </div>
         </div>
 
         <p class="note" th:if="${a.hasUnrouted()}">

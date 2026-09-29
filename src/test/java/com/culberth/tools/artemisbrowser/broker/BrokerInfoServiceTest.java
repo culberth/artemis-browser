@@ -106,6 +106,26 @@ class BrokerInfoServiceTest
     }
 
     @Test
+    @DisplayName("global-max-size is read as bytes beside the memory in use, and a refusal leaves the rest")
+    void readsTheGlobalLimit()
+    {
+        healthAttributes(0.1d, 90L);
+
+        BrokerHealth health = new BrokerInfoService(brokerSession).health();
+
+        assertEquals(1073741824L, health.globalMaxBytes().value());
+        assertEquals(1048576.0 / 1073741824, health.memoryUsedFraction());
+
+        given(management.attribute(ResourceNames.BROKER, "globalMaxSize"))
+                .willThrow(new ManagementRefusal(Availability.UNAVAILABLE, "Problem while retrieving attribute"));
+        BrokerHealth refused = new BrokerInfoService(brokerSession).health();
+
+        assertEquals(Availability.UNAVAILABLE, refused.globalMaxBytes().availability());
+        assertEquals(null, refused.memoryUsedFraction());
+        assertEquals(5L, refused.memoryUsedPercent().value());
+    }
+
+    @Test
     @DisplayName("a count that is not a number is 'could not be read', never zero")
     void doesNotTurnGarbageIntoZero()
     {
@@ -239,6 +259,7 @@ class BrokerInfoServiceTest
         given(management.attribute(ResourceNames.BROKER, "addressMemoryUsagePercentage")).willReturn(5L);
         given(management.attribute(ResourceNames.BROKER, "diskStoreUsage")).willReturn(diskRatio);
         given(management.attribute(ResourceNames.BROKER, "maxDiskUsage")).willReturn(maxDisk);
+        given(management.attribute(ResourceNames.BROKER, "globalMaxSize")).willReturn(1073741824L);
     }
 
     private void consumersReturn(String... consumers)

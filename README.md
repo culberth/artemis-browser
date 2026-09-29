@@ -42,10 +42,11 @@ Shipped so far:
 
 ## Next: Phase 13 (planned)
 
-Phase 13 expands broker visibility and explains operational behavior. It is in progress; P0 is done
-and the six feature areas below are not yet built:
+Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
+first feature area (P1, address pressure) are done, and the rest are not yet built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
+   **Done.**
 2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
 3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
 4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
@@ -55,8 +56,15 @@ and the six feature areas below are not yet built:
 Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
 and subscription age says why it is missing — unsupported, not permitted, unavailable, could not be
 read — instead of showing zero or failing the page, and a user without the `manage` permission is
-told so rather than being sent back to the connect form. Address pressure and queue behavior come next;
-all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+told so rather than being sent back to the connect form.
+
+Done in P1: each address page has a *Storage and limits* panel showing address memory, messages and
+pages against their limits beside the full policy and what it does to a sender, whether an operator
+blocked it, and its share of `global-max-size`. The address index marks an address that is full or
+near its limit, and does not mark one that is merely paging. Diagnose names blocked addresses
+(observed), and addresses at or near a limit that blocks, rejects or drops (inferred). The global
+memory finding names the largest holders without blaming them. Queue behavior comes next, and all
+six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -311,6 +319,12 @@ has held that message. In-flight inspection is bounded, and Diagnose reports wha
 left unread. Expired/killed counters record removals whether messages were forwarded or dropped;
 current address settings help explain their destination but cannot establish historical settings.
 
+Address pressure findings are marked *inferred* where they reason from a percentage and a policy to
+what a producer is going through; only a management `block()` is reported as observed. The broker's
+`paging` flag means "over its limit", so an address under FAIL or DROP reads as paging with no pages
+written. The pages show "paging" only when pages exist. Whether an address is blocked by an operator
+is one read per address, capped at 500 per diagnose run.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -356,7 +370,7 @@ com.culberth.tools.artemisbrowser
 │   ├── InFlightService            Delivered-not-acked messages, which browse cannot see; capped, tied to their clients
 │   ├── MessageIdLookup            Recognises an exact message-ID search, the one kind in-flight messages can answer
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
-│   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts; per-subscription search
+│   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts, pressure; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
 │   ├── StuckDiagnosisService      "Why is this not moving": cheap reads, in-flight ages within a budget, rates
@@ -369,12 +383,13 @@ com.culberth.tools.artemisbrowser
 │   │   / InFlight / InFlightConsumer / InFlightMessage / InFlightLookup
 │   │                              Queue and message view models, including FQQN browse-name handling
 │   ├── AddressDetail / Subscription / SubscriberConsumer / SubscriptionSearch
-│   │   / AddressRouting / AddressSettings / Divert
+│   │   / AddressRouting / AddressSettings / AddressPressure / Divert
 │   │                              One address as its subscribers see it; kinds and name hints from the broker's naming
 │   ├── AddressOverview / BrokerConnection / BrokerConsumer / BrokerProducer / BrokerHealth / AcceptorInfo
 │   │   / SearchResult / SavedConnection / Finding / Diagnosis / Rates / QueueRate / ClientView
 │   │                              Broker, address, search and diagnosis view models
-│   └── BrokerException / NotConnectedException / ConnectionLostException
+│   ├── Reading / Availability     A value the broker gave, or why not — never a zero in its place
+│   └── BrokerException / ManagementRefusal / NotConnectedException / ConnectionLostException
 │                                  Broker-facing error types; the last is deliberately not a BrokerException
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection

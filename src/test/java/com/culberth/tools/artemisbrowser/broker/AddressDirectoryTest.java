@@ -117,10 +117,58 @@ class AddressDirectoryTest
         AddressOverview address = directory().overview().get(0);
 
         assertEquals(12, address.messageCount());
-        assertEquals(4096, address.addressSizeBytes());
+        assertEquals(4096L, address.addressSize().value());
         assertEquals(3, address.unroutedMessageCount());
         assertTrue(address.hasUnrouted());
         assertFalse(address.paging());
+    }
+
+    @Test
+    @DisplayName("the storage fields arrive quoted, as recorded from probe-fail on 2.55.0 and 2.57.0")
+    void readsStorageFields()
+    {
+        listAddressesReturns(1, "{\"id\":\"219\",\"name\":\"probe-fail\",\"routingTypes\":\"[\\\"ANYCAST\\\"]\","
+                + "\"queueCount\":\"1\",\"internal\":\"false\",\"temporary\":\"false\",\"autoCreated\":\"true\","
+                + "\"paused\":\"false\",\"unroutedMessageCount\":\"0\",\"routedMessageCount\":\"8\","
+                + "\"messageCount\":\"7\",\"addressLimitPercent\":\"108\",\"numberOfPages\":\"0\","
+                + "\"addressSize\":\"21679\",\"numberOfBytesPerPage\":\"10000\",\"paging\":\"true\"}");
+
+        AddressOverview address = directory().overview().get(0);
+
+        assertEquals(108L, address.limitPercent().value());
+        assertEquals(0L, address.pages().value());
+        assertTrue(address.fullWithoutPaging(), "paging with no pages is a full address under FAIL or DROP");
+        assertFalse(address.pagedToDisk());
+        assertTrue(address.underPressure());
+    }
+
+    @Test
+    @DisplayName("a listing without the storage fields leaves them unsupported, never zero")
+    void missingStorageFieldsAreNotZero()
+    {
+        listAddressesReturns(1, "{\"name\":\"old\",\"routingTypes\":\"[]\",\"addressLimitPercent\":\"lots\"}");
+
+        AddressOverview address = directory().overview().get(0);
+
+        assertEquals(Availability.UNSUPPORTED, address.addressSize().availability());
+        assertEquals(Availability.UNSUPPORTED, address.pages().availability());
+        assertEquals(Availability.FAILED, address.limitPercent().availability());
+        assertNull(address.sizeText());
+        assertFalse(address.underPressure());
+    }
+
+    @Test
+    @DisplayName("the management block is read per address, and a refusal is a reading, not false")
+    void readsTheManagementBlock()
+    {
+        given(management.attribute(ResourceNames.ADDRESS + "held", "blockedViaManagement")).willReturn(true);
+        given(management.attribute(ResourceNames.ADDRESS + "open", "blockedViaManagement")).willReturn("false");
+        given(management.attribute(ResourceNames.ADDRESS + "gone", "blockedViaManagement"))
+                .willThrow(new ManagementRefusal(Availability.UNAVAILABLE, "Problem while retrieving attribute"));
+
+        assertTrue(directory().blockedViaManagement("held").value());
+        assertFalse(directory().blockedViaManagement("open").value());
+        assertEquals(Availability.UNAVAILABLE, directory().blockedViaManagement("gone").availability());
     }
 
     @Test

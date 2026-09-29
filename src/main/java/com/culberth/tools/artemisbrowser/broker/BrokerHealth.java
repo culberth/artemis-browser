@@ -17,13 +17,25 @@ import java.util.Locale;
  * @param diskUsedPercent   percentage of the disk store in use
  * @param maxDiskPercent    the threshold at which the broker starts blocking producers
  * @param memoryUsedBytes   global address memory in use
- * @param memoryUsedPercent that memory as a percentage of the configured limit
+ * @param memoryUsedPercent that memory as a percentage of the configured limit, in whole percent — so a broker with a
+ *                          large limit reads 0 until it is using a good deal
+ * @param globalMaxBytes    that configured limit, {@code global-max-size}, in bytes
  */
 public record BrokerHealth(Reading<String> version, Reading<String> uptime, Reading<String> state,
         Reading<String> nodeId, Reading<Long> connectionCount, Reading<Long> sessionCount, Reading<Long> consumerCount,
         Reading<Long> memoryUsedBytes, Reading<Long> memoryUsedPercent, Reading<Double> diskUsedPercent,
-        Reading<Long> maxDiskPercent, Instant collectedAt)
+        Reading<Long> maxDiskPercent, Instant collectedAt, Reading<Long> globalMaxBytes)
 {
+
+    /** Without the global limit — as built before it was read. */
+    public BrokerHealth(Reading<String> version, Reading<String> uptime, Reading<String> state, Reading<String> nodeId,
+            Reading<Long> connectionCount, Reading<Long> sessionCount, Reading<Long> consumerCount,
+            Reading<Long> memoryUsedBytes, Reading<Long> memoryUsedPercent, Reading<Double> diskUsedPercent,
+            Reading<Long> maxDiskPercent, Instant collectedAt)
+    {
+        this(version, uptime, state, nodeId, connectionCount, sessionCount, consumerCount, memoryUsedBytes,
+                memoryUsedPercent, diskUsedPercent, maxDiskPercent, collectedAt, Reading.notCollected("not asked for"));
+    }
 
     /** Every value present — for tests and for the places that build one from known numbers. */
     public static BrokerHealth of(String version, String uptime, String state, String nodeId, long connectionCount,
@@ -33,7 +45,21 @@ public record BrokerHealth(Reading<String> version, Reading<String> uptime, Read
         return new BrokerHealth(Reading.of(version), Reading.of(uptime), Reading.of(state), Reading.of(nodeId),
                 Reading.of(connectionCount), Reading.of(sessionCount), Reading.of(consumerCount),
                 Reading.of(memoryUsedBytes), Reading.of(memoryUsedPercent), Reading.of(diskUsedPercent),
-                Reading.of(maxDiskPercent), Instant.now());
+                Reading.of(maxDiskPercent), Instant.now(), Reading.of(1L << 30));
+    }
+
+    /**
+     * Address memory against {@code global-max-size} as a fraction, from the two byte counts where both were read —
+     * finer than the broker's whole percent, which says 0% for anything under 1%. Null when either is missing or there
+     * is no limit.
+     */
+    public Double memoryUsedFraction()
+    {
+        if (!memoryUsedBytes.available() || !globalMaxBytes.available() || globalMaxBytes.value() <= 0)
+        {
+            return null;
+        }
+        return (double) memoryUsedBytes.value() / globalMaxBytes.value();
     }
 
     /**

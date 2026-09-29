@@ -24,7 +24,7 @@
             <span class="badge" th:text="${a.routingTypes()}">MULTICAST</span>
             <span class="badge" th:if="${a.internal()}">internal</span>
             <span class="badge" th:if="${a.temporary()}">temporary</span>
-            <span class="badge" th:if="${a.paging()}">paging</span>
+            <th:block th:replace="~{fragments/layout :: storageBadges(${a})}"></th:block>
             <span class="badge warn" th:if="${a.hasUnrouted()}">unrouted</span>
         </h2>
 
@@ -40,13 +40,116 @@
             <div class="stat" th:classappend="${a.hasUnrouted()} ? 'stat-warn' : ''">
                 <span class="k">Unrouted</span><span class="v" th:text="${a.unroutedMessageCount()}">0</span>
             </div>
-            <div class="stat"><span class="k">Size</span><span class="v" th:text="${a.addressSizeBytes()}">0</span></div>
+            <div class="stat" title="The broker's in-memory estimate of what this address holds &mdash; what its limits are measured against. Not journal bytes, and not disk use.">
+                <span class="k">Address memory</span>
+                <span class="v" th:if="${a.sizeText() != null}" th:text="${a.sizeText()}">0 B</span>
+                <span class="v" th:if="${a.sizeText() == null}"><span th:replace="~{fragments/layout :: missing(${a.addressSize()})}"></span></span>
+            </div>
         </div>
 
         <p class="note" th:if="${a.hasUnrouted()}">
             Messages reached this address and matched no queue, so they were dropped. With multicast
             that usually means they were published before any subscription existed, or that every
             subscription's filter turned them away.
+        </p>
+    </div>
+
+    <div class="panel" th:with="p=${detail.pressure()}, state=${detail.pressure().state().name()}">
+        <h2>Storage and limits
+            <th:block th:if="${p.settings().available()}"><span th:replace="~{fragments/layout :: collected(${p.settings()})}"></span></th:block>
+        </h2>
+
+        <div class="error" th:if="${state == 'BLOCKED'}">
+            Blocked through management. An operator called <code>block()</code> on this address, and the
+            broker reports it: a producer sending here now fails at once with &ldquo;address is full&rdquo;,
+            whatever its limits say. It is lifted on the broker with <code>unblock()</code>, not from here.
+        </div>
+        <div class="error" th:if="${state == 'AT_LIMIT'}"
+             th:text="'At its limit' + (${p.utilizationText() != null} ? ' (' + ${p.utilizationText()} + ')' : '') + '. Its policy is ' + ${p.policy()} + ': ' + ${p.policy().consequence()} + '.'">
+            At its limit.
+        </div>
+        <div class="error" th:if="${state == 'NEAR_LIMIT'}"
+             th:text="'Near its limit (' + ${p.utilizationText()} + '). When it gets there its policy, ' + ${p.policy()} + ', means ' + ${p.policy().consequence()} + '.'">
+            Near its limit.
+        </div>
+        <div class="error" th:if="${state == 'NEAR_PAGE_LIMIT'}"
+             th:text="'Paging, and near its page limit of ' + ${p.pageLimitText()} + '. Past it, ' + (${p.pagePolicy() != null} ? ${p.pagePolicy().consequence()} : 'the broker applies its page-full policy') + '.'">
+            Near its page limit.
+        </div>
+        <p class="note" th:if="${state == 'PAGING'}">
+            Paging: over its limit under the PAGE policy, so further messages are written to page files on
+            disk rather than held in memory. That is the policy working &mdash; nothing is lost, and
+            consumers read the pages back in order.
+        </p>
+
+        <th:block th:if="${!p.settings().available()}"><p th:replace="~{fragments/layout :: panelMissing(${p.settings()})}"></p></th:block>
+
+        <div class="table-scroll">
+            <table>
+                <thead>
+                <tr><th></th><th>Now</th><th>Limit</th><th>At the limit</th></tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <th>Address memory</th>
+                    <td>
+                        <span th:if="${a.sizeText() != null}" th:text="${a.sizeText()}">21.2 KB</span>
+                        <th:block th:if="${a.sizeText() == null}"><span th:replace="~{fragments/layout :: missing(${a.addressSize()})}"></span></th:block>
+                        <span class="muted" th:if="${p.utilizationText() != null}" th:text="'(' + ${p.utilizationText()} + ' of its limit)'">(108%)</span>
+                    </td>
+                    <td th:text="${p.byteLimitText()} ?: '&mdash;'">20000 bytes</td>
+                    <td rowspan="2">
+                        <th:block th:if="${p.policy() != null}">
+                            <code th:text="${p.policy()}">PAGE</code>:
+                            <span th:text="${p.policy().consequence()}">paged</span>
+                        </th:block>
+                        <span class="muted" th:if="${p.policy() == null and p.settings().available()}">not set</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Messages</th>
+                    <td th:text="${a.messageCount()}">40</td>
+                    <td th:text="${p.messageLimitText()} ?: '&mdash;'">unlimited</td>
+                </tr>
+                <tr>
+                    <th>Pages on disk</th>
+                    <td>
+                        <span th:if="${a.pages().available()}" th:text="${a.pages().value()}">9</span>
+                        <th:block th:unless="${a.pages().available()}"><span th:replace="~{fragments/layout :: missing(${a.pages()})}"></span></th:block>
+                    </td>
+                    <td th:text="${p.pageLimitText()} ?: '&mdash;'">none</td>
+                    <td>
+                        <th:block th:if="${p.pagePolicy() != null}">
+                            <code th:text="${p.pagePolicy()}">FAIL</code>:
+                            <span th:text="${p.pagePolicy().consequence()}">rejected</span>
+                        </th:block>
+                        <span class="muted" th:if="${p.pagePolicy() == null and p.settings().available()}">no page limit policy set</span>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Blocked by an operator</th>
+                    <td>
+                        <span th:if="${p.blocked().available()}" th:text="${p.blocked().value()} ? 'yes' : 'no'">no</span>
+                        <th:block th:unless="${p.blocked().available()}"><span th:replace="~{fragments/layout :: missing(${p.blocked()})}"></span></th:block>
+                    </td>
+                    <td colspan="2" class="muted">Set only by a management <code>block()</code>. An address held up by its
+                        BLOCK policy reads &ldquo;no&rdquo; here; its percentage is what shows that.</td>
+                </tr>
+                <tr th:if="${p.globalText() != null}">
+                    <th>All addresses</th>
+                    <td th:text="${p.globalText()}">166.6 KB of 1.0 GB</td>
+                    <td colspan="2" class="muted"
+                        th:text="'global-max-size, shared by every address' + (${p.globalShareText() != null} ? '; this one holds ' + ${p.globalShareText()} + ' of it' : '') + '. Past it, every address applies its own policy.'">
+                        global-max-size</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Address memory is the broker&rsquo;s in-memory estimate of what the address holds, and it is what
+            these limits are measured against. It is not the journal &mdash; each queue&rsquo;s persistent size
+            &mdash; and not disk use, which is on the <a th:href="@{/broker}">broker page</a>. Under BLOCK the
+            percentage can pass 100% well before anything is refused: producers are granted credit ahead.
         </p>
     </div>
 

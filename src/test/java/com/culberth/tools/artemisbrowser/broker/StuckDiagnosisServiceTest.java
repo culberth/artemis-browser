@@ -51,6 +51,7 @@ class StuckDiagnosisServiceTest
 
         given(queues.overview()).willReturn(List.of());
         given(addresses.overview()).willReturn(List.of());
+        given(addresses.blockedViaManagement(anyString())).willReturn(Reading.of(false));
         given(brokerInfo.consumers()).willReturn(List.of());
         // 10% used against a 90% limit: comfortably clear of diskPressure(), which trips at 80% of
         // the limit rather than at it.
@@ -515,6 +516,138 @@ class StuckDiagnosisServiceTest
         assertTrue(detailFor(result.findings(), "stopped")
                 .contains("Nothing on this queue was acknowledged in the last 15s"));
         assertTrue(result.measured().sampled());
+    }
+
+    @Test
+    @DisplayName("an address an operator blocked is an observed finding, linked to the address")
+    void flagsAManagementBlock()
+    {
+        given(addresses.overview()).willReturn(List.of(address("held", 0, 0, false, 0)));
+        given(addresses.blockedViaManagement("held")).willReturn(Reading.of(true));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.isStuck());
+        assertFalse(finding.isInferred(), "the broker reports a block itself");
+        assertEquals("held", finding.address());
+        verify(addresses, never()).settings(anyString());
+    }
+
+    @Test
+    @DisplayName("each policy at its limit says what it does to a sender, inferred from usage and policy")
+    void flagsEachHarmfulPolicyAtItsLimit()
+    {
+        // Shapes as recorded on 2.55.0 and 2.57.0 against a 20KB limit.
+        given(addresses.overview()).willReturn(List.of(address("probe-block", 27, 418, false, 0),
+                address("probe-fail", 7, 108, true, 0), address("probe-drop", 7, 108, true, 0)));
+        given(addresses.settings("probe-block")).willReturn(settings("BLOCK"));
+        given(addresses.settings("probe-fail")).willReturn(settings("FAIL"));
+        given(addresses.settings("probe-drop")).willReturn(settings("DROP"));
+
+        List<Finding> findings = service().diagnose(false);
+
+        assertEquals(3, findings.size(), String.valueOf(findings));
+        assertTrue(findings.stream().allMatch(f -> f.isStuck() && f.isInferred()), String.valueOf(findings));
+        assertTrue(titleFor(findings, "probe-block").contains("producers are made to wait"));
+        assertTrue(titleFor(findings, "probe-fail").contains("rejected"));
+        assertTrue(titleFor(findings, "probe-drop").contains("discarded"));
+    }
+
+    @Test
+    @DisplayName("paging under PAGE is the policy working, not a finding")
+    void pagingIsNormal()
+    {
+        given(addresses.overview()).willReturn(List.of(address("probe-page", 40, 108, true, 9)));
+        given(addresses.settings("probe-page")).willReturn(settings("PAGE"));
+
+        assertTrue(service().diagnose(false).isEmpty());
+    }
+
+    @Test
+    @DisplayName("near a limit that blocks is worth a look before it bites")
+    void flagsNearALimit()
+    {
+        given(addresses.overview()).willReturn(List.of(address("busy", 10, 85, false, 0)));
+        given(addresses.settings("busy")).willReturn(settings("BLOCK"));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertFalse(finding.isStuck());
+        assertTrue(finding.title().contains("near its limit"), finding.title());
+    }
+
+    @Test
+    @DisplayName("settings are read only for addresses the listing already shows near a limit or paging")
+    void readsSettingsOnlyWhenFlagged()
+    {
+        given(addresses.overview())
+                .willReturn(List.of(address("quiet", 3, 10, false, 0), address("unlimited", 3, 0, false, 0)));
+
+        assertTrue(service().diagnose(false).isEmpty());
+        verify(addresses, never()).settings(anyString());
+    }
+
+    @Test
+    @DisplayName("a policy that could not be read leaves the address flagged and says what was not checked")
+    void saysWhenThePolicyCouldNotBeRead()
+    {
+        given(addresses.overview()).willReturn(List.of(address("probe-fail", 7, 108, true, 0)));
+        given(addresses.settings("probe-fail")).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032"));
+
+        Diagnosis result = service().run(false);
+
+        Finding finding = only(result.findings());
+        assertFalse(finding.isStuck());
+        assertTrue(result.unchecked().stream().anyMatch(line -> line.contains("probe-fail")),
+                result.unchecked().toString());
+    }
+
+    @Test
+    @DisplayName("a refused block read stops the scan once and says so, rather than asking every address")
+    void stopsTheBlockScanAtARefusal()
+    {
+        given(addresses.overview()).willReturn(List.of(address("a", 0, 0, false, 0), address("b", 0, 0, false, 0)));
+        given(addresses.blockedViaManagement(anyString()))
+                .willReturn(Reading.missing(Availability.UNAVAILABLE, "Problem while retrieving attribute"));
+
+        Diagnosis result = service().run(false);
+
+        verify(addresses, org.mockito.Mockito.times(1)).blockedViaManagement(anyString());
+        assertEquals(1, result.unchecked().stream().filter(line -> line.contains("blocked by an operator")).count());
+    }
+
+    @Test
+    @DisplayName("global memory pressure names the largest addresses without blaming them")
+    void namesTheLargestHoldersOfMemory()
+    {
+        given(brokerInfo.health())
+                .willReturn(BrokerHealth.of("2.55.0", "1 day", "STARTED", "node", 1, 1, 1, 900_000_000L, 85, 10, 90));
+        given(addresses.overview()).willReturn(List.of(address("small", 1, 0, false, 0), new AddressOverview("big",
+                "ANYCAST", 1, 800_000_000L, 1, 0, false, false, false, List.of(queue("big", 1, 0, 1, 0)))));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertEquals("big", finding.address());
+        assertTrue(finding.detail().contains("'big' 762.9 MB"), finding.detail());
+        assertTrue(finding.detail().contains("not necessarily why it filled"), finding.detail());
+    }
+
+    private String titleFor(List<Finding> findings, String address)
+    {
+        return findings.stream().filter(f -> address.equals(f.address())).map(Finding::title).findFirst()
+                .orElseThrow(() -> new AssertionError("no finding for " + address + " in " + findings));
+    }
+
+    private AddressOverview address(String name, long messages, long limitPercent, boolean paging, long pages)
+    {
+        return new AddressOverview(name, "ANYCAST", messages, 21679, messages, 0, paging, false, false,
+                List.of(queue(name, messages, 0, 1, 0))).withStorage(limitPercent, pages);
+    }
+
+    private AddressSettings settings(String policy)
+    {
+        return AddressSettings.of(Map.of("addressFullMessagePolicy", policy, "maxSizeBytes", "20000", "pageSizeBytes",
+                "10000", "pageLimitBytes", "-1", "pageLimitMessages", "-1"));
     }
 
     private String detailFor(List<Finding> findings, String queue)

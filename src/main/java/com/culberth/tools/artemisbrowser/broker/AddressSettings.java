@@ -77,6 +77,143 @@ public record AddressSettings(Map<String, String> all)
         return Boolean.parseBoolean(get(key));
     }
 
+    /** The address's own byte limit — what the broker's {@code addressLimitPercent} is measured against. */
+    public Limit maxSizeBytesLimit()
+    {
+        return Limit.of(get("maxSizeBytes"));
+    }
+
+    public Limit maxMessagesLimit()
+    {
+        return Limit.of(get("maxSizeMessages"));
+    }
+
+    public Limit pageLimitBytes()
+    {
+        return Limit.of(get("pageLimitBytes"));
+    }
+
+    public Limit pageLimitMessages()
+    {
+        return Limit.of(get("pageLimitMessages"));
+    }
+
+    /** What happens when the address reaches its limit; null when the broker left the key out. */
+    public FullPolicy addressFullPolicy()
+    {
+        return FullPolicy.parse(fullPolicy());
+    }
+
+    /**
+     * What happens when the paging store reaches its page limit. Absent unless configured — verified on 2.55.0 and
+     * 2.57.0 — so null here, never a guessed default.
+     */
+    public FullPolicy pageFullPolicy()
+    {
+        return FullPolicy.parse(get("pageFullMessagePolicy"));
+    }
+
+    /** True when either page limit is set to a real value. */
+    public boolean hasPageLimit()
+    {
+        return pageLimitBytes().limited() || pageLimitMessages().limited();
+    }
+
+    /**
+     * A size or count limit as the broker states it. Three different things, which a single number would blur: the
+     * broker left the key out ({@link #notSet()}), it said {@code -1} ({@link #unlimited()}), or it named a value.
+     *
+     * @param value the limit; meaningful only when {@link #limited()}
+     */
+    public record Limit(State state, long value)
+    {
+
+        public enum State
+        {
+            NOT_SET, UNLIMITED, LIMITED
+        }
+
+        static Limit of(String raw)
+        {
+            if (raw == null)
+            {
+                return new Limit(State.NOT_SET, 0);
+            }
+            try
+            {
+                long value = Long.parseLong(raw.trim());
+                return value < 0 ? new Limit(State.UNLIMITED, 0) : new Limit(State.LIMITED, value);
+            }
+            catch (NumberFormatException e)
+            {
+                // Not a number the broker would send; say nothing rather than invent a limit.
+                return new Limit(State.NOT_SET, 0);
+            }
+        }
+
+        public boolean limited()
+        {
+            return state == State.LIMITED;
+        }
+
+        public boolean unlimited()
+        {
+            return state == State.UNLIMITED;
+        }
+
+        public boolean notSet()
+        {
+            return state == State.NOT_SET;
+        }
+    }
+
+    /**
+     * {@code addressFullMessagePolicy} and {@code pageFullMessagePolicy}, with what each means to whoever is sending.
+     * Checked against 2.55.0 and 2.57.0: PAGE kept every message, FAIL answered the sender {@code AMQ229102 … is full},
+     * DROP accepted the send and kept nothing, BLOCK left the sender waiting.
+     */
+    public enum FullPolicy
+    {
+        PAGE("further messages are paged to disk — normal, and nothing is lost"),
+        BLOCK("producers are made to wait until consumers free up space"),
+        FAIL("sends are rejected with an \"address is full\" error"),
+        DROP("further messages are accepted and silently discarded");
+
+        private final String consequence;
+
+        FullPolicy(String consequence)
+        {
+            this.consequence = consequence;
+        }
+
+        public String consequence()
+        {
+            return consequence;
+        }
+
+        /** True for the policies under which a full address costs a sender something. */
+        public boolean harmful()
+        {
+            return this != PAGE;
+        }
+
+        static FullPolicy parse(String raw)
+        {
+            if (raw == null)
+            {
+                return null;
+            }
+            try
+            {
+                return valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+            }
+            catch (IllegalArgumentException e)
+            {
+                return null;
+            }
+        }
+    }
+
     private static String limit(String value, String unit)
     {
         if (value == null)
