@@ -1,12 +1,13 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24).** Phases 1–9 shipped and the project was declared
+Status: **Phase 13 planned 2026-09-29: broker visibility and operational explanation.**
+Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
-*Phase 10*, *Phase 11* and *Phase 12* below. The tool is run by one person, which is what settles the open questions about replicas,
+*Phase 10*, *Phase 11*, *Phase 12* and the planned *Phase 13* below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
-Last updated: 2026-09-27.
+Last updated: 2026-09-29.
 
 ## What this is
 
@@ -563,9 +564,189 @@ its answers recorded in `.claude/memory.md`, before anything is parsed.
 ### Considered and left out
 
 - **Alerting on a rate.** Out of scope, as ever: this shows rates, it does not watch them.
-- **Rate history or charts.** Needs storage that outlives a page load; one interval is the answer
-  to "is it moving now".
+- **Rate history or charts.** Left out of Phase 12. Reopened explicitly in Phase 13 for bounded
+  history within the HTTP session; persistent monitoring remains outside this phase.
 - **Closing a client's connection** from its page. Not read-only.
+
+## Phase 13 — Broker visibility: explain pressure, behavior and change
+
+Planned 2026-09-29 following a review of the implemented services, pages and tests. The next
+phase extends the existing message browser into a more complete explanation of the connected
+broker: why producers are blocked, why queues behave differently, when conditions changed, and
+which broker-side evidence can be saved for an incident. **All six feature areas below belong to
+this phase**, with reliability work supporting each increment. Nothing below is shipped yet.
+
+Keep the existing strengths: scheduled and in-flight inspection, subscriber lag, rates, client
+drilldowns, settings and diverts. Extend those views rather than duplicating them. Every new
+operation remains a read, with its actual response shape and availability checked against a real
+broker before the parser and UI are built.
+
+### Delivery order and scope
+
+Build the availability and compatibility foundation alongside address pressure and queue behavior
+first; then trends and incident snapshots; then connectivity/HA and transactions/permissions.
+Connectivity moves earlier if the target deployment uses clustering, bridges, federation or
+replication; transaction inspection moves earlier if its applications use XA. These conditions
+change delivery order, not the inclusion of these features in Phase 13.
+
+Keep one connected broker per HTTP session, the single-user deployment, server-rendered Thymeleaf,
+and the read-only guarantee. Topology means what this broker reports about its peers, not opening
+connections to other brokers or introducing a multi-broker dashboard. Session history does not
+introduce background monitoring, alerting or an external session store.
+
+### P0 — Trustworthy availability and reproducible compatibility
+
+- [ ] **Represent data availability explicitly.** Distinguish a real zero or false from an
+      unsupported attribute/operation, permission denial, a failed read, and a value not collected.
+      Replace silent numeric fallbacks in the affected parsing paths; missing or malformed health
+      values must not look healthy. Carry availability through the view models, findings and exports.
+- [ ] **Isolate optional reads.** One unsupported or denied panel must not stop later panels from
+      loading. Show each panel's collection time and relevant failure, while a genuinely lost
+      connection still uses the existing connection-loss handling. Do not repeatedly probe a known
+      unsupported capability on every refresh; scope cached capability information to the connection.
+- [ ] **Define and test supported broker versions.** Pin integration-test images instead of
+      `latest-alpine`, record the exact versions tested, and run the supported-version matrix.
+      Include the deployed broker version and the selected newer supported version; treat the
+      existing 2.44.0 measurements as historical evidence, not a universal API contract.
+- [ ] **Verify every new read.** Record response shapes and units, add only verified read operations
+      to the management allowlist, and cover unsupported, denied, empty and malformed responses.
+      Current API documentation guides discovery; tests establish actual compatibility.
+
+Done means an unavailable measurement is never presented as zero, an optional failure leaves
+unaffected information usable, and the supported versions and feature differences are documented.
+
+### P1 — Address pressure and storage detail
+
+- [ ] **Expand the existing address view.** Alongside its size and paging badge, show page count,
+      address limit utilization, management-blocked state, and relevant size, message and paging
+      limits where supported. Explain units and distinguish estimated address memory, persistent
+      message size and physical disk utilization; do not present one as another.
+- [ ] **Put usage beside policy.** Present current usage, the applicable configured threshold, and
+      the consequence of reaching it: PAGE, BLOCK, FAIL or DROP. Preserve absent/default/unlimited
+      distinctions already used by address settings. Paging by itself is normal behavior, not a fault.
+- [ ] **Explain pressure in Diagnose.** Link findings to the affected address and observed evidence.
+      Separate an observed management block from inferred pressure; identify which address is near
+      a limit without claiming it is the sole cause of global disk or memory pressure.
+
+Done means a user can identify the affected address, see the policy and limits behind its behavior,
+and distinguish normal paging from an observed block or a risk of rejecting/dropping messages.
+Exercise paging and applicable full-policy scenarios against real brokers.
+
+### P2 — Queue behavior and effective configuration
+
+- [ ] **Add a queue configuration panel.** Read supported settings for last-value behavior and its
+      key, ring size, non-destructive delivery, purge-on-no-consumers, exclusive consumption,
+      grouping, and dispatch thresholds/delays. Include relevant existing queue filters and routing
+      settings so users can understand behavior in one place. Show effective queue values separately
+      from address defaults; do not infer effective values from omitted fields.
+- [ ] **Explain the consequences.** Connect each setting to what a user sees: replacement or
+      retention of messages, removal when consumers disappear, delivery to one consumer, group
+      affinity, or delayed dispatch. Reuse the existing subscription exclusivity information.
+- [ ] **Make diagnostics configuration-aware.** Review findings about missing messages, idle
+      consumers and consumer imbalance so intentional queue semantics are not stated as failures.
+      Findings must distinguish observed facts from possible explanations.
+
+Done means representative specially configured queues show their actual settings and explain their
+behavior, with integration coverage for the semantics used by diagnostic findings.
+
+### P3 — Bounded short-term trends
+
+- [ ] **Extend the existing rate tracker with session history.** Retain bounded observations of
+      queue depth, ingress, acknowledgments, expired/killed counts and consumer counts. Collect
+      during page reads/refreshes, reuse listings, and expose trends on the overview and queue view.
+      Define configurable retention and sample/entity limits so memory stays bounded on large brokers.
+- [ ] **Show honest time intervals.** Display timestamps and sampling gaps, and distinguish an
+      absent sample from zero activity. Handle broker changes/restarts, counter resets, queue
+      recreation and session expiry without joining unrelated measurements. Keep acknowledged
+      throughput separate from expiry and killed-message rates.
+- [ ] **Use history to explain change.** Show whether a backlog is growing or shrinking, when
+      consumption changed within the observed window, and whether expirations or killed messages
+      are increasing now. Do not imply observations exist from before the session began collecting.
+
+Done means a user can compare recent behavior across multiple intervals, with bounded memory and
+tests for gaps, resets, retention and reconnects. Long-term metrics storage remains an optional
+future integration with an existing monitoring system; optional JVM/GC/CPU metrics require a
+separately available broker metrics source and are not promised by the management connection.
+
+### P4 — Incident snapshot export
+
+- [ ] **Export operational evidence together.** Provide a downloadable snapshot containing broker
+      identity/version, collection timestamps, health, queue/address counters, relevant settings,
+      clients, available trend samples and Diagnose findings. Include the later connectivity and
+      transaction/permission panels when available. Provide structured JSON and a readable summary.
+- [ ] **Describe completeness.** Include a schema version, collection start/end times, sampling
+      intervals, unsupported/denied/failed reads and any truncation or omitted sections. This is a
+      sequence of observations, not an atomic broker snapshot. Keep collection bounded and reuse
+      collected data where practical to avoid repeated expensive reads.
+- [ ] **Keep evidence safe and useful.** Exclude credentials and message bodies by default, redact
+      secrets from configuration/connector data, and keep existing message exports separate.
+      Use stable identifiers and units so two saved snapshots can be compared later; an automated
+      snapshot-diff viewer is not required for this phase.
+
+Done means an incident report can be understood offline, including what could not be collected,
+with tests for completeness metadata, bounds, secret exclusion and non-destructive collection.
+
+### P5 — Broker connectivity and high availability
+
+- [ ] **Inspect this broker's reported topology and HA state.** Show local identity, active/backup
+      role and replication synchronization where applicable, together with the peers and topology
+      the connected broker exposes. Mark unsupported or inapplicable states explicitly.
+- [ ] **Inspect outbound messaging paths.** Show configured core bridges and supported broker
+      connections, including federation/mirroring information where exposed. Report destination,
+      connected/started state and available traffic counters with links to local addresses/queues.
+      Never expose connector passwords or infer an end-to-end healthy path from a local connection.
+- [ ] **Extend Diagnose and snapshots.** Identify observed disconnected paths or incomplete
+      synchronization with evidence and applicability. Describe peer information as this broker's
+      view; do not claim to have inspected a remote broker.
+
+Done means a user can see where traffic may leave the connected broker and the reported state of
+its HA relationships. Verify the supported paths using appropriately configured multi-broker test
+fixtures, while the application itself retains a single broker connection context.
+
+### P6 — Transactions and address permissions
+
+- [ ] **Inspect prepared transactions.** Show unresolved prepared XA transactions, identifiers,
+      reported creation times/ages, and related message/address information where available. Bound
+      detail collection and distinguish prepared XA evidence from unobservable application or local
+      transaction state. Offer no commit, rollback or transaction-resolution operations.
+- [ ] **Inspect address permissions.** Show the roles and permissions reported for an address,
+      with clear names for send, consume, browse and management-related rights where exposed.
+      Permission to inspect security information may itself be denied; keep the rest of the page
+      usable. Do not equate a role definition with proof of a particular client's effective access.
+- [ ] **Link the evidence.** Connect transaction findings to related local resources and permission
+      information to the address/client investigation workflow. Include both in incident snapshots
+      subject to the same availability and secret-exclusion rules.
+
+Done means unresolved prepared work and broker-reported address permissions are inspectable without
+changing them, tested with prepared XA fixtures and users with different inspection permissions.
+
+### Phase acceptance and documentation
+
+- [ ] Extend the non-destructive integration guarantee to every new read path, including snapshots
+      and transaction inspection. Verify relevant message counters and transaction state remain
+      unchanged by inspection in controlled fixtures.
+- [ ] Add rendered-page coverage for all new panels, including partial availability and failures.
+- [ ] Measure collection time, response sizes and session-memory bounds on representative large
+      brokers. Record the number of management calls and any collection limits, and ensure optional
+      detail reads do not turn the overview into an unbounded per-resource scan.
+- [ ] Update the README feature list, configuration/reference documentation, architecture and
+      verified-response notes as features ship. Document supported broker versions and distinguish
+      management-visible facts from data requiring broker logs, application tracing or metrics plugins.
+
+Phase 13 is complete when all six areas and their supporting reliability checks meet these
+criteria. No feature authorizes modifying broker configuration, resolving transactions, sending or
+consuming business messages, closing clients, or introducing alerting or multi-user infrastructure.
+
+### API references for implementation discovery
+
+These are current documentation links, not the compatibility baseline; pin and verify the versions
+selected under P0 before implementing their fields.
+
+- [Address management API](https://artemis.apache.org/components/artemis/documentation/javadocs/javadoc-latest/org/apache/activemq/artemis/api/core/management/AddressControl.html)
+- [Queue management API](https://artemis.apache.org/components/artemis/documentation/javadocs/javadoc-latest/org/apache/activemq/artemis/api/core/management/QueueControl.html)
+- [Broker management API](https://artemis.apache.org/components/artemis/documentation/javadocs/javadoc-latest/org/apache/activemq/artemis/api/core/management/ActiveMQServerControl.html)
+- [Paging and full policies](https://artemis.apache.org/components/artemis/documentation/latest/paging)
+- [Metrics and optional runtime instrumentation](https://artemis.apache.org/components/artemis/documentation/latest/metrics.html)
 
 ## Open questions
 
