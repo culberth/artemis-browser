@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -121,6 +122,31 @@ class ManagementChannelTest
         {
             assertTrue(query.matcher(operation).matches(), operation + " does not read as a query");
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value =
+    { "AMQ229069: no operation listBrokerConnections/0|false|UNSUPPORTED",
+            "AMQ229032: User: viewer does not have permission='VIEW' on address mops.broker.getAddressSettingsAsJSON|false|DENIED",
+            "AMQ229213: User: viewer does not have permission='CREATE_ADDRESS' for queue q on address q|false|DENIED",
+            "Problem while retrieving attribute uptime|true|UNAVAILABLE",
+            // The same phrase from an operation would be something else, so it is not trusted there.
+            "Problem while retrieving attribute uptime|false|FAILED",
+            "Unexpected character 'x' (Codepoint: 120) on [lineNumber=1, columnNumber=2]|false|FAILED",
+            "no reason given|true|FAILED"
+    })
+    @DisplayName("a refusal is classified by the broker's own wording, as recorded against 2.44.0 and 2.55.0")
+    void classifiesRefusals(String reason, boolean attribute, Availability expected)
+    {
+        assertEquals(expected, ManagementChannel.classify(reason, attribute));
+    }
+
+    @Test
+    @DisplayName("an operation is remembered per resource type, not per queue")
+    void namesTheResourceType()
+    {
+        assertEquals("queue", ManagementChannel.resourceType("queue.orders.eu"));
+        assertEquals("broker", ManagementChannel.resourceType("broker"));
     }
 
     private ManagementChannel channel() throws JMSException

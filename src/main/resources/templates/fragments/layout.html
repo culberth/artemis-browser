@@ -56,5 +56,22 @@
     </form>
 </div>
 
+<!--
+  A value the broker did not give, in place of the value. Never a zero: a disk at "0%" is a healthy
+  disk, and a missing reading must not look like one. The broker's own words go in the title.
+-->
+<span th:fragment="missing(reading)" class="unavailable"
+      th:title="${reading.detail()}" th:text="'— ' + ${reading.reason()}">— not available</span>
+
+<!-- A whole panel the broker did not give, with its reason, so the panels around it still stand. -->
+<p th:fragment="panelMissing(reading)" class="unavailable">
+    <span th:text="'Not shown: ' + ${reading.reason()} + '.'">Not shown: not permitted for this user.</span>
+    <span class="muted" th:if="${!reading.detail().isBlank()}" th:text="${reading.detail()}">AMQ229032 …</span>
+</p>
+
+<!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->
+<span th:fragment="collected(reading)" class="muted collected"
+      th:text="'read ' + ${reading.collectedText()}">read 12:00:00</span>
+
 </body>
 </html>

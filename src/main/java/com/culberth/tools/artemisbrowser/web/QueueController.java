@@ -178,17 +178,25 @@ public class QueueController
             stats = queueDirectory.stats(name);
             model.addAttribute("stats", stats);
             model.addAttribute("messages", browseService.page(name, filter, Math.max(1, page), pageSize));
-            // Scheduled messages are counted by the queue but not returned by browse, so without
-            // this the page can report messages and show an empty table.
-            if (stats != null && stats.scheduledCount() > 0)
-            {
-                model.addAttribute("scheduled", browseService.scheduled(name));
-            }
         }
         catch (BrokerException e)
         {
             model.addAttribute("error", filterHint(e.getMessage(), filter));
             return "queues";
+        }
+        // Scheduled messages are counted by the queue but not returned by browse, so without this
+        // the page can report messages and show an empty table. Its own try, like in-flight below:
+        // a broker that will not list them must not take the waiting messages with it.
+        if (stats != null && stats.scheduledCount() > 0)
+        {
+            try
+            {
+                model.addAttribute("scheduled", browseService.scheduled(name));
+            }
+            catch (BrokerException e)
+            {
+                model.addAttribute("scheduledError", e.getMessage());
+            }
         }
         // In-flight messages are invisible to browse too. Its own try: failing to read them must not
         // take the waiting messages off the page with it.

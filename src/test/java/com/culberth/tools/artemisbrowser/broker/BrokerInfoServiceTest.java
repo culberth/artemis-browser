@@ -43,8 +43,8 @@ class BrokerInfoServiceTest
 
         BrokerHealth health = new BrokerInfoService(brokerSession).health();
 
-        assertEquals(10.34d, health.diskUsedPercent(), 0.0001d);
-        assertEquals(90L, health.maxDiskPercent());
+        assertEquals(10.34d, health.diskUsedPercent().value(), 0.0001d);
+        assertEquals(90L, health.maxDiskPercent().value());
         assertFalse(health.diskPressure());
     }
 
@@ -65,13 +65,13 @@ class BrokerInfoServiceTest
 
         BrokerHealth health = new BrokerInfoService(brokerSession).health();
 
-        assertEquals("STARTED", health.state());
-        assertEquals("2f1b0c44-aaaa-bbbb-cccc-1234567890ab", health.nodeId());
+        assertEquals("STARTED", health.state().value());
+        assertEquals("2f1b0c44-aaaa-bbbb-cccc-1234567890ab", health.nodeId().value());
         assertTrue(health.running());
     }
 
     @Test
-    @DisplayName("an unreadable status leaves the state unknown instead of failing the page")
+    @DisplayName("an unreadable status leaves the state unread instead of failing the page, and says so")
     void survivesAnUnreadableStatus()
     {
         healthAttributes(0.1d, 90L);
@@ -79,8 +79,46 @@ class BrokerInfoServiceTest
 
         BrokerHealth health = new BrokerInfoService(brokerSession).health();
 
-        assertEquals("UNKNOWN", health.state());
+        assertEquals(Availability.FAILED, health.state().availability());
         assertFalse(health.running());
+        assertFalse(health.stateKnown());
+        assertTrue(health.unchecked().stream().anyMatch(line -> line.contains("started")),
+                health.unchecked().toString());
+        assertEquals(3L, health.connectionCount().value());
+    }
+
+    @Test
+    @DisplayName("an attribute the broker will not return is missing with its reason, and the rest still arrive")
+    void isolatesARefusedAttribute()
+    {
+        healthAttributes(0.1d, 90L);
+        given(management.attribute(ResourceNames.BROKER, "diskStoreUsage")).willThrow(
+                new ManagementRefusal(Availability.UNAVAILABLE, "The broker would not return broker.diskStoreUsage"));
+
+        BrokerHealth health = new BrokerInfoService(brokerSession).health();
+
+        assertEquals(Availability.UNAVAILABLE, health.diskUsedPercent().availability());
+        assertFalse(health.diskPressure());
+        assertEquals(1, health.unchecked().size(), health.unchecked().toString());
+        assertTrue(health.unchecked().get(0).startsWith("Disk use"), health.unchecked().toString());
+        assertEquals(90L, health.maxDiskPercent().value());
+        assertTrue(health.running());
+    }
+
+    @Test
+    @DisplayName("a count that is not a number is 'could not be read', never zero")
+    void doesNotTurnGarbageIntoZero()
+    {
+        healthAttributes(0.1d, 90L);
+        given(management.attribute(ResourceNames.BROKER, "addressMemoryUsagePercentage")).willReturn("n/a");
+        given(management.attribute(ResourceNames.BROKER, "connectionCount")).willReturn(null);
+
+        BrokerHealth health = new BrokerInfoService(brokerSession).health();
+
+        assertEquals(Availability.FAILED, health.memoryUsedPercent().availability());
+        assertTrue(health.memoryUsedPercent().detail().contains("'n/a'"), health.memoryUsedPercent().detail());
+        assertFalse(health.memoryPressure());
+        assertEquals(Availability.FAILED, health.connectionCount().availability());
     }
 
     @Test
@@ -91,10 +129,10 @@ class BrokerInfoServiceTest
 
         BrokerHealth health = new BrokerInfoService(brokerSession).health();
 
-        assertEquals(3L, health.connectionCount());
-        assertEquals(4L, health.sessionCount());
-        assertEquals(2L, health.consumerCount());
-        assertEquals(1048576L, health.memoryUsedBytes());
+        assertEquals(3L, health.connectionCount().value());
+        assertEquals(4L, health.sessionCount().value());
+        assertEquals(2L, health.consumerCount().value());
+        assertEquals(1048576L, health.memoryUsedBytes().value());
     }
 
     @Test

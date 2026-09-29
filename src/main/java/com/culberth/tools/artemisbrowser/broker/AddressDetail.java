@@ -9,11 +9,19 @@ import java.util.Map;
  *
  * @param oldestUndeliveredMillis per queue name, the age of the oldest message not yet handed to a consumer; absent
  *                                when there is none or it could not be read
+ * @param agesNotRead             per queue name, why its age could not be read — so an unread age is not taken for a
+ *                                queue with nothing waiting
  */
 public record AddressDetail(AddressOverview address, List<Subscription> subscriptions,
         List<SubscriberConsumer> consumers, List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis,
-        AddressRouting routing)
+        AddressRouting routing, Map<String, String> agesNotRead)
 {
+
+    public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
+            List<BrokerProducer> producers, Map<String, Long> oldestUndeliveredMillis, AddressRouting routing)
+    {
+        this(address, subscriptions, consumers, producers, oldestUndeliveredMillis, routing, Map.of());
+    }
 
     public AddressDetail(AddressOverview address, List<Subscription> subscriptions, List<SubscriberConsumer> consumers,
             List<BrokerProducer> producers)
@@ -80,6 +88,12 @@ public record AddressDetail(AddressOverview address, List<Subscription> subscrip
         long runnerUp = byAge.size() > 1 ? byAge.get(1).getValue() : 0;
         boolean clearly = oldest - runnerUp >= BEHIND_MIN_GAP_MILLIS && oldest >= BEHIND_MIN_RATIO * runnerUp;
         return clearly ? byAge.get(0).getKey() : null;
+    }
+
+    /** Why this subscription's age is missing when it was asked for and not given; null otherwise. */
+    public String ageNotRead(Subscription subscription)
+    {
+        return agesNotRead.get(subscription.name());
     }
 
     public String oldestUndeliveredText(Subscription subscription)

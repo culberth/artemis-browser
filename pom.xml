@@ -28,6 +28,17 @@
         -->
         <jacoco.version>0.8.15</jacoco.version>
 		<java-formatter-maven-plugin.version>1.0.1</java-formatter-maven-plugin.version>
+        <!--
+          The supported broker versions, and the integration matrix: every *IT runs once against each.
+          Pinned, never "latest": which broker a test ran against must be knowable from the build.
+          "deployed" is what the cluster runs (charts and the jms/claude-app namespaces); "newest" is
+          the newest release checked. 2.44.0 measurements in .claude/memory.md are historical.
+          Skip one with -Dit.newest.skip=true (or it.deployed.skip) for a quicker run.
+        -->
+        <artemis.image.deployed>apache/artemis:2.55.0-alpine</artemis.image.deployed>
+        <artemis.image.newest>apache/artemis:2.57.0-alpine</artemis.image.newest>
+        <it.deployed.skip>false</it.deployed.skip>
+        <it.newest.skip>false</it.newest.skip>
     </properties>
 
     <dependencies>
@@ -164,11 +175,49 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <executions>
+                            <!--
+                              One execution per supported broker version, each in its own JVM with its own
+                              container (the fixture keeps one per JVM) and its own reports directory, so a
+                              failure names the version it failed on. Failsafe merges into an existing
+                              summary, so run the matrix after a clean: a stale failure otherwise fails verify.
+                            -->
                             <execution>
+                                <!--
+                                  spring-boot-starter-parent binds one unnamed ("default") execution of its own;
+                                  left bound, every IT would run a third time against the fixture's default image.
+                                -->
+                                <id>default</id>
+                                <phase>none</phase>
+                            </execution>
+                            <execution>
+                                <id>broker-deployed</id>
                                 <goals>
                                     <goal>integration-test</goal>
                                     <goal>verify</goal>
                                 </goals>
+                                <configuration>
+                                    <skip>${it.deployed.skip}</skip>
+                                    <reportsDirectory>${project.build.directory}/failsafe-reports/deployed</reportsDirectory>
+                                    <summaryFile>${project.build.directory}/failsafe-reports/deployed/failsafe-summary.xml</summaryFile>
+                                    <systemPropertyVariables>
+                                        <artemis.image>${artemis.image.deployed}</artemis.image>
+                                    </systemPropertyVariables>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>broker-newest</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${it.newest.skip}</skip>
+                                    <reportsDirectory>${project.build.directory}/failsafe-reports/newest</reportsDirectory>
+                                    <summaryFile>${project.build.directory}/failsafe-reports/newest/failsafe-summary.xml</summaryFile>
+                                    <systemPropertyVariables>
+                                        <artemis.image>${artemis.image.newest}</artemis.image>
+                                    </systemPropertyVariables>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>

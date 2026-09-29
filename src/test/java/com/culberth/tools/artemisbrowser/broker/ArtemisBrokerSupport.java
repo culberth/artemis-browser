@@ -58,6 +58,12 @@ final class ArtemisBrokerSupport
      */
     static final String FEED_DIVERT = "it-feed-us";
 
+    /**
+     * Set per failsafe execution from the pom's supported-version matrix. The default is the deployed version, for an
+     * IT run from an IDE; never {@code latest}, so the version a test ran against is always knowable.
+     */
+    static final String IMAGE = System.getProperty("artemis.image", "apache/artemis:2.55.0-alpine");
+
     private static GenericContainer<?> container;
 
     private ArtemisBrokerSupport()
@@ -68,20 +74,88 @@ final class ArtemisBrokerSupport
     {
         if (container == null)
         {
-            container = new GenericContainer<>(DockerImageName.parse("apache/activemq-artemis:latest-alpine"))
-                    .withEnv("ARTEMIS_USER", USER).withEnv("ARTEMIS_PASSWORD", PASSWORD).withExposedPorts(61616)
+            container = new GenericContainer<>(DockerImageName.parse(IMAGE)).withEnv("ARTEMIS_USER", USER)
+                    .withEnv("ARTEMIS_PASSWORD", PASSWORD).withExposedPorts(61616)
                     // "Server is now active" — not "live", which the log does not say.
                     .waitingFor(Wait.forLogMessage(".*Server is now active.*\\n", 1))
                     .withStartupTimeout(Duration.ofMinutes(4));
             container.start();
+            ensureIsolated(url());
             seed(url());
         }
         return url();
     }
 
+    /**
+     * The container's own address, with topology load balancing off.
+     *
+     * <p>
+     * Without that parameter, a factory's second concurrent connection goes wherever the broker's announced topology
+     * says — and 2.57.0 announces its {@code 0.0.0.0:61616} acceptor, which from this machine is the kind cluster's
+     * broker. On 2026-09-29 a matrix run against 2.57.0 seeded {@code it-*} queues into the cluster that way, and its
+     * tests failed only because their data had gone somewhere else. Every IT connection is built from this URL.
+     */
     static String url()
     {
-        return "tcp://" + container.getHost() + ":" + container.getMappedPort(61616);
+        return "tcp://" + container.getHost() + ":" + container.getMappedPort(61616)
+                + "?useTopologyForLoadBalancing=false";
+    }
+
+    /**
+     * Refuses to seed anything unless two connections held open together reach the same broker — the container. Belt
+     * and braces for {@link #url()}: a test broker that shares a machine with real ones must never be confused with
+     * them.
+     */
+    private static void ensureIsolated(String url) throws JMSException
+    {
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(url))
+        {
+            Connection first = factory.createConnection(USER, PASSWORD);
+            Connection second = factory.createConnection(USER, PASSWORD);
+            try
+            {
+                String one = nodeId(first);
+                String two = nodeId(second);
+                if (!one.equals(two))
+                {
+                    throw new IllegalStateException("Two connections to the test broker reached different brokers ("
+                            + one + ", " + two + "); refusing to seed. Is topology load balancing back on in url()?");
+                }
+            }
+            finally
+            {
+                second.close();
+                first.close();
+            }
+        }
+    }
+
+    private static String nodeId(Connection connection) throws JMSException
+    {
+        connection.start();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        TemporaryQueue reply = session.createTemporaryQueue();
+        try (MessageProducer producer = session.createProducer(session.createQueue("activemq.management"));
+                MessageConsumer consumer = session.createConsumer(reply))
+        {
+            Message request = session.createMessage();
+            JMSManagementHelper.putAttribute(request, ResourceNames.BROKER, "nodeID");
+            request.setJMSReplyTo(reply);
+            producer.send(request);
+            Message answer = consumer.receive(10000);
+            try
+            {
+                return String.valueOf(answer == null ? null : JMSManagementHelper.getResult(answer));
+            }
+            catch (Exception e)
+            {
+                throw new IllegalStateException("Could not read the test broker's node id", e);
+            }
+        }
+        finally
+        {
+            session.close();
+        }
     }
 
     static BrokerCredentials credentials()

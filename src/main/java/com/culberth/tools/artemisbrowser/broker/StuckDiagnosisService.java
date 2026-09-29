@@ -73,31 +73,56 @@ public class StuckDiagnosisService
         return run(includeInternal).findings();
     }
 
-    /** The findings, and what the page did not read to reach them. */
+    /**
+     * The findings, what the page did not read to reach them, and what it could not check.
+     *
+     * <p>
+     * The queue listing is the page: without it there is nothing to diagnose, so its failure is the page's. Every other
+     * read is guarded on its own and, when the broker will not give it, skips only the checks that needed it and says
+     * so in {@link Diagnosis#unchecked()}. A page that says "nothing wrong" must have looked.
+     */
     public Diagnosis run(boolean includeInternal)
     {
         List<Finding> findings = new ArrayList<>();
-        brokerLevel(findings);
+        List<String> unchecked = new ArrayList<>();
+        brokerLevel(findings, unchecked);
 
         List<QueueOverview> all = queueDirectory.overview();
         // Every queue, so the session's next reading on any page compares like with like.
         Diagnosis.Measured measured = rateService.forDiagnosis(all);
         Rates rates = measured.rates();
         List<QueueOverview> queues = all.stream().filter(queue -> includeInternal || !queue.internalQueue()).toList();
-        List<BrokerConsumer> consumers = brokerInfo.consumers();
+        Reading<List<BrokerConsumer>> consumerReading = Reading.attempt(brokerInfo::consumers);
+        if (!consumerReading.available())
+        {
+            unchecked.add("Consumers — whether only browsers are attached, and whether one consumer holds everything"
+                    + " in flight: " + consumerReading.explained());
+        }
+        List<BrokerConsumer> consumers = consumerReading.orElse(List.of());
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, queue, consumers, rates);
+            queueLevel(findings, unchecked, queue, consumers, rates);
         }
-        hoarding(findings, queues, consumers);
-        Unread unread = longInFlight(findings, queues, rates);
-        List<AddressOverview> addresses = addressDirectory.overview();
-        nowhereToGo(findings, queues, addresses);
-        addressLevel(findings, includeInternal, addresses);
+        if (consumerReading.available())
+        {
+            hoarding(findings, queues, consumers);
+        }
+        Unread unread = longInFlight(findings, unchecked, queues, rates);
+        Reading<List<AddressOverview>> addresses = Reading.attempt(addressDirectory::overview);
+        if (addresses.available())
+        {
+            nowhereToGo(findings, unchecked, queues, addresses.value());
+            addressLevel(findings, unchecked, includeInternal, addresses.value());
+        }
+        else
+        {
+            unchecked.add("Addresses — dropped messages, addresses with no queues, and where killed or expired"
+                    + " messages went: " + addresses.explained());
+        }
 
         // Whatever is not moving now first; within that, the biggest backlog.
         findings.sort((left, right) -> left.isStuck() == right.isStuck() ? 0 : (left.isStuck() ? -1 : 1));
-        return new Diagnosis(findings, unread.queues(), unread.messages(), measured);
+        return new Diagnosis(findings, unread.queues(), unread.messages(), measured, unchecked);
     }
 
     /** In-flight messages the page's budget did not stretch to, and on how many queues. */
@@ -132,8 +157,11 @@ public class StuckDiagnosisService
         {
             return;
         }
-        Map<String, SubscriberConsumer> clients = brokerInfo
-                .consumersOn(hoarders.keySet().stream().map(QueueOverview::name).collect(Collectors.toSet())).stream()
+        // Only to name the client; without it the finding names the consumer instead.
+        Map<String, SubscriberConsumer> clients = Reading
+                .attempt(() -> brokerInfo
+                        .consumersOn(hoarders.keySet().stream().map(QueueOverview::name).collect(Collectors.toSet())))
+                .orElse(List.of()).stream()
                 .collect(Collectors.toMap(SubscriberConsumer::consumerId, client -> client, (a, b) -> a));
         hoarders.forEach((queue, hoarder) ->
         {
@@ -158,7 +186,7 @@ public class StuckDiagnosisService
      * have waited most of that time before a consumer took it, and the finding says so rather than blaming the consumer
      * outright.
      */
-    private Unread longInFlight(List<Finding> findings, List<QueueOverview> queues, Rates rates)
+    private Unread longInFlight(List<Finding> findings, List<String> unchecked, List<QueueOverview> queues, Rates rates)
     {
         long budget = (long) inFlightService.limit() * IN_FLIGHT_BUDGET_FACTOR;
         int queuesNotRead = 0;
@@ -175,7 +203,14 @@ public class StuckDiagnosisService
                 continue;
             }
             budget -= queue.deliveringCount();
-            InFlightLookup oldest = inFlightService.oldest(queue.name(), queue.deliveringCount());
+            Reading<InFlightLookup> read = Reading
+                    .attempt(() -> inFlightService.oldest(queue.name(), queue.deliveringCount()));
+            if (!read.available())
+            {
+                unchecked.add("How long messages on '" + queue.name() + "' have been in flight: " + read.explained());
+                continue;
+            }
+            InFlightLookup oldest = read.value();
             if (!oldest.found() || now - oldest.message().timestamp() < LONG_IN_FLIGHT_MILLIS)
             {
                 continue;
@@ -251,33 +286,37 @@ public class StuckDiagnosisService
      * The broker refusing writes outranks anything a single queue is doing: when the disk or the address memory is at
      * its limit Artemis blocks producers, and every "nothing is arriving" report on the broker has the same cause.
      */
-    private void brokerLevel(List<Finding> findings)
+    private void brokerLevel(List<Finding> findings, List<String> unchecked)
     {
         BrokerHealth health = brokerInfo.health();
+        unchecked.addAll(health.unchecked());
         if (health.diskPressure())
         {
             findings.add(Finding.stuck("The broker is near its disk limit",
                     String.format(Locale.ROOT,
                             "Disk store is %.1f%% used against a %d%% limit. Artemis blocks"
                                     + " producers at that limit, so senders stall rather than fail.",
-                            health.diskUsedPercent(), health.maxDiskPercent()),
+                            health.diskUsedPercent().value(), health.maxDiskPercent().value()),
                     null));
         }
         if (health.memoryPressure())
         {
             findings.add(Finding.stuck("The broker is near its address-memory limit",
-                    "Global address memory is " + health.memoryUsedPercent() + "% used. Addresses at their limit page"
+                    "Global address memory is " + health.memoryUsedPercent().value()
+                            + "% used. Addresses at their limit page"
                             + " to disk or block producers, depending on how each is configured.",
                     null));
         }
-        if (!health.running())
+        // Only when the state was read: "could not read it" is in unchecked, and is not "stopped".
+        if (health.stateKnown() && !health.running())
         {
             findings.add(Finding.stuck("The broker does not report itself as started",
-                    "Server state is '" + health.state() + "'.", null));
+                    "Server state is '" + health.state().value() + "'.", null));
         }
     }
 
-    private void queueLevel(List<Finding> findings, QueueOverview queue, List<BrokerConsumer> consumers, Rates rates)
+    private void queueLevel(List<Finding> findings, List<String> unchecked, QueueOverview queue,
+            List<BrokerConsumer> consumers, Rates rates)
     {
         if (queue.paused())
         {
@@ -331,7 +370,7 @@ public class StuckDiagnosisService
 
         if (queue.scheduledCount() > 0)
         {
-            overdue(findings, queue);
+            overdue(findings, unchecked, queue);
         }
     }
 
@@ -354,9 +393,16 @@ public class StuckDiagnosisService
      * A scheduled message whose time has passed is a different problem from one that is merely waiting — it should have
      * been delivered and was not, and it is invisible in the message list either way.
      */
-    private void overdue(List<Finding> findings, QueueOverview queue)
+    private void overdue(List<Finding> findings, List<String> unchecked, QueueOverview queue)
     {
-        long overdue = browseService.scheduled(queue.name()).stream().filter(ScheduledMessage::overdue).count();
+        Reading<List<ScheduledMessage>> scheduled = Reading.attempt(() -> browseService.scheduled(queue.name()));
+        if (!scheduled.available())
+        {
+            unchecked.add("Whether the " + queue.scheduledCount() + " scheduled message(s) on '" + queue.name()
+                    + "' are overdue: " + scheduled.explained());
+            return;
+        }
+        long overdue = scheduled.value().stream().filter(ScheduledMessage::overdue).count();
         if (overdue > 0)
         {
             findings.add(Finding.stuck("'" + queue.name() + "' has " + overdue + " overdue scheduled message(s)",
@@ -385,22 +431,31 @@ public class StuckDiagnosisService
      * counter is non-zero. The settings are today's, and the counters run from broker start, so the finding says "if
      * the settings were the same then".
      */
-    private void nowhereToGo(List<Finding> findings, List<QueueOverview> queues, List<AddressOverview> addresses)
+    private void nowhereToGo(List<Finding> findings, List<String> unchecked, List<QueueOverview> queues,
+            List<AddressOverview> addresses)
     {
         Map<String, AddressOverview> byName = addresses.stream()
                 .collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a));
-        Map<String, AddressSettings> settings = new LinkedHashMap<>();
+        Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         for (QueueOverview queue : queues)
         {
             if (queue.messagesKilled() == 0 && queue.messagesExpired() == 0)
             {
                 continue;
             }
-            AddressSettings forAddress = settings.computeIfAbsent(queue.address(), this::settingsOrNull);
-            if (forAddress == null)
+            boolean first = !settings.containsKey(queue.address());
+            Reading<AddressSettings> read = settings.computeIfAbsent(queue.address(),
+                    address -> Reading.attempt(() -> addressDirectory.settings(address)));
+            if (!read.available())
             {
+                if (first)
+                {
+                    unchecked.add(
+                            "Where killed or expired messages on '" + queue.address() + "' went: " + read.explained());
+                }
                 continue;
             }
+            AddressSettings forAddress = read.value();
             if (queue.messagesKilled() > 0)
             {
                 String problem = problem(forAddress.deadLetterAddress(), "dead-letter", byName);
@@ -451,24 +506,20 @@ public class StuckDiagnosisService
         return null;
     }
 
-    /** A queue's address settings, or null when they cannot be read — the rest of the page should not fail on it. */
-    private AddressSettings settingsOrNull(String address)
-    {
-        try
-        {
-            return addressDirectory.settings(address);
-        }
-        catch (BrokerException e)
-        {
-            return null;
-        }
-    }
-
     /** Messages that reached an address and matched no queue are gone, and nothing reports an error for them. */
-    private void addressLevel(List<Finding> findings, boolean includeInternal, List<AddressOverview> all)
+    private void addressLevel(List<Finding> findings, List<String> unchecked, boolean includeInternal,
+            List<AddressOverview> all)
     {
-        exclusiveDiverts(findings,
-                all.stream().collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
+        Reading<List<Divert>> diverts = Reading.attempt(divertDirectory::all);
+        if (diverts.available())
+        {
+            exclusiveDiverts(findings, diverts.value(),
+                    all.stream().collect(Collectors.toMap(AddressOverview::name, address -> address, (a, b) -> a)));
+        }
+        else
+        {
+            unchecked.add("Exclusive diverts that take messages from subscribers: " + diverts.explained());
+        }
         for (AddressOverview address : all)
         {
             if (isBrokersOwn(address) && !includeInternal)
@@ -520,9 +571,9 @@ public class StuckDiagnosisService
      * An exclusive divert takes a message instead of letting it route to the source address's own queues. On an address
      * with subscribers that means they never see what it matches — possibly intended, never reported.
      */
-    private void exclusiveDiverts(List<Finding> findings, Map<String, AddressOverview> addresses)
+    private void exclusiveDiverts(List<Finding> findings, List<Divert> diverts, Map<String, AddressOverview> addresses)
     {
-        for (Divert divert : divertDirectory.all())
+        for (Divert divert : diverts)
         {
             AddressOverview source = addresses.get(divert.address());
             if (!divert.exclusive() || source == null || source.queues().isEmpty())

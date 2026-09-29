@@ -24,9 +24,13 @@
             </span>
         </h2>
 
-        <p class="muted" th:if="${findings.isEmpty()}">
+        <p class="muted" th:if="${findings.isEmpty() and unchecked.isEmpty()}">
             Nothing on this broker looks blocked: no paused queues, nothing waiting without a
             consumer, no unrouted addresses, and the broker is not near its disk or memory limits.
+        </p>
+        <p class="muted" th:if="${findings.isEmpty() and !unchecked.isEmpty()}">
+            Nothing looks blocked in what this page could check &mdash; but not everything could be
+            checked. See below for what was not.
         </p>
 
         <div th:each="f : ${findings}" class="panel"
@@ -45,6 +49,19 @@
                th:href="@{/client(id=${f.clientId()})}">Open this client</a>
             <a class="badge-link" th:if="${f.connectionId() != null}"
                th:href="@{/client(connection=${f.connectionId()})}">Open this client</a>
+        </div>
+
+        <div class="unchecked" th:unless="${unchecked.isEmpty()}">
+            <h3 style="margin:.9rem 0 .35rem">
+                Could not check <span class="muted" th:text="'(' + ${unchecked.size()} + ')'">(1)</span>
+            </h3>
+            <p class="note" style="margin-top:0">
+                The broker would not give what these checks need, so they did not run. That is not the
+                same as finding nothing wrong.
+            </p>
+            <ul>
+                <li th:each="u : ${unchecked}" th:text="${u}">Disk use against its limit: not permitted for this user</li>
+            </ul>
         </div>
 
         <p class="note" th:if="${inFlightQueuesNotRead != null and inFlightQueuesNotRead > 0}"

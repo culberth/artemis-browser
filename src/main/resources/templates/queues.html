@@ -134,12 +134,12 @@
 
         <p class="muted" th:if="${messages.messages().isEmpty()}">
             <span th:if="${#strings.isEmpty(messages.filter())}">
-                <span th:if="${scheduled == null and (stats == null or stats.deliveringCount() == 0)}">This queue is empty.</span>
+                <span th:if="${scheduled == null and scheduledError == null and (stats == null or stats.deliveringCount() == 0)}">This queue is empty.</span>
                 <!--
                   Messages delivered to a consumer and not yet acknowledged cannot be browsed at all, so a
                   queue whose every message is in flight browses as empty while its counter says otherwise.
                 -->
-                <span th:if="${scheduled == null and stats != null and stats.deliveringCount() > 0}"><span
+                <span th:if="${scheduled == null and scheduledError == null and stats != null and stats.deliveringCount() > 0}"><span
                       th:text="'Nothing is waiting. The ' + ${stats.deliveringCount()} + ' message(s) the queue reports are in flight to a consumer and not yet acknowledged, which the broker does not return from a browse'">
                     Nothing is waiting.</span> &mdash; <a href="#in-flight">see what is in flight</a>.</span>
                 <!--
@@ -201,6 +201,10 @@
                 </tbody>
             </table>
         </div>
+
+        <p class="unavailable" th:if="${scheduledError != null}" style="margin-top:1.5rem"
+           th:text="'This queue reports ' + ${stats.scheduledCount()} + ' scheduled message(s), and they could not be listed: ' + ${scheduledError}">
+            Scheduled messages could not be listed.</p>
 
         <div th:if="${scheduled != null and !scheduled.isEmpty()}" style="margin-top:1.5rem">
             <h3 style="margin:0 0 .5rem">

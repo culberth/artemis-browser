@@ -210,3 +210,10 @@ h2 a:hover, h3 a:hover { text-decoration: underline; }
     white-space: nowrap;
     vertical-align: bottom;
 }
+
+/* --- Phase 13: a value the broker did not give is marked, never shown as zero --- */
+.unavailable { color: var(--muted); font-style: italic; }
+.stat .v.unavailable { font-size: .85rem; font-weight: 400; }
+p.unavailable { margin: .25rem 0; }
+p.unavailable .muted { display: block; font-size: .8rem; font-style: normal; word-break: break-word; }
+.collected { font-size: .78rem; font-weight: 400; margin-left: .4rem; }

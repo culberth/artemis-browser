@@ -3,7 +3,9 @@ package com.culberth.tools.artemisbrowser.broker;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +32,7 @@ public class DivertDirectory
     {
         ManagementChannel management = brokerSession.requireManagement();
         List<Divert> diverts = new ArrayList<>();
+        Map<String, BrokerException> unread = new LinkedHashMap<>();
         for (String name : names(management.invoke(ResourceNames.BROKER, "getDivertNames")))
         {
             String resource = ResourceNames.DIVERT + name;
@@ -44,9 +47,26 @@ public class DivertDirectory
             }
             catch (BrokerException e)
             {
-                // Destroyed between the name listing and this read. Leaving it out is the truth by
-                // the time the page renders. A lost connection is not a BrokerException, so it
-                // still propagates.
+                // Destroyed between the name listing and this read — or refused: a divert attribute
+                // the broker will not give reads the same either way. Checked below. A lost
+                // connection is not a BrokerException, so it still propagates.
+                unread.put(name, e);
+            }
+        }
+        if (!unread.isEmpty())
+        {
+            // Still listed means not destroyed, so leaving it out would be a silent gap in the
+            // list. Say the list is incomplete instead.
+            List<String> still = names(management.invoke(ResourceNames.BROKER, "getDivertNames"));
+            for (Map.Entry<String, BrokerException> failed : unread.entrySet())
+            {
+                if (still.contains(failed.getKey()))
+                {
+                    Availability why = failed.getValue() instanceof ManagementRefusal refusal ? refusal.availability()
+                            : Availability.FAILED;
+                    throw new ManagementRefusal(why, "Divert '" + failed.getKey() + "' exists and could not be read: "
+                            + failed.getValue().getMessage(), failed.getValue());
+                }
             }
         }
         diverts.sort(Comparator.comparing(Divert::name));

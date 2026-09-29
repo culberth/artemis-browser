@@ -3,6 +3,7 @@ package com.culberth.tools.artemisbrowser.broker;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -103,13 +104,31 @@ class AddressRoutingTest
     @DisplayName("a divert destroyed between the listing and its reads is left out, not an error")
     void skipsAVanishedDivert()
     {
+        // Listed, then gone by the time it is read, and no longer listed when asked again.
         given(management.invoke(ResourceNames.BROKER, "getDivertNames")).willReturn(new Object[]
         { "gone"
-        });
+        }, (Object) new Object[0]);
         given(management.attribute(ResourceNames.DIVERT + "gone", "address"))
                 .willThrow(new BrokerException("AMQ229067: Cannot find resource with name divert.gone"));
 
         assertTrue(new DivertDirectory(brokerSession).all().isEmpty());
+    }
+
+    @Test
+    @DisplayName("a divert that is still there and cannot be read makes the list incomplete, and says so")
+    void refusesToLeaveOutADivertItCannotRead()
+    {
+        given(management.invoke(ResourceNames.BROKER, "getDivertNames")).willReturn(new Object[]
+        { "hidden"
+        });
+        given(management.attribute(ResourceNames.DIVERT + "hidden", "address")).willThrow(
+                new ManagementRefusal(Availability.UNAVAILABLE, "The broker would not return divert.hidden.address"));
+
+        ManagementRefusal refused = assertThrows(ManagementRefusal.class,
+                () -> new DivertDirectory(brokerSession).all());
+
+        assertEquals(Availability.UNAVAILABLE, refused.availability());
+        assertTrue(refused.getMessage().contains("'hidden' exists and could not be read"), refused.getMessage());
     }
 
     @Test

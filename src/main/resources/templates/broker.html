@@ -18,40 +18,63 @@
     <div class="panel" th:if="${health}">
         <h2>
             Broker
-            <span class="badge" th:text="${health.version()}">2.44.0</span>
-            <span class="badge" th:if="${health.running()}" th:text="${health.state()}">STARTED</span>
-            <span class="badge warn" th:unless="${health.running()}" th:text="${health.state()}">STOPPED</span>
+            <span class="badge" th:if="${health.version().available()}" th:text="${health.version().value()}">2.44.0</span>
+            <span class="badge" th:if="${health.running()}" th:text="${health.state().value()}">STARTED</span>
+            <span class="badge warn" th:if="${health.stateKnown() and !health.running()}" th:text="${health.state().value()}">STOPPED</span>
+            <span class="badge warn" th:unless="${health.stateKnown()}" th:title="${health.state().detail()}">state unknown</span>
+            <span th:replace="~{fragments/layout :: collected(${health.state()})}"></span>
         </h2>
         <div class="stats">
-            <div class="stat"><span class="k">Uptime</span><span class="v small" th:text="${health.uptime()}">—</span></div>
-            <div class="stat"><span class="k">Connections</span><span class="v" th:text="${health.connectionCount()}">0</span></div>
-            <div class="stat"><span class="k">Sessions</span><span class="v" th:text="${health.sessionCount()}">0</span></div>
-            <div class="stat"><span class="k">Consumers</span><span class="v" th:text="${health.consumerCount()}">0</span></div>
+            <div class="stat"><span class="k">Uptime</span>
+                <span class="v small" th:if="${health.uptime().available()}" th:text="${health.uptime().value()}">—</span>
+                <span class="v" th:unless="${health.uptime().available()}"><span th:replace="~{fragments/layout :: missing(${health.uptime()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Connections</span>
+                <span class="v" th:if="${health.connectionCount().available()}" th:text="${health.connectionCount().value()}">0</span>
+                <span class="v" th:unless="${health.connectionCount().available()}"><span th:replace="~{fragments/layout :: missing(${health.connectionCount()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Sessions</span>
+                <span class="v" th:if="${health.sessionCount().available()}" th:text="${health.sessionCount().value()}">0</span>
+                <span class="v" th:unless="${health.sessionCount().available()}"><span th:replace="~{fragments/layout :: missing(${health.sessionCount()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Consumers</span>
+                <span class="v" th:if="${health.consumerCount().available()}" th:text="${health.consumerCount().value()}">0</span>
+                <span class="v" th:unless="${health.consumerCount().available()}"><span th:replace="~{fragments/layout :: missing(${health.consumerCount()})}"></span></span>
+            </div>
             <div class="stat" th:classappend="${health.memoryPressure()} ? 'stat-warn' : ''">
                 <span class="k">Address memory</span>
-                <span class="v" th:text="${health.memoryUsedPercent()} + '%'">0%</span>
-                <span class="muted" th:text="${health.memoryUsedBytes()} + ' bytes'">0 bytes</span>
+                <span class="v" th:if="${health.memoryUsedPercent().available()}" th:text="${health.memoryUsedPercent().value()} + '%'">0%</span>
+                <span class="v" th:unless="${health.memoryUsedPercent().available()}"><span th:replace="~{fragments/layout :: missing(${health.memoryUsedPercent()})}"></span></span>
+                <span class="muted" th:if="${health.memoryUsedBytes().available()}" th:text="${health.memoryUsedBytes().value()} + ' bytes'">0 bytes</span>
             </div>
             <div class="stat" th:classappend="${health.diskPressure()} ? 'stat-warn' : ''">
                 <span class="k">Disk</span>
-                <span class="v" th:text="${#numbers.formatDecimal(health.diskUsedPercent(), 1, 2)} + '%'">0%</span>
-                <span class="muted" th:text="'blocks at ' + ${health.maxDiskPercent()} + '%'">blocks at 90%</span>
+                <span class="v" th:if="${health.diskUsedText() != null}" th:text="${health.diskUsedText()}">0%</span>
+                <span class="v" th:if="${health.diskUsedText() == null}"><span th:replace="~{fragments/layout :: missing(${health.diskUsedPercent()})}"></span></span>
+                <span class="muted" th:if="${health.maxDiskPercent().available()}" th:text="'blocks at ' + ${health.maxDiskPercent().value()} + '%'">blocks at 90%</span>
+                <span class="muted" th:unless="${health.maxDiskPercent().available()}" th:text="'limit ' + ${health.maxDiskPercent().reason()}">limit not available</span>
             </div>
         </div>
         <p class="note">
-            Node <code th:text="${health.nodeId()}">id</code>.
+            <th:block th:if="${health.nodeId().available()}">Node <code th:text="${health.nodeId().value()}">id</code>.</th:block>
             Artemis blocks producers once disk use reaches its threshold, so the number worth
             watching is the gap, not the crossing.
+        </p>
+        <p class="note" th:unless="${health.unchecked().isEmpty()}">
+            Each figure is read on its own. Where one is missing it says why &mdash; hover for the
+            broker&rsquo;s own words &mdash; and it is never shown as zero.
         </p>
     </div>
 
     <div class="panel" th:if="${acceptors}">
-        <h2>Acceptors <span class="muted" th:text="'(' + ${acceptors.size()} + ')'">(0)</span></h2>
-        <div class="table-scroll">
+        <h2>Acceptors <span class="muted" th:if="${acceptors.available()}" th:text="'(' + ${acceptors.value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${acceptors})}"></span></h2>
+        <th:block th:unless="${acceptors.available()}"><p th:replace="~{fragments/layout :: panelMissing(${acceptors})}"></p></th:block>
+        <div class="table-scroll" th:if="${acceptors.available()}">
             <table>
                 <thead><tr><th>Name</th><th>Protocols</th><th>Host</th><th class="num">Port</th></tr></thead>
                 <tbody>
-                <tr th:each="a : ${acceptors}">
+                <tr th:each="a : ${acceptors.value()}">
                     <td th:text="${a.name()}">artemis</td>
                     <td class="muted" th:text="${a.protocols()}">CORE,AMQP</td>
                     <td th:text="${a.host()}">0.0.0.0</td>
@@ -63,15 +86,17 @@
     </div>
 
     <div class="panel" th:if="${connections}">
-        <h2>Connections <span class="muted" th:text="'(' + ${connections.size()} + ')'">(0)</span></h2>
-        <p class="muted" th:if="${connections.isEmpty()}">Nothing is connected.</p>
-        <div class="table-scroll" th:unless="${connections.isEmpty()}">
+        <h2>Connections <span class="muted" th:if="${connections.available()}" th:text="'(' + ${connections.value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${connections})}"></span></h2>
+        <th:block th:unless="${connections.available()}"><p th:replace="~{fragments/layout :: panelMissing(${connections})}"></p></th:block>
+        <p class="muted" th:if="${connections.available() and connections.value().isEmpty()}">Nothing is connected.</p>
+        <div class="table-scroll" th:if="${connections.available() and !connections.value().isEmpty()}">
             <table>
                 <thead>
                 <tr><th>Connection</th><th>Client address</th><th>Created</th><th class="num">Sessions</th><th></th></tr>
                 </thead>
                 <tbody>
-                <tr th:each="c : ${connections}">
+                <tr th:each="c : ${connections.value()}">
                     <td><a th:href="@{/client(connection=${c.connectionId()})}"><code th:text="${c.connectionId()}">id</code></a></td>
                     <td th:text="${c.clientAddress()}">host:port</td>
                     <td th:text="${c.createdText()}">—</td>
@@ -84,9 +109,11 @@
     </div>
 
     <div class="panel" th:if="${consumers}">
-        <h2>Consumers <span class="muted" th:text="'(' + ${consumers.size()} + ')'">(0)</span></h2>
-        <p class="muted" th:if="${consumers.isEmpty()}">Nothing is consuming.</p>
-        <div class="table-scroll" th:unless="${consumers.isEmpty()}">
+        <h2>Consumers <span class="muted" th:if="${consumers.available()}" th:text="'(' + ${consumers.value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${consumers})}"></span></h2>
+        <th:block th:unless="${consumers.available()}"><p th:replace="~{fragments/layout :: panelMissing(${consumers})}"></p></th:block>
+        <p class="muted" th:if="${consumers.available() and consumers.value().isEmpty()}">Nothing is consuming.</p>
+        <div class="table-scroll" th:if="${consumers.available() and !consumers.value().isEmpty()}">
             <table>
                 <thead>
                 <tr>
@@ -95,7 +122,7 @@
                 </tr>
                 </thead>
                 <tbody>
-                <tr th:each="c : ${consumers}">
+                <tr th:each="c : ${consumers.value()}">
                     <td th:text="${c.queueName()}">queue</td>
                     <td><a th:href="@{/client(connection=${c.connectionId()})}"><code th:text="${c.connectionId()}">id</code></a></td>
                     <td class="num" th:text="${c.deliveringCount()}">0</td>
@@ -118,9 +145,11 @@
     </div>
 
     <div class="panel" th:if="${producers}">
-        <h2>Producers <span class="muted" th:text="'(' + ${producers.size()} + ')'">(0)</span></h2>
-        <p class="muted" th:if="${producers.isEmpty()}">Nothing is producing.</p>
-        <div class="table-scroll" th:unless="${producers.isEmpty()}">
+        <h2>Producers <span class="muted" th:if="${producers.available()}" th:text="'(' + ${producers.value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${producers})}"></span></h2>
+        <th:block th:unless="${producers.available()}"><p th:replace="~{fragments/layout :: panelMissing(${producers})}"></p></th:block>
+        <p class="muted" th:if="${producers.available() and producers.value().isEmpty()}">Nothing is producing.</p>
+        <div class="table-scroll" th:if="${producers.available() and !producers.value().isEmpty()}">
             <table>
                 <thead>
                 <tr>
@@ -129,7 +158,7 @@
                 </tr>
                 </thead>
                 <tbody>
-                <tr th:each="p : ${producers}">
+                <tr th:each="p : ${producers.value()}">
                     <td><a th:if="${p.address() != null}" th:href="@{/address(name=${p.address()})}" th:text="${p.address()}">orders</a></td>
                     <td><a th:href="@{/client(connection=${p.connectionId()})}"><code th:text="${p.connectionId()}">id</code></a></td>
                     <td th:text="${p.createdText()}">—</td>

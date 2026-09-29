@@ -42,7 +42,8 @@ Shipped so far:
 
 ## Next: Phase 13 (planned)
 
-Phase 13 expands broker visibility and explains operational behavior. It is planned, not implemented:
+Phase 13 expands broker visibility and explains operational behavior. It is in progress; P0 is done
+and the six feature areas below are not yet built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
 2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
@@ -51,8 +52,10 @@ Phase 13 expands broker visibility and explains operational behavior. It is plan
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
 6. Read-only prepared-transaction and address-permission inspection.
 
-The phase also adds explicit unavailable/unsupported/denied states, independent optional panels,
-and pinned broker-version compatibility tests. Address pressure and queue behavior come first;
+Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
+and subscription age says why it is missing — unsupported, not permitted, unavailable, could not be
+read — instead of showing zero or failing the page, and a user without the `manage` permission is
+told so rather than being sent back to the connect form. Address pressure and queue behavior come next;
 all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
@@ -90,9 +93,22 @@ that browsing, searching and exporting leave every counter exactly where they fo
 one is the product's central claim, and `ReadOnlyGuaranteeIT` is what stops it being merely
 believed.
 
-The integration fixture currently uses `apache/activemq-artemis:latest-alpine`, so the broker
-version depends on the image resolved by Docker. A pinned supported-version matrix is planned in
-Phase 13; historical measurements against 2.44.0 are not a compatibility guarantee for every version.
+### Supported broker versions
+
+| Version | Image | Why |
+|---|---|---|
+| **2.55.0** | `apache/artemis:2.55.0-alpine` | what the local cluster runs |
+| **2.57.0** | `apache/artemis:2.57.0-alpine` | newest release, checked 2026-09-29 |
+
+Every `*IT` runs once against each, in its own failsafe execution with its own reports directory
+(`target/failsafe-reports/deployed`, `…/newest`). The images are pinned in the pom
+(`artemis.image.deployed`, `artemis.image.newest`), never `latest`. Measurements recorded against 2.44.0
+in earlier phases are historical evidence, not a compatibility promise. Run the matrix after a
+`clean`: failsafe merges into an existing summary, and a stale failure fails `verify`.
+
+Two things the matrix turned up, both handled: the Artemis image moved from `apache/activemq-artemis`
+to `apache/artemis`, and on 2.57.0 the client's default topology load balancing can send a second
+connection to a different broker than the one named — so every connection factory here turns it off.
 
 `java-formatter-maven-plugin` reformats all Java sources on every build (Allman braces, its own
 wrapping), bound to the default lifecycle — expect `git status` to show modified source files after

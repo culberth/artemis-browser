@@ -182,6 +182,45 @@ class StuckDiagnosisServiceTest
     }
 
     @Test
+    @DisplayName("a disk figure the broker would not give is 'could not check', never a healthy disk")
+    void saysWhatItCouldNotCheckOnTheBroker()
+    {
+        BrokerHealth full = health(95, 90);
+        given(brokerInfo.health()).willReturn(new BrokerHealth(full.version(), full.uptime(),
+                Reading.missing(Availability.DENIED, "mops.broker.getStatus"), full.nodeId(), full.connectionCount(),
+                full.sessionCount(), full.consumerCount(), full.memoryUsedBytes(), full.memoryUsedPercent(),
+                Reading.missing(Availability.UNAVAILABLE, "Problem while retrieving attribute diskStoreUsage"),
+                full.maxDiskPercent(), full.collectedAt()));
+
+        Diagnosis diagnosis = service().run(false);
+
+        assertTrue(diagnosis.findings().isEmpty(), diagnosis.findings().toString());
+        assertEquals(2, diagnosis.unchecked().size(), diagnosis.unchecked().toString());
+        assertTrue(diagnosis.unchecked().get(0).startsWith("Disk use"), diagnosis.unchecked().toString());
+        // An unread state is not "stopped".
+        assertTrue(diagnosis.unchecked().get(1).contains("started"), diagnosis.unchecked().toString());
+    }
+
+    @Test
+    @DisplayName("a refused consumer or address listing skips only the checks that need it")
+    void carriesOnPastARefusedListing()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 4, 0, 0, 0)));
+        given(brokerInfo.consumers()).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032 consumers"));
+        given(addresses.overview()).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032 addresses"));
+
+        Diagnosis diagnosis = service().run(false);
+
+        assertEquals(1, diagnosis.findings().size(), diagnosis.findings().toString());
+        assertTrue(diagnosis.findings().get(0).title().contains("Nothing is reading"),
+                diagnosis.findings().get(0).title());
+        assertEquals(2, diagnosis.unchecked().size(), diagnosis.unchecked().toString());
+        assertTrue(diagnosis.unchecked().get(0).startsWith("Consumers"), diagnosis.unchecked().toString());
+        assertTrue(diagnosis.unchecked().get(1).startsWith("Addresses"), diagnosis.unchecked().toString());
+        assertTrue(diagnosis.unchecked().get(1).contains("AMQ229032 addresses"), diagnosis.unchecked().toString());
+    }
+
+    @Test
     @DisplayName("internal queues are left out unless asked for")
     void skipsInternalQueues()
     {
@@ -513,6 +552,6 @@ class StuckDiagnosisServiceTest
 
     private BrokerHealth health(double diskPercent, long maxDiskPercent)
     {
-        return new BrokerHealth("2.42.0", "1 day", "STARTED", "node", 1, 1, 1, 1024, 5, diskPercent, maxDiskPercent);
+        return BrokerHealth.of("2.42.0", "1 day", "STARTED", "node", 1, 1, 1, 1024, 5, diskPercent, maxDiskPercent);
     }
 }

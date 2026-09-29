@@ -63,6 +63,7 @@ public class AddressDetailService
                 .filter(producer -> name.equals(producer.address()) && !producer.self()).toList();
 
         Map<String, Long> oldest = new LinkedHashMap<>();
+        Map<String, String> notRead = new LinkedHashMap<>();
         for (Subscription subscription : subscriptions)
         {
             // An empty queue has no oldest message; skipping it saves the round trip, not a result.
@@ -70,13 +71,18 @@ public class AddressDetailService
             {
                 continue;
             }
-            Long age = queueDirectory.oldestUndeliveredAgeMillis(subscription.name());
-            if (age != null)
+            // One subscription's age the broker will not give does not take the others with it.
+            Reading<Long> age = Reading.attempt(() -> queueDirectory.oldestUndeliveredAgeMillis(subscription.name()));
+            if (!age.available())
             {
-                oldest.put(subscription.name(), age);
+                notRead.put(subscription.name(), age.explained());
+            }
+            else if (age.value() != null)
+            {
+                oldest.put(subscription.name(), age.value());
             }
         }
-        return new AddressDetail(address, subscriptions, consumers, producers, oldest, routing(name, all));
+        return new AddressDetail(address, subscriptions, consumers, producers, oldest, routing(name, all), notRead);
     }
 
     private AddressRouting routing(String name, List<AddressOverview> all)
@@ -93,9 +99,11 @@ public class AddressDetailService
             // should still show who is subscribed.
             settingsError = e.getMessage();
         }
-        List<Divert> diverts = divertDirectory.all();
-        return new AddressRouting(settings, settingsError, DivertDirectory.from(diverts, name),
-                DivertDirectory.to(diverts, name), all.stream().map(AddressOverview::name).collect(Collectors.toSet()));
+        Reading<List<Divert>> diverts = Reading.attempt(divertDirectory::all);
+        List<Divert> known = diverts.orElse(List.of());
+        return new AddressRouting(settings, settingsError, DivertDirectory.from(known, name),
+                DivertDirectory.to(known, name), all.stream().map(AddressOverview::name).collect(Collectors.toSet()),
+                diverts.available() ? null : diverts.explained());
     }
 
     /**

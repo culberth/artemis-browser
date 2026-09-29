@@ -1,6 +1,7 @@
 package com.culberth.tools.artemisbrowser.web;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -16,6 +17,8 @@ import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.AddressOverview;
 import com.culberth.tools.artemisbrowser.broker.AddressRouting;
 import com.culberth.tools.artemisbrowser.broker.AddressSettings;
+import com.culberth.tools.artemisbrowser.broker.Availability;
+import com.culberth.tools.artemisbrowser.broker.BrokerConnection;
 import com.culberth.tools.artemisbrowser.broker.BrokerProducer;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerHealth;
@@ -33,6 +36,7 @@ import com.culberth.tools.artemisbrowser.broker.InFlightConsumer;
 import com.culberth.tools.artemisbrowser.broker.InFlightLookup;
 import com.culberth.tools.artemisbrowser.broker.InFlightMessage;
 import com.culberth.tools.artemisbrowser.broker.InFlightService;
+import com.culberth.tools.artemisbrowser.broker.ManagementRefusal;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
@@ -44,6 +48,7 @@ import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.RateService;
 import com.culberth.tools.artemisbrowser.broker.Rates;
+import com.culberth.tools.artemisbrowser.broker.Reading;
 import com.culberth.tools.artemisbrowser.broker.SavedConnection;
 import com.culberth.tools.artemisbrowser.broker.ScheduledMessage;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
@@ -149,7 +154,7 @@ class PageRenderingTest
         given(brokerSession.isConnected()).willReturn(true);
         given(brokerSession.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(brokerInfo.health())
-                .willReturn(new BrokerHealth("2.42.0", "1 day", "STARTED", "node-1", 1, 1, 1, 1024, 5, 10.0d, 90));
+                .willReturn(BrokerHealth.of("2.42.0", "1 day", "STARTED", "node-1", 1, 1, 1, 1024, 5, 10.0d, 90));
         given(brokerInfo.acceptors()).willReturn(List.of());
         given(brokerInfo.connections()).willReturn(List.of());
         given(brokerInfo.consumers()).willReturn(List.of());
@@ -171,12 +176,34 @@ class PageRenderingTest
     }
 
     @Test
-    @DisplayName("the broker page still renders when the broker cannot be read")
-    void rendersTheBrokerPageOnError()
+    @DisplayName("a panel the broker refuses says why, and the panels after it still render")
+    void rendersTheBrokerPageWithARefusedPanel() throws Exception
     {
-        given(brokerInfo.health()).willThrow(new BrokerException("nope"));
+        given(brokerInfo.acceptors()).willThrow(new ManagementRefusal(Availability.DENIED,
+                "AMQ229032: User: viewer does not have permission='VIEW' on address mops.broker.getAcceptorsAsJSON"));
+        given(brokerInfo.connections())
+                .willReturn(List.of(new BrokerConnection("conn-after-the-refusal", "10.0.0.9:5000", "", 1, false)));
 
-        Assertions.assertDoesNotThrow(() -> page("/broker"));
+        page("/broker").andExpect(content().string(containsString("Not shown: not permitted for this user.")))
+                .andExpect(content().string(containsString("mops.broker.getAcceptorsAsJSON")))
+                .andExpect(content().string(containsString("conn-after-the-refusal")));
+    }
+
+    @Test
+    @DisplayName("a health figure the broker would not give is marked with its reason, never shown as zero")
+    void rendersMissingHealthFigures() throws Exception
+    {
+        BrokerHealth full = BrokerHealth.of("2.42.0", "1 day", "STARTED", "node-1", 1, 1, 1, 1024, 5, 10.0d, 90);
+        given(brokerInfo.health()).willReturn(new BrokerHealth(full.version(), full.uptime(),
+                Reading.failed("the status attribute has no server.state"), full.nodeId(), full.connectionCount(),
+                full.sessionCount(), full.consumerCount(), full.memoryUsedBytes(), full.memoryUsedPercent(),
+                Reading.missing(Availability.UNAVAILABLE, "Problem while retrieving attribute diskStoreUsage"),
+                full.maxDiskPercent(), full.collectedAt()));
+
+        page("/broker").andExpect(content().string(containsString("— not available from this broker")))
+                .andExpect(content().string(containsString("state unknown")))
+                .andExpect(content().string(not(containsString("0.00%"))))
+                .andExpect(content().string(containsString("blocks at 90%")));
     }
 
     @Test
@@ -321,6 +348,22 @@ class PageRenderingTest
 
         page("/address?name=events").andExpect(content().string(containsString("could not be read: refused")))
                 .andExpect(content().string(containsString("Subscriptions")));
+    }
+
+    @Test
+    @DisplayName("diverts and an age that cannot be read are marked, not shown as none")
+    void rendersTheAddressPageWithoutDivertsOrAges() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 3, 0, 0, 0, false, false, false, List.of());
+        Subscription sub = Subscription.of("events.sub", "events", "MULTICAST", "", "artemis", true, false, false, 3, 0,
+                0, 0, 3, 0, 0, 0);
+        given(addressDetail.detail("events")).willReturn(new AddressDetail(events, List.of(sub), List.of(), List.of(),
+                Map.of(), new AddressRouting(null, null, List.of(), List.of(), java.util.Set.of(), "not supported"),
+                Map.of("events.sub", "not permitted for this user — AMQ229032")));
+
+        page("/address?name=events").andExpect(content().string(containsString("Diverts could not be read")))
+                .andExpect(content().string(containsString("does not mean there are none")))
+                .andExpect(content().string(containsString("not permitted for this user — AMQ229032")));
     }
 
     @Test
@@ -502,6 +545,22 @@ class PageRenderingTest
                 true, "2026-09-20 10:00:00", "2026-09-21 10:00:00", false, Map.of())));
 
         page("/queues?name=" + QUEUE).andExpect(content().string(containsString("ID:sched")));
+    }
+
+    @Test
+    @DisplayName("scheduled messages that cannot be listed say so, and the waiting messages still show")
+    void rendersTheQueuePageWhenScheduledCannotBeListed() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 1, 1));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        given(browseService.scheduled(QUEUE)).willThrow(new ManagementRefusal(Availability.DENIED,
+                "The broker refused queue.orders.listScheduledMessagesAsJSON() for this user"));
+
+        page("/queues?name=" + QUEUE)
+                .andExpect(content().string(containsString("scheduled message(s), and they could not be listed")))
+                .andExpect(content().string(containsString("listScheduledMessagesAsJSON")))
+                .andExpect(content().string(not(containsString("This queue is empty."))));
     }
 
     @Test
@@ -713,6 +772,20 @@ class PageRenderingTest
 
         page("/diagnose").andExpect(content().string(containsString("Nothing on this broker looks blocked")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("was not checked"))));
+    }
+
+    @Test
+    @DisplayName("a diagnose page that could not check everything says what, and does not claim all is well")
+    void rendersTheDiagnosePageWithUncheckedChecks() throws Exception
+    {
+        given(diagnosis.run(anyBoolean()))
+                .willReturn(new Diagnosis(List.of(), 0, 0, new Diagnosis.Measured(Rates.none("not measured"), false),
+                        List.of("Disk use against its limit: not permitted for this user — AMQ229032")));
+
+        page("/diagnose").andExpect(content().string(containsString("Could not check")))
+                .andExpect(content().string(containsString("Disk use against its limit: not permitted for this user")))
+                .andExpect(content().string(containsString("not everything could be")))
+                .andExpect(content().string(not(containsString("Nothing on this broker looks blocked"))));
     }
 
     @Test
