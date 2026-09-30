@@ -1,14 +1,15 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 13 in progress: broker visibility and operational explanation. Phase 14 planned
-2026-09-29: incident investigation. Phase 15 specified 2026-09-29: interactive regression lab.**
+Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
+complete 2026-09-30: P1–P3 and the acceptance checks; P4–P5 optional. Phase 15 specified
+2026-09-29: interactive regression lab, not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
-*Phase 10*, *Phase 11*, *Phase 12* and the planned *Phase 13* below. The tool is run by one person, which is what settles the open questions about replicas,
+*Phase 10*, *Phase 11*, *Phase 12*, *Phase 13* and *Phase 14* below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
-Last updated: 2026-09-29.
+Last updated: 2026-09-30.
 
 ## What this is
 
@@ -915,7 +916,8 @@ selected under P0 before implementing their fields.
 
 ## Phase 14 — Incident investigation: what changed, and where is my message?
 
-Planned 2026-09-29 following the Phase 13 PRD review. Phase 13 expands the evidence available about
+Planned 2026-09-29 following the Phase 13 PRD review. **Phase 14 is complete**: P1–P3 and the
+phase acceptance checks, as of 2026-09-30; P4–P5 remain optional. Phase 13 expands the evidence available about
 the broker; Phase 14 helps use that evidence to investigate an incident: identify what changed,
 locate a message, and repeat a useful search without rebuilding it each time.
 

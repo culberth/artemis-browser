@@ -39,6 +39,10 @@ Shipped so far:
   messages, and diagnostic findings for consumer imbalance and old messages still in flight.
 - **Phase 12** — corrected filtered paging and search exports, expired/killed counters, measured
   ingress and acknowledgment rates, client drilldowns, and scale measurements for the newer views.
+- **Phase 13** — broker visibility: address pressure, queue behavior, session trends, incident
+  snapshots, connectivity and HA, transactions and permissions (below).
+- **Phase 14** — incident investigation: snapshot comparison, message-ID lookup in every state,
+  guided filters and saved searches (below).
 
 ## Phase 13: broker visibility
 
