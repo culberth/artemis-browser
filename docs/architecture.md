@@ -171,6 +171,28 @@ may be why" apart, which the PRD asks for. Where the configuration makes the obs
 setting itself working, as with one consumer holding everything on an exclusive queue, there is no
 finding at all.
 
+## Incident snapshots: evidence that says what it is not
+
+`/snapshot` collects one `IncidentSnapshot`, and `SnapshotWriter` renders it twice: JSON to keep and
+compare, and a text summary to paste into a ticket. It reuses the read paths the pages already
+use, each section isolated as on `/broker`, so a refused listing leaves the rest collected. Nothing
+browses a message. The one bulk read beyond the pages is address settings, bounded and aimed at the
+addresses that have something to explain.
+
+Three rules make it usable offline:
+
+- **It is a sequence, not a moment.** It says so, and every section carries its own `collectedAt`.
+- **Nothing missing is written as a value.** A reading the broker would not give is written as
+  `{"unavailable": …, "availability": …, "detail": …}` where the value would be, and listed under
+  `unavailable`. Anything the bounds dropped is listed under `omitted` with a count.
+- **Nothing secret gets in.** Most sections are built field by field, so a secret has no field to
+  arrive in: acceptors never carry their parameters, and the broker password is never retained.
+  Settings maps are the exception, since the broker names their keys, so values under
+  secret-looking keys are masked and counted.
+
+`schemaVersion` is bumped whenever a field changes meaning, so two saved snapshots can be compared
+knowingly.
+
 ## Trends: bounded, session-only, and broken where they must be
 
 Trends extend the one-interval rate tracker rather than add a collector. A reading is taken only

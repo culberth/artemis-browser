@@ -43,8 +43,8 @@ Shipped so far:
 ## Next: Phase 13 (planned)
 
 Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
-first three feature areas (P1 address pressure, P2 queue behavior, P3 trends) are done, and the
-rest are not yet built:
+first four feature areas (P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots)
+are done, and the rest are not yet built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
@@ -53,6 +53,7 @@ rest are not yet built:
 3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
    **Done.**
 4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
+   **Done.**
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
 6. Read-only prepared-transaction and address-permission inspection.
 
@@ -78,8 +79,13 @@ Done in P3: the overview has a *Trend* column, and each queue page a *Recent tre
 built from readings this session takes while pages are open, so there is no background polling. They show
 the depth over time, whether the backlog is growing, when acknowledgments stopped or resumed,
 expired and killed messages now, and consumer changes. A restart, a recreated queue or a counter
-reset breaks the line instead of joining two different things. Incident snapshots come next, and
-all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+reset breaks the line instead of joining two different things.
+
+Done in P4: `/snapshot` downloads an incident snapshot, as JSON or as a text summary. It is linked
+from the broker and diagnose pages. It holds the broker's identity and health, queues, addresses,
+settings, clients, this session's trends and a diagnose run. Everything the broker would not give,
+and everything the limits left out, is listed. There are no message bodies or credentials. Connectivity
+and HA come next, and all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -356,6 +362,17 @@ Queue settings are the queue's effective values from the queue listing. Non-dest
 exception: the broker does not report it per queue, so the page says it cannot tell and shows only
 the address default. Messages a last-value queue replaces or a ring evicts appear in no counter.
 
+## Incident snapshots
+
+`/snapshot?format=json` (or `format=text`) collects fresh on each request, and takes a few seconds
+because it includes a diagnose run. It is a sequence of observations, not an atomic picture, and
+each section carries its own time. Client listings keep at most `artemis.snapshot.max-rows` (1000)
+rows. Address settings are read for at most `artemis.snapshot.max-address-settings` (200)
+addresses, those near a limit, paging, dropping, or killing and expiring messages first. The JSON
+names each unit (`addressSizeBytes`), uses ISO-8601 UTC times, and lists `unavailable` reads and
+`omitted` rows, so two snapshots can be compared. Message bodies are never included. Setting values
+under keys that look like secrets are masked.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -410,6 +427,8 @@ com.culberth.tools.artemisbrowser
 │   │                              Bounded session history of queue counters; intervals, breaks and gaps
 │   ├── ClientDirectory            One client: connections → sessions → its consumers and producers
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
+│   ├── SnapshotService / SnapshotWriter / IncidentSnapshot / Redaction
+│   │                              Incident snapshot: bounded collection, JSON and text, masked secrets
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueBehavior              A queue's effective settings from its listing row, and what each looks like from outside
@@ -431,6 +450,7 @@ com.culberth.tools.artemisbrowser
 │   ├── QueueController            /overview, /queues, /message, /message/download
 │   ├── BrokerController           /broker, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
+│   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── DiagnoseController         /diagnose
 │   ├── LoginController            /login (the sign-in itself is Spring Security's)
 │   ├── ConnectForm                Connect page form backing object

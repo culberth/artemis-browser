@@ -148,6 +148,29 @@ class PartialAvailabilityIT
     }
 
     @Test
+    @DisplayName("a snapshot taken by a restricted user lists what it could not collect, and collects the rest")
+    void snapshotsAroundARefusal()
+    {
+        BrokerSession viewer = connectAs("viewer");
+        QueueDirectory queues = new QueueDirectory(viewer);
+        BrokerInfoService info = new BrokerInfoService(viewer);
+        AddressDirectory addresses = new AddressDirectory(viewer, queues);
+        RateService rates = new RateService(viewer, new RateTracker(), queues);
+        IncidentSnapshot snapshot = new SnapshotService(viewer, info, queues, addresses, rates,
+                new StuckDiagnosisService(queues, addresses, info,
+                        new QueueBrowseService(viewer, 200, 200000, 20000, 20_000_000L), new DivertDirectory(viewer),
+                        new InFlightService(viewer, info, 5000), rates),
+                1000, 200).collect();
+
+        assertEquals(Availability.DENIED, snapshot.acceptors().rows().availability());
+        assertEquals(Availability.UNAVAILABLE, snapshot.health().diskUsedPercent().availability());
+        assertTrue(snapshot.queues().available());
+        String json = SnapshotWriter.toJson(snapshot).get("unavailable").toString();
+        assertTrue(json.contains("\"section\":\"acceptors\""), json);
+        assertTrue(json.contains("\"item\":\"diskStoreUsedPercent\""), json);
+    }
+
+    @Test
     @DisplayName("a user without 'manage' is refused, not told the connection was lost")
     void refusesAUserWithoutManage()
     {

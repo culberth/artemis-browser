@@ -741,18 +741,39 @@ separately available broker metrics source and are not promised by the managemen
 
 ### P4 — Incident snapshot export
 
-- [ ] **Export operational evidence together.** Provide a downloadable snapshot containing broker
+- [x] **Export operational evidence together.** Provide a downloadable snapshot containing broker
       identity/version, collection timestamps, health, queue/address counters, relevant settings,
       clients, available trend samples and Diagnose findings. Include the later connectivity and
       transaction/permission panels when available. Provide structured JSON and a readable summary.
-- [ ] **Describe completeness.** Include a schema version, collection start/end times, sampling
+      Done 2026-09-30: `/snapshot?format=json|text`, linked from `/broker` and `/diagnose`. It holds
+      broker identity and health, every queue with counters, id and configuration, every address with
+      its storage figures, address settings, acceptors, connections, consumers, producers, this
+      session's trend readings, and a full diagnose run. Both formats come from one
+      `IncidentSnapshot`. Connectivity and permission sections join it when P5 and P6 exist.
+- [x] **Describe completeness.** Include a schema version, collection start/end times, sampling
       intervals, unsupported/denied/failed reads and any truncation or omitted sections. This is a
       sequence of observations, not an atomic broker snapshot. Keep collection bounded and reuse
       collected data where practical to avoid repeated expensive reads.
-- [ ] **Keep evidence safe and useful.** Exclude credentials and message bodies by default, redact
+      Done 2026-09-30. The snapshot carries `schemaVersion`, the collection start and end, and
+      `collectedAt` for every section. It records the limits it ran under and the trend spacing. An
+      `unavailable` list names each read the broker would not give (section, item, availability,
+      detail), and an `omitted` list gives what the bounds left out, with counts.
+      - Client listings are capped at `artemis.snapshot.max-rows` (1000).
+      - Address settings are read for at most `artemis.snapshot.max-address-settings` (200), those
+        with something to explain first.
+      - The queue listing is read once and reused as this session's trend reading.
+- [x] **Keep evidence safe and useful.** Exclude credentials and message bodies by default, redact
       secrets from configuration/connector data, and keep existing message exports separate.
       Use stable identifiers and units so two saved snapshots can be compared later; an automated
       snapshot-diff viewer is not required for this phase.
+      Done 2026-09-30. There are no message bodies (nothing browses), and the connection section has
+      host, port and user only. Acceptors keep name, protocols, host and port, never their
+      parameters. Setting values under secret-looking keys are masked (`Redaction`) and counted. The
+      message exports are untouched. Field names carry units, times are ISO-8601 UTC, and queues are
+      identified by name and broker id. A missing value is an object stating why, never zero or null.
+      Tests: `SnapshotWriterTest`, `SnapshotServiceTest` and `SnapshotControllerTest`, plus
+      `SnapshotIT` (a real broker, no counter changed) and `PartialAvailabilityIT` (a restricted
+      user's snapshot lists what was denied).
 
 Done means an incident report can be understood offline, including what could not be collected,
 with tests for completeness metadata, bounds, secret exclusion and non-destructive collection.

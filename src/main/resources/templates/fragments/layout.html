@@ -111,6 +111,18 @@
               stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
 
+<!--
+  The incident snapshot downloads. Collected fresh on each click: health, queues, addresses, settings,
+  clients, this session's trends and diagnose's findings, with what could not be read. No message bodies.
+-->
+<p th:fragment="snapshotLinks" class="note snapshot-links">
+    Incident snapshot:
+    <a class="badge-link" th:href="@{/snapshot(format='json')}">JSON</a>
+    <a class="badge-link" th:href="@{/snapshot(format='text')}">text summary</a>
+    <span class="muted">&mdash; everything on this broker page, the queues, addresses, trends and diagnose findings in
+        one file, with what could not be read. No message bodies or credentials. Takes a few seconds.</span>
+</p>
+
 <!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->
 <span th:fragment="collected(reading)" class="muted collected"
       th:text="'read ' + ${reading.collectedText()}">read 12:00:00</span>

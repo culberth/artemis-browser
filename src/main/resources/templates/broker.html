@@ -24,6 +24,7 @@
             <span class="badge warn" th:unless="${health.stateKnown()}" th:title="${health.state().detail()}">state unknown</span>
             <span th:replace="~{fragments/layout :: collected(${health.state()})}"></span>
         </h2>
+        <p th:replace="~{fragments/layout :: snapshotLinks}"></p>
         <div class="stats">
             <div class="stat"><span class="k">Uptime</span>
                 <span class="v small" th:if="${health.uptime().available()}" th:text="${health.uptime().value()}">—</span>
