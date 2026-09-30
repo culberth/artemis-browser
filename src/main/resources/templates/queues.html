@@ -68,6 +68,7 @@
             <span class="badge" th:text="${stats.routingType()}">ANYCAST</span>
             <span class="badge" th:if="${stats.durable()}">durable</span>
             <span class="badge" th:if="${stats.paused()}">paused</span>
+            <th:block th:replace="~{fragments/layout :: behaviorBadges(${stats.behavior()}, false)}"></th:block>
         </h2>
         <div class="stats">
             <div class="stat"><span class="k">Messages</span><span class="v" th:text="${stats.messageCount()}">0</span></div>
@@ -96,6 +97,61 @@
         <p class="note">
             Address <code th:text="${stats.address()}">address</code>.
             Browsing is read-only: messages are copied, never consumed or acknowledged.
+        </p>
+    </div>
+
+    <div class="panel" th:if="${stats}" th:with="b=${stats.behavior()}">
+        <h2>Configuration and behavior</h2>
+        <th:block th:unless="${b.known()}"><p th:replace="~{fragments/layout :: panelMissing(${b.ringSize()})}"></p></th:block>
+        <th:block th:if="${b.known()}">
+            <p class="muted" th:if="${b.effects().isEmpty()}">
+                A plain first-in, first-out queue: every setting the broker reports for it is at its default.
+            </p>
+            <div class="table-scroll" th:unless="${b.effects().isEmpty()}">
+                <table>
+                    <thead><tr><th>Setting</th><th>Value</th><th>What you see</th></tr></thead>
+                    <tbody>
+                    <tr th:each="e : ${b.effects()}">
+                        <th th:text="${e.setting()}">Ring</th>
+                        <td><code th:text="${e.value()}">3 messages</code></td>
+                        <td class="muted" th:text="${e.consequence()}">oldest removed</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </th:block>
+        <p class="note" th:if="${groups != null and groups.available() and groups.value() > 0}"
+           th:text="${groups.value()} + ' message group(s) are assigned to consumers. Every message of a group goes to the consumer holding it, so an uneven spread across consumers can be group affinity rather than a fault.'">
+            2 message groups.
+        </p>
+        <p class="note">
+            <strong>Non-destructive</strong> is not reported per queue by this broker, so this page cannot say
+            whether consuming removes messages here.
+            <th:block th:if="${addressSettings != null and addressSettings.available()}">
+                <span th:if="${addressSettings.value().nonDestructiveDefault() != null}"
+                      th:text="'The address makes new queues non-destructive by default: ' + ${addressSettings.value().nonDestructiveDefault()} + '. That is a default, not necessarily this queue.'">
+                    default</span>
+                <span th:if="${addressSettings.value().nonDestructiveDefault() == null}">The address sets no
+                    default for it.</span>
+            </th:block>
+            <th:block th:if="${addressSettings != null and !addressSettings.available()}">
+                <span th:replace="~{fragments/layout :: missing(${addressSettings})}"></span>
+            </th:block>
+        </p>
+        <details th:if="${addressSettings != null and addressSettings.available() and !addressSettings.value().queueDefaults().isEmpty()}">
+            <summary class="muted">Defaults the address gives new queues</summary>
+            <table>
+                <tbody>
+                <tr th:each="d : ${addressSettings.value().queueDefaults()}">
+                    <td><code th:text="${d.key}">defaultRingSize</code></td><td th:text="${d.value}">10</td>
+                </tr>
+                </tbody>
+            </table>
+        </details>
+        <p class="note">
+            These are this queue&rsquo;s own values as the broker reports them &mdash; set explicitly, or taken
+            from its address&rsquo;s defaults when it was created. A default changed since then does not change
+            the queue.
         </p>
     </div>
 

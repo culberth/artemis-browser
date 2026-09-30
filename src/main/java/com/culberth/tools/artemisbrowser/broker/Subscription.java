@@ -18,8 +18,26 @@ package com.culberth.tools.artemisbrowser.broker;
 public record Subscription(String name, String address, String routingType, Kind kind, String clientIdHint,
         String subscriptionHint, String filter, String user, boolean durable, boolean temporary, boolean exclusive,
         long messageCount, long deliveringCount, long scheduledCount, int consumerCount, long messagesAdded,
-        long messagesAcked, long messagesExpired, long messagesKilled)
+        long messagesAcked, long messagesExpired, long messagesKilled, QueueBehavior behavior)
 {
+
+    public Subscription(String name, String address, String routingType, Kind kind, String clientIdHint,
+            String subscriptionHint, String filter, String user, boolean durable, boolean temporary, boolean exclusive,
+            long messageCount, long deliveringCount, long scheduledCount, int consumerCount, long messagesAdded,
+            long messagesAcked, long messagesExpired, long messagesKilled)
+    {
+        this(name, address, routingType, kind, clientIdHint, subscriptionHint, filter, user, durable, temporary,
+                exclusive, messageCount, deliveringCount, scheduledCount, consumerCount, messagesAdded, messagesAcked,
+                messagesExpired, messagesKilled, QueueBehavior.NOT_COLLECTED);
+    }
+
+    /** The same subscription with its queue's configuration, from the listing row it was built from. */
+    public Subscription withBehavior(QueueBehavior behavior)
+    {
+        return new Subscription(name, address, routingType, kind, clientIdHint, subscriptionHint, filter, user, durable,
+                temporary, exclusive, messageCount, deliveringCount, scheduledCount, consumerCount, messagesAdded,
+                messagesAcked, messagesExpired, messagesKilled, behavior);
+    }
 
     private static final String SHARED_NON_DURABLE_PREFIX = "nonDurable.";
 

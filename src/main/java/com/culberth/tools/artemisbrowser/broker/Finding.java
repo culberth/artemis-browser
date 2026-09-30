@@ -18,10 +18,19 @@ package com.culberth.tools.artemisbrowser.broker;
  * @param basis        {@link #OBSERVED} when the broker reported the thing itself, {@link #INFERRED} when the finding
  *                     reasons from what it reported — a percentage and a policy, say, to what a producer is going
  *                     through
+ * @param explanation  configured behavior that may account for what was observed — a queue that waits for two
+ *                     consumers, say — or null. Kept apart from {@code detail}, which holds only what was read, so the
+ *                     page can say "this is what we saw" and "this may be why" as two different things.
  */
 public record Finding(String severity, String title, String detail, String queue, String address, String clientId,
-        String connectionId, String basis)
+        String connectionId, String basis, String explanation)
 {
+
+    public Finding(String severity, String title, String detail, String queue, String address, String clientId,
+            String connectionId, String basis)
+    {
+        this(severity, title, detail, queue, address, clientId, connectionId, basis, null);
+    }
 
     public static final String OBSERVED = "observed";
     public static final String INFERRED = "inferred";
@@ -42,13 +51,30 @@ public record Finding(String severity, String title, String detail, String queue
     {
         boolean named = clientId != null && !clientId.isEmpty();
         return new Finding(severity, title, detail, queue, address, named ? clientId : null,
-                named ? null : connectionId, basis);
+                named ? null : connectionId, basis, explanation);
     }
 
     /** The same finding, marked as reasoned from what the broker reported rather than reported by it. */
     public Finding inferred()
     {
-        return new Finding(severity, title, detail, queue, address, clientId, connectionId, INFERRED);
+        return new Finding(severity, title, detail, queue, address, clientId, connectionId, INFERRED, explanation);
+    }
+
+    /** The same finding, with configured behavior that may explain it. */
+    public Finding explainedBy(String explanation)
+    {
+        return new Finding(severity, title, detail, queue, address, clientId, connectionId, basis, explanation);
+    }
+
+    /** The same finding at a different severity — for one the configuration makes less alarming. */
+    public Finding withSeverity(String severity)
+    {
+        return new Finding(severity, title, detail, queue, address, clientId, connectionId, basis, explanation);
+    }
+
+    public boolean hasExplanation()
+    {
+        return explanation != null && !explanation.isBlank();
     }
 
     public boolean isInferred()

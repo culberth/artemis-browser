@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.InFlightService;
@@ -57,6 +58,9 @@ class QueueControllerTest
 
     @MockitoBean
     private RateService rateService;
+
+    @MockitoBean
+    private AddressDirectory addressDirectory;
 
     @BeforeEach
     void connected()

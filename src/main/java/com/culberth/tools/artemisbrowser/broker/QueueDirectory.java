@@ -93,7 +93,7 @@ public class QueueDirectory
                 return new QueueStats(queue.name(), queue.address(), queue.routingType(), queue.messageCount(),
                         queue.deliveringCount(), queue.scheduledCount(), queue.consumerCount(), queue.messagesAdded(),
                         queue.messagesAcked(), queue.durable(), queue.paused(), queue.messagesExpired(),
-                        queue.messagesKilled());
+                        queue.messagesKilled(), queue.behavior());
             }
         }
         return null;
@@ -130,12 +130,14 @@ public class QueueDirectory
                 {
                     continue;
                 }
-                subscriptions.add(Subscription.of(name, address, textOr(node, "routingType", "ANYCAST"),
-                        text(node, "filter"), text(node, "user"), flag(node, "durable"), flag(node, "temporary"),
-                        flag(node, "exclusive"), number(node, "messageCount"), number(node, "deliveringCount"),
-                        number(node, "scheduledCount"), (int) number(node, "consumerCount"),
-                        number(node, "messagesAdded"), number(node, "messagesAcked"), number(node, "messagesExpired"),
-                        number(node, "messagesKilled")));
+                subscriptions.add(Subscription
+                        .of(name, address, textOr(node, "routingType", "ANYCAST"), text(node, "filter"),
+                                text(node, "user"), flag(node, "durable"), flag(node, "temporary"),
+                                flag(node, "exclusive"), number(node, "messageCount"), number(node, "deliveringCount"),
+                                number(node, "scheduledCount"), (int) number(node, "consumerCount"),
+                                number(node, "messagesAdded"), number(node, "messagesAcked"),
+                                number(node, "messagesExpired"), number(node, "messagesKilled"))
+                        .withBehavior(QueueBehavior.from(node)));
             }
             if (data.size() < LIST_PAGE_SIZE)
             {
@@ -169,6 +171,19 @@ public class QueueDirectory
         }
     }
 
+    /**
+     * How many message groups the queue has assigned to consumers — {@code GroupCount}, one attribute read. Groups need
+     * no configuration: any message carrying a group id is grouped, so this, not the queue's settings, is what says
+     * group affinity is in play.
+     */
+    public Reading<Long> groupCount(String queueName)
+    {
+        Reading<Object> raw = Reading.attempt(
+                () -> brokerSession.requireManagement().attribute(ResourceNames.QUEUE + queueName, "groupCount"));
+        return raw.available() && raw.value() == null ? Reading.failed("the broker returned no group count")
+                : BrokerInfoService.whole(raw);
+    }
+
     private JsonNode listQueues(ManagementChannel management, int page)
     {
         return listQueues(management, NO_FILTER, page);
@@ -199,7 +214,7 @@ public class QueueDirectory
                 number(node, "messageCount"), number(node, "deliveringCount"), number(node, "scheduledCount"),
                 (int) number(node, "consumerCount"), number(node, "messagesAdded"), number(node, "messagesAcked"),
                 flag(node, "durable"), flag(node, "paused"), flag(node, "internalQueue"),
-                number(node, "messagesExpired"), number(node, "messagesKilled"));
+                number(node, "messagesExpired"), number(node, "messagesKilled"), QueueBehavior.from(node));
     }
 
     private String text(JsonNode node, String field)

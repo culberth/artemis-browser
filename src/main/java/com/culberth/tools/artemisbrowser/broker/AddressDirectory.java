@@ -166,25 +166,10 @@ public class AddressDirectory
         return Reading.failed("'" + raw.value() + "' is not true or false");
     }
 
-    /**
-     * A counter the listing may or may not carry. Absent means this broker's listing does not have it, and a value that
-     * is not a number could not be read — neither is a zero, since these feed a limit check.
-     */
+    /** A counter the listing may or may not carry; see {@link ListingFields}. */
     static Reading<Long> reading(JsonNode node, String field)
     {
-        JsonNode value = node.get(field);
-        if (value == null || value.isNull())
-        {
-            return Reading.missing(Availability.UNSUPPORTED, "'" + field + "' is not in this broker's address listing");
-        }
-        try
-        {
-            return Reading.of(Long.parseLong(value.asText().trim()));
-        }
-        catch (NumberFormatException e)
-        {
-            return Reading.failed("'" + value.asText() + "' is not a number");
-        }
+        return ListingFields.number(node, field, "address listing");
     }
 
     /**

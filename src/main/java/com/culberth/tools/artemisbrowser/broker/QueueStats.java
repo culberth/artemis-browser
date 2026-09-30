@@ -18,8 +18,16 @@ package com.culberth.tools.artemisbrowser.broker;
  */
 public record QueueStats(String name, String address, String routingType, long messageCount, long deliveringCount,
         long scheduledCount, int consumerCount, long messagesAdded, long messagesAcknowledged, boolean durable,
-        boolean paused, long messagesExpired, long messagesKilled)
+        boolean paused, long messagesExpired, long messagesKilled, QueueBehavior behavior)
 {
+
+    public QueueStats(String name, String address, String routingType, long messageCount, long deliveringCount,
+            long scheduledCount, int consumerCount, long messagesAdded, long messagesAcknowledged, boolean durable,
+            boolean paused, long messagesExpired, long messagesKilled)
+    {
+        this(name, address, routingType, messageCount, deliveringCount, scheduledCount, consumerCount, messagesAdded,
+                messagesAcknowledged, durable, paused, messagesExpired, messagesKilled, QueueBehavior.NOT_COLLECTED);
+    }
 
     public QueueStats(String name, String address, String routingType, long messageCount, long deliveringCount,
             long scheduledCount, int consumerCount, long messagesAdded, long messagesAcknowledged, boolean durable,

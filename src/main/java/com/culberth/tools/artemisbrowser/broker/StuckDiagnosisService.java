@@ -113,9 +113,10 @@ public class StuckDiagnosisService
                     + " in flight: " + consumerReading.explained());
         }
         List<BrokerConsumer> consumers = consumerReading.orElse(List.of());
+        Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, unchecked, queue, consumers, rates);
+            queueLevel(findings, unchecked, queue, consumers, rates, settings);
         }
         if (consumerReading.available())
         {
@@ -123,7 +124,6 @@ public class StuckDiagnosisService
         }
         Unread unread = longInFlight(findings, unchecked, queues, rates);
         Reading<List<AddressOverview>> addresses = Reading.attempt(addressDirectory::overview);
-        Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         if (addresses.available())
         {
             nowhereToGo(findings, unchecked, queues, addresses.value(), settings);
@@ -164,6 +164,12 @@ public class StuckDiagnosisService
         Map<QueueOverview, BrokerConsumer> hoarders = new LinkedHashMap<>();
         for (QueueOverview queue : queues)
         {
+            // Exclusive, or one consumer allowed: one consumer holding everything is the configuration
+            // working. Measured on 2.55.0 and 2.57.0: two consumers on an exclusive queue held 20 and 0.
+            if (queue.behavior().singleConsumer())
+            {
+                continue;
+            }
             List<BrokerConsumer> real = consumers.stream().filter(
                     consumer -> queue.name().equals(consumer.queueName()) && !consumer.browseOnly() && !consumer.self())
                     .toList();
@@ -188,13 +194,20 @@ public class StuckDiagnosisService
             long others = consumers.stream().filter(consumer -> queue.name().equals(consumer.queueName())
                     && !consumer.browseOnly() && !consumer.self() && !consumer.equals(hoarder)).count();
             String who = who(clients.get(hoarder.sequentialId()), hoarder);
+            Reading<Long> groups = queueDirectory.groupCount(queue.name());
+            String explanation = groups.available() && groups.value() > 0
+                    ? groups.value() + " message group(s) are assigned on this queue, and every message of a group"
+                            + " goes to the consumer holding it — so one consumer taking all the in-flight messages"
+                            + " can be group affinity rather than a buffer."
+                    : null;
             findings.add(Finding.watch("One consumer holds everything in flight on '" + queue.name() + "'",
                     who + " holds " + hoarder.deliveringCount() + " message(s) in flight, and the other " + others
                             + " consumer(s) on this queue hold none. In flight includes what sits in a consumer's"
                             + " client-side buffer, so one consumer can take a backlog the others could be working"
                             + " on — usually a consumer window or prefetch set too large for how slowly each message"
                             + " is processed.",
-                    queue.name()).aboutClient(clientOf(clients.get(hoarder.sequentialId())), hoarder.connectionId()));
+                    queue.name()).aboutClient(clientOf(clients.get(hoarder.sequentialId())), hoarder.connectionId())
+                    .explainedBy(explanation));
         });
     }
 
@@ -327,7 +340,7 @@ public class StuckDiagnosisService
     }
 
     private void queueLevel(List<Finding> findings, List<String> unchecked, QueueOverview queue,
-            List<BrokerConsumer> consumers, Rates rates)
+            List<BrokerConsumer> consumers, Rates rates, Map<String, Reading<AddressSettings>> settings)
     {
         if (queue.paused())
         {
@@ -362,13 +375,32 @@ public class StuckDiagnosisService
                             + " count and nothing that will ever drain it.",
                     queue.name()));
         }
+        else if (queue.messageCount() > 0 && queue.deliveringCount() == 0
+                && queue.behavior().dispatchGated(queue.consumerCount()))
+        {
+            long required = queue.behavior().consumersRequired();
+            findings.add(Finding
+                    .watch("'" + queue.name() + "' is waiting for " + required + " consumers before it dispatches",
+                            queue.messageCount() + " message(s) waiting, " + queue.consumerCount() + " of the "
+                                    + required + " consumers it needs attached, and none delivered.",
+                            queue.name())
+                    .explainedBy("The queue is configured with consumers-before-dispatch " + required
+                            + ": it holds everything until that many consumers are attached. Measured on 2.55.0 and"
+                            + " 2.57.0 with one of two attached: nothing was delivered."));
+        }
         else if (queue.deliveringCount() > 0 && queue.messagesAcked() == 0)
         {
-            findings.add(Finding.watch("'" + queue.name() + "' has delivered nothing since the broker started",
+            Finding finding = Finding.watch("'" + queue.name() + "' has delivered nothing since the broker started",
                     queue.deliveringCount() + " message(s) are checked out to a consumer and none has been"
                             + " acknowledged. A consumer that takes messages and never acknowledges looks connected"
                             + " and healthy from every other angle.",
-                    queue.name()));
+                    queue.name());
+            findings.add(Boolean.TRUE.equals(nonDestructiveDefault(queue.address(), settings, unchecked))
+                    ? finding.explainedBy("The address '" + queue.address() + "' makes new queues non-destructive"
+                            + " by default. On a non-destructive queue consuming never counts as acknowledged —"
+                            + " measured on 2.55.0 and 2.57.0 — so this is also what a working consumer looks like"
+                            + " there. Whether this queue is one cannot be read per queue.")
+                    : finding);
         }
 
         if (looksLikeDeadLetter(queue.name()) && queue.messageCount() > 0)
@@ -393,6 +425,23 @@ public class StuckDiagnosisService
      * consumer" flag stays off while nothing is draining the queue. This tool's own browser is excluded — it is
      * attached for the length of a request, and reporting it would mean the page accused itself.
      */
+    private Boolean nonDestructiveDefault(String address, Map<String, Reading<AddressSettings>> settings,
+            List<String> unchecked)
+    {
+        boolean first = !settings.containsKey(address);
+        Reading<AddressSettings> read = settings.computeIfAbsent(address,
+                name -> Reading.attempt(() -> addressDirectory.settings(name)));
+        if (!read.available())
+        {
+            if (first)
+            {
+                unchecked.add("Whether '" + address + "' makes its queues non-destructive: " + read.explained());
+            }
+            return null;
+        }
+        return read.value().nonDestructiveDefault();
+    }
+
     private boolean onlyBrowsersAttached(QueueOverview queue, List<BrokerConsumer> consumers)
     {
         List<BrokerConsumer> attached = consumers.stream()
@@ -469,7 +518,18 @@ public class StuckDiagnosisService
             if (queue.messagesKilled() > 0)
             {
                 String problem = problem(forAddress.deadLetterAddress(), "dead-letter", byName);
-                if (problem != null)
+                if (problem != null && queue.behavior().purges())
+                {
+                    findings.add(Finding.watch(
+                            "'" + queue.name() + "' has discarded " + queue.messagesKilled() + " killed message(s)",
+                            queue.messagesKilled() + " message(s) were killed here, and " + problem + ", so they were"
+                                    + " not kept — if the settings were the same when it happened.",
+                            queue.name())
+                            .explainedBy("The queue purges when its last consumer leaves, and a purge counts every"
+                                    + " message it removes as killed — measured on 2.55.0 and 2.57.0. Some or all of"
+                                    + " these may be purges rather than messages that failed delivery."));
+                }
+                else if (problem != null)
                 {
                     findings.add(Finding.stuck(
                             "'" + queue.name() + "' has dropped " + queue.messagesKilled()
@@ -538,12 +598,20 @@ public class StuckDiagnosisService
             }
             if (address.hasUnrouted())
             {
-                findings.add(Finding.atAddress(Finding.STUCK,
+                Finding unrouted = Finding.atAddress(Finding.STUCK,
                         "'" + address.name() + "' has dropped " + address.unroutedMessageCount() + " message(s)",
                         "They were sent to the address and matched no queue, so they were discarded. Usually a"
                                 + " subscriber that was never created, or a routing type that does not match the"
                                 + " sender's.",
-                        address.name()));
+                        address.name());
+                // Measured on 2.55.0 and 2.57.0: a queue that purges on no consumers refuses what is sent
+                // while none is attached, and the address counts those as unrouted.
+                List<String> purging = address.queues().stream().filter(queue -> queue.behavior().purges())
+                        .map(QueueOverview::name).toList();
+                findings.add(purging.isEmpty() ? unrouted
+                        : unrouted.explainedBy("'" + String.join("', '", purging) + "' purges when it has no"
+                                + " consumer, and refuses messages sent while none is attached — the address counts"
+                                + " those as unrouted. Sends made between consumers are lost by design there."));
             }
             else if (address.queues().isEmpty() && !address.internal())
             {

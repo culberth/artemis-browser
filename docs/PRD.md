@@ -667,17 +667,37 @@ Exercise paging and applicable full-policy scenarios against real brokers.
 
 ### P2 — Queue behavior and effective configuration
 
-- [ ] **Add a queue configuration panel.** Read supported settings for last-value behavior and its
+- [x] **Add a queue configuration panel.** Read supported settings for last-value behavior and its
       key, ring size, non-destructive delivery, purge-on-no-consumers, exclusive consumption,
       grouping, and dispatch thresholds/delays. Include relevant existing queue filters and routing
       settings so users can understand behavior in one place. Show effective queue values separately
       from address defaults; do not infer effective values from omitted fields.
-- [ ] **Explain the consequences.** Connect each setting to what a user sees: replacement or
+      Done 2026-09-29: a *Configuration and behavior* panel on the queue page, and badges on the
+      overview and subscription rows. Probed on 2.55.0 and 2.57.0 first (identical): `listQueues`
+      already carries every setting as the queue's effective value, so nothing new is called per queue.
+      Two traps: a last-value queue reports `lastValue` false (its key is the signal), and
+      non-destructive is reported nowhere per queue. It is shown as unreadable, with the address's
+      `defaultNonDestructive` beside it labelled as a default.
+- [x] **Explain the consequences.** Connect each setting to what a user sees: replacement or
       retention of messages, removal when consumers disappear, delivery to one consumer, group
       affinity, or delayed dispatch. Reuse the existing subscription exclusivity information.
-- [ ] **Make diagnostics configuration-aware.** Review findings about missing messages, idle
+      Done 2026-09-29, worded from what was measured: replaced and evicted messages appear in no
+      counter; consuming from a non-destructive queue acknowledges nothing; a purge counts as killed;
+      an exclusive queue sent 20 to one consumer and 0 to the other. `delayBeforeDispatch` did not
+      release dispatch in the time it names, so it is stated as a setting, not a promise.
+- [x] **Make diagnostics configuration-aware.** Review findings about missing messages, idle
       consumers and consumer imbalance so intentional queue semantics are not stated as failures.
       Findings must distinguish observed facts from possible explanations.
+      Done 2026-09-29: `Finding` gains an explanation, shown as "May be intended:" apart from the
+      observed detail.
+      - No hoarding finding on an exclusive or single-consumer queue. On other queues it is explained
+        by group affinity when `GroupCount` > 0.
+      - A queue waiting for more consumers gets its own finding instead of "delivered nothing".
+      - Killed messages on a purging queue are no longer called failed deliveries.
+      - "Nothing acknowledged" on an address that defaults to non-destructive says it may be that.
+
+      Covered on both versions by `QueueBehaviorIT`, including that browsing these queues changes no
+      counter.
 
 Done means representative specially configured queues show their actual settings and explain their
 behavior, with integration coverage for the semantics used by diagnostic findings.

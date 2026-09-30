@@ -311,6 +311,40 @@ from — a wrong parse here yields a believable number rather than an error.
 - Jolokia on the console port is the quickest probe: `curl -u artemis:artemis -H "Origin: http://localhost"
   http://localhost:8162/console/jolokia/list/org.apache.activemq.artemis` lists every attribute/op.
 
+### Queue configuration (2026-09-29, 2.55.0, listing only — before Phase 13 P2)
+
+- **`listQueues` already carries the queue settings**, string-quoted: `exclusive`, `lastValue`,
+  `lastValueKey`, `ringSize` (`"-1"` = none), `groupRebalance`, `groupRebalancePauseDispatch`,
+  `groupBuckets` (`"-1"`), `groupFirstKey` (`""`), `consumersBeforeDispatch` (`"0"`),
+  `delayBeforeDispatch` (`"-1"`), `purgeOnNoConsumers`, `maxConsumers`, `directDeliver`, `enabled`,
+  `autoDelete`. No per-queue call needed for configuration.
+- **Non-destructive is not readable per queue** on 2.55.0 or 2.57.0: not in the listing, and
+  `QueueControl` has no `NonDestructive` attribute ("No such attribute"). Per-queue attributes do add
+  `GroupCount` and `ConfigurationManaged`; operation `listGroupsAsJSON` exists.
+- **Behavior, verified 2.55.0 and 2.57.0 identical** (queues made with `createQueue(json, true)`,
+  keys `ring-size`, `last-value-key`, `non-destructive`, `exclusive`, `purge-on-no-consumers`,
+  `consumers-before-dispatch`, `delay-before-dispatch`):
+  - **`lastValue` reads `"false"` on a queue made with `last-value-key`** — which behaves as LVQ
+    (5 sent with one key → count 1). `lastValueKey` non-empty is the signal, not the flag.
+  - **Replaced (LVQ) and evicted (ring 3, sent 10) messages touch no counter**: added 5/10, count 1/3,
+    acked 0, killed 0. So "added ≫ held" is these queues working, and nothing claims them as dropped.
+  - **Non-destructive**: a consumer received all 3; afterwards count 3, **acked 0**, delivering 0.
+    "Delivered nothing since start" (acked == 0) is therefore normal there.
+  - **Purge on no consumers raises `messagesKilled`**: 3 in flight, consumer closed → count 0,
+    killed 3. Later sends with no consumer are not counted as added on the queue — **the address
+    counts them as `unroutedMessageCount`** (seen in the app, 2 sends → unrouted 2). `enabled` stays true.
+  - **Exclusive**, two consumers, 20 sent: `messagesInTransit` 20 / 0. **Groups** on a plain queue
+    (`_AMQ_GROUP_ID` g1/g2): 10 / 10; `GroupCount` 2; `listGroupsAsJSON` → array of
+    `{groupID, consumerID, connectionID, sessionID, browseOnly, creationTime}`.
+  - **`consumersBeforeDispatch=2` with one consumer**: delivering 0, count 3 — waits by design.
+    `delayBeforeDispatch=6000` did not release dispatch within 9s with one consumer; unexplained, so
+    the app states the setting and does not predict when dispatch starts.
+  - **Browsing LVQ, ring and non-destructive queues changes no counter.**
+- **The listing reports effective values; `getAddressSettingsAsJSON` reports `default*` keys only
+  when set.** With `defaultRingSize=10` etc. on `it-d.#`: an explicit `ring-size:3` queue lists 3 and
+  inherits the other defaults; an auto-created one lists 10. `it-d.#` works; `it-q-eff#` (no dot)
+  matched nothing — a wildcard is a whole word.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -376,7 +410,11 @@ End-to-end HTTP from the browser, three runs each, warm.
 
 - **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
   turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
-  templates are LF; `docs/PRD.md` is CRLF. Check `git diff --stat` after any scripted edit.
+  templates are LF; `docs/PRD.md` was CRLF until 2026-09-29 and is LF since — detect, don't assume.
+  Check `git diff --stat` after any scripted edit.
+- **A multi-line Python heredoc in the Bash tool can fail** with "unexpected EOF while looking for
+  matching `''" when the script holds many quotes (2026-09-29). Write the script to the scratchpad
+  and run it instead.
 - **`@WithMockUser` does not authenticate in these MockMvc tests** (2026-09-27, Boot 4.1.1): in the
   full-context `SecurityConfigTest` a request under it was redirected to `/login`, and in
   `PageRenderingTest` the page rendered with no `Principal`. A CSRF test "passed" on that redirect

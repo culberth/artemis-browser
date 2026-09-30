@@ -146,6 +146,31 @@ made to wait" is *inferred* from a percentage and a policy, and is marked so. Th
 finding names the largest holders of address memory, and says that is where the memory is, not
 necessarily why it filled: every address shares that limit.
 
+### Queue configuration: effective values, defaults, and explanations
+
+A queue's behavior settings come from its `listQueues` row. That row reports the queue's
+**effective** values: set explicitly, or taken from the address's `default*` settings when the queue
+was created. The queue page, the overview badges and diagnose therefore cost no extra call. The
+address's `default*` keys (reported by `getAddressSettingsAsJSON` only when set) are shown on the
+queue page as defaults, never as the queue's value, because a default changed later does not change
+an existing queue.
+
+What was measured on 2.55.0 and 2.57.0 (shapes in `.claude/memory.md`) shapes the wording:
+
+- **A last-value queue reports `lastValue: false`.** The key being set is the signal.
+- **Replaced (last-value) and evicted (ring) messages appear in no counter.** "Added far above held"
+  is those queues working as configured.
+- **Non-destructive is reported nowhere per queue.** It is shown as unreadable. The address default
+  appears beside it, labelled as a default, and diagnose uses it only as a possible explanation.
+- **Consuming from a non-destructive queue acknowledges nothing**, and **a purge on no consumers
+  counts every removed message as killed**. Both would otherwise make a diagnose finding lie.
+
+A finding's `detail` holds only what was read. Configured behavior that may account for it goes in a
+separate `explanation`, rendered as "May be intended:". That keeps "this is what we saw" and "this
+may be why" apart, which the PRD asks for. Where the configuration makes the observation the
+setting itself working, as with one consumer holding everything on an exclusive queue, there is no
+finding at all.
+
 ## Two filter dialects, and mixing them fails silently
 
 Management operations (`countMessages`, `browse`) take Artemis **core** filter syntax:
