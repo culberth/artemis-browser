@@ -32,7 +32,7 @@ searches (`/saved`, a bounded JSON file, never run on opening) — merged
 and expiry triage (`/triage`: a queue's head sample grouped by recorded origin, never a reason) —
 merged (PR #46). Optional P5 — message comparison (`/message/compare`: two messages read over JMS,
 headers, typed properties, text or JSON bodies, bounded; gone or in flight is unavailable, never empty) —
-on branch `phase14-p5-message-compare`. Planned in
+merged (PR #48). Every Phase 14 item, P1–P5, is done. Planned in
 [docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 638 unit tests,
 108 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
