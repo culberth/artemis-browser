@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; saved searches</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('saved')}"></div>
+
+    <div class="notice" th:if="${notice}" th:text="${notice}">Saved.</div>
+    <div class="error" th:if="${problem}" th:text="${problem}">Not saved.</div>
+    <div class="error" th:if="${listing.hasProblem()}" th:text="${listing.problem()}">Could not read.</div>
+
+    <div class="panel">
+        <h2>Saved searches
+            <span class="muted" th:text="'— ' + ${listing.searches().size()} + ' of at most ' + ${maxEntries}">— 0</span>
+        </h2>
+        <p class="note">
+            Each is a name, a filter and where to run it &mdash; everything kept is shown here. No results,
+            message bodies or passwords are saved, and none runs until you open it and press Run. They are
+            kept on this machine in <code th:text="${file}">~/.artemis-browser/saved-searches.json</code>;
+            deleting one here removes it from that file.
+        </p>
+        <p class="muted" th:if="${listing.searches().isEmpty()}">
+            None yet. Run a search &mdash; across every queue, on one queue, or on an address&rsquo;s
+            subscriptions &mdash; and save it from the results.
+        </p>
+
+        <div class="table-scroll" th:unless="${listing.searches().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Name</th><th>Runs on</th><th>Filter</th><th>Saved from</th><th></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="s : ${listing.searches()}">
+                    <td>
+                        <a th:href="@{/saved/{id}(id=${s.id()})}" th:text="${s.name()}">name</a>
+                        <form method="post" th:action="@{/saved/{id}/rename(id=${s.id()})}" class="inline-form">
+                            <input type="text" name="name" th:value="${s.name()}" required maxlength="100"
+                                   th:aria-label="'New name for ' + ${s.name()}">
+                            <button type="submit" class="secondary">Rename</button>
+                        </form>
+                    </td>
+                    <td th:text="${s.describeScope()}">every queue</td>
+                    <td><code class="expression" th:text="${s.filter()}">AMQPriority = 4</code></td>
+                    <td>
+                        <span th:text="${#strings.isEmpty(s.savedFrom())} ? 'unknown' : ${s.savedFrom()}">localhost:61616</span>
+                        <div class="muted" th:text="${s.createdText()} + (${s.updatedText() != s.createdText()} ? ', renamed ' + ${s.updatedText()} : '')">2026-09-30</div>
+                    </td>
+                    <td class="nowrap">
+                        <a class="badge-link" th:href="@{/saved/{id}(id=${s.id()})}">Open</a>
+                        <form method="post" th:action="@{/saved/{id}/delete(id=${s.id()})}" class="inline-form">
+                            <button type="submit" class="secondary">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

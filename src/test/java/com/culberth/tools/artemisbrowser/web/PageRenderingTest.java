@@ -70,6 +70,8 @@ import com.culberth.tools.artemisbrowser.broker.RoleGrant;
 import com.culberth.tools.artemisbrowser.broker.Transactions;
 import com.culberth.tools.artemisbrowser.broker.TransactionFixtures;
 import com.culberth.tools.artemisbrowser.broker.TransactionService;
+import com.culberth.tools.artemisbrowser.filter.SavedSearch;
+import com.culberth.tools.artemisbrowser.filter.SavedSearchStore;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +107,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @WebMvcTest(
 { BrokerController.class, ConnectionController.class, DiagnoseController.class, LoginController.class,
-        QueueController.class, SearchController.class
+        QueueController.class, SavedSearchController.class, SearchController.class
 })
 @WithMockUser
 // A login configured, as on a shared host: the arrangement with a sign-in page and a signed-in user.
@@ -139,6 +141,9 @@ class PageRenderingTest
 
     @MockitoBean
     private ConnectionStore connectionStore;
+
+    @MockitoBean
+    private SavedSearchStore savedSearches;
 
     @MockitoBean
     private QueueDirectory queueDirectory;
@@ -189,6 +194,8 @@ class PageRenderingTest
         given(addressDirectory.overview()).willReturn(List.of());
         given(queueDirectory.overview()).willReturn(List.of(queue(QUEUE, 2, 0)));
         given(connectionStore.all()).willReturn(List.of());
+        given(savedSearches.all()).willReturn(new SavedSearchStore.Listing(List.of(), null, true));
+        given(savedSearches.file()).willReturn(java.nio.file.Path.of("saved-searches.json"));
         given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
         given(transactions.collect()).willReturn(TransactionFixtures.none());
         given(permissions.forAddress(org.mockito.ArgumentMatchers.anyString()))
@@ -1105,6 +1112,147 @@ class PageRenderingTest
         given(browseService.detail(anyString(), anyString(), anyString())).willReturn(null);
 
         page("/message?name=" + QUEUE + "&id=ID:gone").andExpect(content().string(containsString("no longer on")));
+    }
+
+    // --------------------------------------------------------- guided filters, saved searches
+
+    @Test
+    @DisplayName("the search page offers the filter builder, closed until it is used")
+    void rendersTheBuilderClosed() throws Exception
+    {
+        page("/search").andExpect(content().string(containsString("Build a filter")))
+                .andExpect(content().string(containsString("name=\"conditions[2].value\"")))
+                .andExpect(content().string(containsString("whole number")))
+                .andExpect(content().string(not(containsString("Written as"))))
+                .andExpect(content().string(not(containsString(" open=\"open\""))));
+    }
+
+    @Test
+    @DisplayName("a built filter renders its expression, each part beside its text, and its notes")
+    void rendersABuiltFilter() throws Exception
+    {
+        page("/search?build=show&conditions[0].name=order-id&conditions[0].value=5&sentFrom=2026-09-30T12:00"
+                + "&zone=UTC&durability=DURABLE").andExpect(content().string(containsString("Written as")))
+                .andExpect(content().string(containsString("&quot;order-id&quot; = &#39;5&#39;")))
+                .andExpect(content().string(containsString("AMQTimestamp &gt;= 1790769600000")))
+                .andExpect(content().string(containsString("compared as text")))
+                .andExpect(content().string(containsString("value=\"order-id\"")))
+                .andExpect(content().string(containsString(" open=\"open\"")))
+                .andExpect(content().string(containsString("<option value=\"DURABLE\" selected=\"selected\"")));
+    }
+
+    @Test
+    @DisplayName("a builder request with mistakes lists them and writes no filter")
+    void rendersBuilderErrors() throws Exception
+    {
+        page("/search?build=run&priorityMin=8&priorityMax=2&zone=Nowhere/Else&sentFrom=2026-09-30T12:00")
+                .andExpect(content().string(containsString("No filter written")))
+                .andExpect(content().string(containsString("is above the highest")))
+                .andExpect(content().string(containsString("is not a time zone")));
+    }
+
+    @Test
+    @DisplayName("search results carry a form to save the search, scope and filter included")
+    void rendersTheSaveFormOnResults() throws Exception
+    {
+        given(searchService.search(anyString(), anyBoolean()))
+                .willReturn(new SearchResult("count=1", 3, 0, false, List.of()));
+        page("/search?filter=region = 'eu'&internal=true")
+                .andExpect(content().string(containsString("Save this search as")))
+                .andExpect(content().string(containsString("name=\"scope\" value=\"ALL_QUEUES\"")))
+                .andExpect(content().string(containsString("name=\"filter\" value=\"region = &#39;eu&#39;\"")))
+                .andExpect(content().string(containsString("name=\"internal\" value=\"true\"")));
+    }
+
+    @Test
+    @DisplayName("the queue page offers the builder for the chosen queue, and saving a filtered page")
+    void rendersTheQueueBuilderAndSave() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(new MessagePage(QUEUE,
+                "AMQPriority = 4", 1, 50, MessagePage.UNKNOWN, false, List.of(summary(1, "ID:aaa"))));
+
+        page("/queues?name=" + QUEUE + "&build=run&priorityMin=4&priorityMax=4")
+                .andExpect(content().string(containsString("Build a filter")))
+                .andExpect(content().string(containsString("name=\"name\" value=\"" + QUEUE + "\"")))
+                .andExpect(content().string(containsString("name=\"scope\" value=\"QUEUE\"")))
+                .andExpect(content().string(containsString("name=\"filter\" value=\"AMQPriority = 4\"")));
+    }
+
+    @Test
+    @DisplayName("'only show the filter' on a queue page writes it without listing messages")
+    void rendersTheQueueBuilderShowOnly() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        page("/queues?name=" + QUEUE + "&build=show&durability=NON_DURABLE")
+                .andExpect(content().string(containsString("AMQDurable = &#39;NON_DURABLE&#39;")))
+                .andExpect(content().string(containsString("Written as")));
+        org.mockito.Mockito.verify(browseService, org.mockito.Mockito.never()).page(anyString(), any(), anyInt(),
+                anyInt());
+    }
+
+    @Test
+    @DisplayName("the queue page renders a filter the broker could not parse as not searched")
+    void rendersAnInvalidFilterOnAQueue() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willThrow(new com.culberth.tools.artemisbrowser.broker.InvalidFilterException(
+                        "searched nothing — this is not a result of zero matches"));
+        page("/queues?name=" + QUEUE + "&filter=n == 2")
+                .andExpect(content().string(containsString("this is not a result of zero matches")));
+    }
+
+    @Test
+    @DisplayName("an address lookup's results can be saved against the address")
+    void rendersTheAddressSaveForm() throws Exception
+    {
+        Subscription sub = Subscription.of("app-1.audit", "events", "MULTICAST", "", "artemis", true, false, false, 3,
+                3, 0, 0, 3, 0, 0, 0);
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 3, 2048, 3, 0, false, false, false,
+                List.of());
+        AddressDetail detail = new AddressDetail(events, List.of(sub), List.of(), List.of());
+        given(addressDetail.detail("events")).willReturn(detail);
+        given(addressDetail.find(detail, "orderId = 'A-1'")).willReturn(new SubscriptionSearch("orderId = 'A-1'", null,
+                List.of(new SubscriptionSearch.Row(sub, List.of(), false))));
+
+        page("/address?name=events&find=orderId = 'A-1'")
+                .andExpect(content().string(containsString("name=\"scope\" value=\"ADDRESS\"")))
+                .andExpect(content().string(containsString("name=\"target\" value=\"events\"")))
+                .andExpect(content().string(containsString("subscriptions hold a message matching")));
+    }
+
+    @Test
+    @DisplayName("the saved-searches page renders empty, then with entries and their rename and delete forms")
+    void rendersSavedSearches() throws Exception
+    {
+        page("/saved").andExpect(content().string(containsString("None yet")));
+
+        Instant at = Instant.parse("2026-09-30T12:00:00Z");
+        given(savedSearches.all())
+                .willReturn(
+                        new SavedSearchStore.Listing(
+                                List.of(new SavedSearch("id-1", "urgent", "AMQPriority >= 7",
+                                        SavedSearch.Scope.ALL_QUEUES, "", false, "localhost:61616", at, at)),
+                                "1 entry could not be used", true));
+        page("/saved").andExpect(content().string(containsString("urgent")))
+                .andExpect(content().string(containsString("AMQPriority &gt;= 7")))
+                .andExpect(content().string(containsString("action=\"/saved/id-1/rename\"")))
+                .andExpect(content().string(containsString("action=\"/saved/id-1/delete\"")))
+                .andExpect(content().string(containsString("1 entry could not be used")));
+    }
+
+    @Test
+    @DisplayName("one saved search renders its broker, scope and Run form")
+    void rendersOneSavedSearch() throws Exception
+    {
+        Instant at = Instant.parse("2026-09-30T12:00:00Z");
+        given(savedSearches.find("id-1")).willReturn(new SavedSearch("id-1", "EU", "region = 'eu'",
+                SavedSearch.Scope.QUEUE, QUEUE, false, "localhost:61616", at, at));
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        page("/saved/id-1").andExpect(content().string(containsString("artemis@localhost:61616")))
+                .andExpect(content().string(containsString("queue " + QUEUE)))
+                .andExpect(content().string(containsString(">Run<")));
     }
 
     // --------------------------------------------------------- search, stuck

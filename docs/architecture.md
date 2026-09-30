@@ -368,6 +368,48 @@ A JMS-style `JMSPriority = 4` is *not* rejected by the core parser — it return
 queue where every message is priority 4. Any UI that exposes a filter has to name its dialect, or
 users get confidently wrong answers.
 
+### Building a filter: the syntax is ours, the evaluation is the broker's
+
+The filter builder (Phase 14 P3) writes core syntax from form fields and puts the result in the
+filter box, where it is searched exactly as a typed filter is. Nothing here evaluates a filter, so
+there is no second engine to disagree with the broker. What the builder owns is the part the broker
+cannot help with: an expression that parses and means something else. Each rule was checked on
+2.55.0 and 2.57.0 before it was written (`.claude/memory.md`, *Core filter syntax*):
+
+- **Types are strict.** A property sent as the text `"5"` does not equal `5`, and `true` does not
+  equal `'true'`; an integer does equal `2.0`. So every condition names what the sender set it as.
+- **A name that is not a plain identifier is double-quoted.** Bare `order-id = 'A-1'` parses as
+  `order` minus `id` and matches nothing — valid, silent, wrong. `my.prop` is rejected. `"order-id"`
+  and `"my.prop"` work, and so does a quoted reserved word.
+- **Text doubles an apostrophe and nothing else**; a backslash is literal. *Starts with* and
+  *contains* escape the value's own `%` and `_` with `ESCAPE '\'`, so a value is found literally.
+- **Times are a zone's wall clock turned into epoch millis**, `from` inclusive and `to` exclusive so
+  adjacent ranges never share a message. The zone defaults to the server's and is always shown; a
+  local time the clocks skipped or repeated is resolved and the page says how.
+
+Any error means no expression, never part of one: a half-built filter would be a different
+question. And a filter the broker cannot parse (`AMQ229020`) is its own `InvalidFilterException`,
+said as "searched nothing", where before it read as a generic rejection with advice about the
+`manage` permission — easy to take for a search that ran and found nothing.
+
+### Saved searches: a way back to a question, not a record of an answer
+
+A saved search is a name, a filter, a scope (every queue, one queue, one address) and the broker's
+`host:port` when it was saved. No user, password, body or result. It lives in one JSON file beside
+the remembered connections (`artemis.saved-searches.file`), bounded by entry count and by name and
+filter length, and the list page shows every stored value and the file's path.
+
+Opening one never runs it. The page shows the broker this session is connected to, warns if that is
+not the one it was saved from, and checks — one listing read — whether the queue or address is still
+there. A missing scope is explained and not run, because a browse of nothing is zero matches, and
+zero matches would read as "the messages are gone". Only the Run button runs it, on the page it was
+saved from, with the filter editable for that run. There is no background or scheduled running.
+
+Unlike remembered connections, a failed write is reported, not swallowed: someone told nothing
+after Save believes it saved. A file that cannot be read is never overwritten, since that would
+replace searches this tool could not see; entries that are merely unusable are listed as such and
+dropped by the next write. Writes go to a temporary file moved over the old one.
+
 ### A filtered count is a sample, not a count
 
 Artemis examines only the first `management-browse-page-size` messages (200 by default) when

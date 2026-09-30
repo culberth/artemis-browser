@@ -984,20 +984,33 @@ unit-tested.
 
 ### P3 — Guided filters and saved searches
 
-- [ ] **Build common Artemis core filters.** Provide controls for property equality, priority,
+- [x] **Build common Artemis core filters.** Provide controls for property equality, priority,
       timestamp ranges and durability, with the generated expression visible and an advanced text
       input available. Handle types, literal escaping and time zones explicitly. The broker remains
       responsible for evaluating the expression; do not implement a local selector engine.
-- [ ] **Save named investigations.** Save a filter and its queue/address scope, then reopen, rename
+- [x] **Save named investigations.** Save a filter and its queue/address scope, then reopen, rename
       or delete it. Define bounded local persistence appropriate to the existing single-user tool;
       store no credentials, message bodies or search results. Make saved values visible and removable.
-- [ ] **Handle changed context.** Show the current broker and scope before running a saved search.
+- [x] **Handle changed context.** Show the current broker and scope before running a saved search.
       Missing queues or addresses and invalid filters produce useful explanations rather than an
       apparent zero-match result. Never run a saved search in the background.
 
 Done means a user can build and repeat a common search without knowing core syntax, while advanced
 filters remain available. Verify generated expressions against real brokers, including quoted
 strings and timestamp boundaries, and cover saved-search persistence and missing scopes.
+
+**P3 done (2026-09-30):** a *Build a filter* panel on `/search` and the queue page writes core
+syntax for property conditions (text, whole or decimal number, true/false; is, is not, ordering,
+starts with, contains, is set, is not set), priority, a sent-time range in a named zone and
+durability, shows each part beside its text with notes on what it leaves out, and puts it in the
+filter box; the broker evaluates it. Checked first on 2.55.0 and 2.57.0: strict types, apostrophe
+doubling, literal backslashes, and that a bare hyphenated name silently subtracts while a quoted one
+works. An unparsable filter (`AMQ229020`) now says nothing was searched. Searches are saved from
+`/search`, the queue page and the address lookup to `~/.artemis-browser/saved-searches.json`
+(`artemis.saved-searches.*`: file, 200 entries, name and filter length), listed, renamed and deleted
+at `/saved`, and never run on opening: `/saved/{id}` shows the connected broker, a different saving
+broker, and whether the scope still exists, then waits for Run. `GuidedFilterIT` runs every shape on
+both versions and checks nothing was consumed.
 
 ### P4 — Dead-letter and expiry triage (optional)
 

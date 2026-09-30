@@ -129,6 +129,13 @@ address, the consumer or branch holding it, and when it was seen. Beside it is t
 each state, how many queues were checked, had nothing in that state, or were skipped, refused or
 unreadable, and why. See **Looking up one message** below.
 
+Done in P3: a *Build a filter* panel on the search and queue pages writes the core filter for a
+property condition, a priority range, a sent-time range in a named time zone, or durability, and
+shows it — each part beside the text it became — in the filter box, where it runs like a typed one.
+Searches can be saved, with where they run, from search results, a filtered queue page or an address
+lookup, and are listed, renamed and deleted under **Saved**. See **Building and saving filters**
+below.
+
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
 and environment quirks are logged in `.claude/memory.md`.
@@ -338,6 +345,9 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.snapshot.max-address-permissions` | `200` | Addresses whose roles an incident snapshot reads, in the same order as address settings |
 | `artemis.compare.max-file-bytes` | `67108864` | Largest snapshot file `/compare` reads (64MB); `spring.servlet.multipart.max-file-size` follows it |
 | `artemis.compare.max-rows` | `50000` | Most entries in any one section of a compared snapshot; past it the file is refused, not cut short |
+| `artemis.saved-searches.file` | *(blank)* | Where saved searches are kept; blank defaults to `${user.home}/.artemis-browser/saved-searches.json`. A file that cannot be read is reported and never overwritten |
+| `artemis.saved-searches.max-entries` | `200` | Most saved searches |
+| `artemis.saved-searches.max-name-chars` / `max-filter-chars` | `100` / `4000` | Longest name and filter a saved search may have |
 | `artemis.investigate.max-queues` | `2000` | Queues a message-ID lookup looks at; the rest are listed as not reached |
 | `artemis.investigate.max-hits` | `100` | Sightings a lookup keeps; once full, later queues and prepared transactions are not reached |
 | `artemis.investigate.max-in-flight` | `20000` | In-flight messages one lookup may read across all queues (the per-queue limit is `artemis.in-flight-limit`) |
@@ -422,6 +432,34 @@ last, once. Each sighting carries the time its read returned.
 - In-flight and prepared messages have no body to show; the broker returns none.
 
 The address page's per-subscription lookup links to this one.
+
+## Building and saving filters
+
+**Build a filter**, on the search page and on a queue's page, writes an Artemis core filter from
+form fields and puts it in the filter box; the broker evaluates it, as it would one typed there.
+*Only show the filter* writes it without searching.
+
+- **Properties**, up to three: a name, what the sender set it as (text, whole number, decimal,
+  true/false) and a comparison — is, is not, less/greater than, at most/least, starts with, contains,
+  is set, is not set. The type matters: the broker compares types strictly, so a number sent as the
+  text `"5"` is not found by the number 5. A name with a hyphen, a dot or a space is double-quoted
+  for you; bare, `order-id` would be read as `order` minus `id` and quietly match nothing.
+- **Priority** from and to, **durability**, and a **sent** range: from (included) and before (not
+  included), read in the time zone named — the server's by default, shown on the page. The instant
+  each end became is shown beside it, including when a local time was skipped or repeated by a
+  clock change.
+- Each part is listed beside the text it became, with notes on what it leaves out (*is not* does
+  not match messages without the property). Any mistake writes no filter at all, and says why.
+- A filter the broker cannot parse is reported as not searched — never as zero matches.
+
+**Saving.** Search results, a filtered queue page and an address's subscription lookup each have
+*Save this search as*. A saved search is its name, its filter, where it runs (every queue, one
+queue, one address) and the broker's `host:port` — never results, bodies, users or passwords. They are
+listed under **Saved**, where each can be renamed or deleted, in one file,
+`${user.home}/.artemis-browser/saved-searches.json` by default. Opening one does not run it: the page
+shows the broker you are connected to (and warns if it is not the one the search was saved from) and
+whether the queue or address still exists, then runs it only when you press **Run**. A missing queue
+or address is explained instead of searched. Nothing runs saved searches in the background.
 
 ## Rates and diagnostic evidence
 
@@ -614,19 +652,25 @@ com.culberth.tools.artemisbrowser
 │   │   / SearchResult / SavedConnection / Finding / Diagnosis / Rates / QueueRate / ClientView
 │   │                              Broker, address, search and diagnosis view models
 │   ├── Reading / Availability     A value the broker gave, or why not — never a zero in its place
-│   └── BrokerException / ManagementRefusal / NotConnectedException / ConnectionLostException
-│                                  Broker-facing error types; the last is deliberately not a BrokerException
+│   └── BrokerException / ManagementRefusal / InvalidFilterException / NotConnectedException
+│       / ConnectionLostException  Broker-facing error types; the last is deliberately not a BrokerException
 ├── compare/                       Offline comparison of two saved snapshots; no broker, no session
 │   ├── SnapshotReader             Reads an uploaded snapshot as untrusted, bounded JSON; skips trends
 │   ├── SnapshotFile / Value       What a comparison needs from one file; a missing value keeps its reason
 │   ├── SnapshotComparer           Identity, continuity, and every difference with its evidence
 │   └── SnapshotComparison / SnapshotRejected
 │                                  The result, or why two files cannot be compared
+├── filter/                        Guided filters and saved searches; no broker calls of its own
+│   ├── GuidedFilter               Form fields to core filter text, with each part and its caveats
+│   ├── SavedSearch                Name, filter, scope and broker host:port — nothing else
+│   └── SavedSearchStore           The bounded JSON file; never overwrites one it could not read
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
 │   ├── BrokerController           /broker, /connectivity, /transactions, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
+│   ├── SavedSearchController      /saved: list, save, rename, delete; /saved/{id} shows before it runs
+│   ├── GuidedFilterForm           The filter builder's fields, bound from a GET
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── CompareController          /compare: two uploaded snapshots compared, no broker contacted
 │   ├── DiagnoseController         /diagnose
@@ -645,9 +689,10 @@ com.culberth.tools.artemisbrowser
     ├── application.properties     See Configuration above
     ├── templates/
     │   ├── fragments/layout.html  Shared nav — edited once when a page is added
+    │   ├── fragments/filter.html  The filter builder and the save form, shared by three pages
     │   └── login.html, connect.html, overview.html, queues.html, message.html, addresses.html,
     │       address.html, broker.html, client.html, connectivity.html, transactions.html,
-    │       search.html, diagnose.html
+    │       search.html, saved.html, saved-search.html, diagnose.html, compare.html
     └── static/app.css
 ```
 

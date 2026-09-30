@@ -2,6 +2,7 @@ package com.culberth.tools.artemisbrowser.web;
 
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
+import com.culberth.tools.artemisbrowser.broker.InvalidFilterException;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessageIdLookup;
 import com.culberth.tools.artemisbrowser.broker.MessageInvestigationService;
@@ -12,6 +13,7 @@ import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.SearchResult;
+import com.culberth.tools.artemisbrowser.filter.GuidedFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -19,10 +21,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @Controller
@@ -55,7 +59,9 @@ public class SearchController
 
     @GetMapping("/search")
     public String search(@RequestParam(name = "filter", required = false) String filter,
-            @RequestParam(name = "internal", defaultValue = "false") boolean internal, Model model)
+            @RequestParam(name = "internal", defaultValue = "false") boolean internal,
+            @RequestParam(name = "build", required = false) String build,
+            @ModelAttribute("guided") GuidedFilterForm guided, Model model)
     {
 
         if (!brokerSession.isConnected())
@@ -63,8 +69,23 @@ public class SearchController
             return "redirect:/";
         }
         model.addAttribute("connection", brokerSession.info());
-        model.addAttribute("filter", filter == null ? "" : filter);
         model.addAttribute("internal", internal);
+        model.addAttribute("builderKeep", Map.of("internal", Boolean.toString(internal)));
+
+        // The builder only writes the expression; it goes into the filter box as if typed there, and
+        // from then on is searched exactly as a typed one is. "show" writes it without searching.
+        if (build != null && !build.isBlank())
+        {
+            GuidedFilter.Result built = GuidedFilter.build(guided.toRequest());
+            model.addAttribute("built", built);
+            if (!built.ok() || "show".equals(build))
+            {
+                model.addAttribute("filter", built.ok() ? built.expression() : filter == null ? "" : filter);
+                return "search";
+            }
+            filter = built.expression();
+        }
+        model.addAttribute("filter", filter == null ? "" : filter);
 
         if (filter == null || filter.isBlank())
         {
@@ -83,6 +104,11 @@ public class SearchController
             {
                 model.addAttribute("result", searchService.search(filter, internal));
             }
+        }
+        catch (InvalidFilterException e)
+        {
+            model.addAttribute("error", e.getMessage());
+            model.addAttribute("invalidFilter", true);
         }
         catch (BrokerException e)
         {

@@ -1,6 +1,7 @@
 package com.culberth.tools.artemisbrowser.broker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -139,6 +140,19 @@ class ManagementChannelTest
     void classifiesRefusals(String reason, boolean attribute, Availability expected)
     {
         assertEquals(expected, ManagementChannel.classify(reason, attribute));
+    }
+
+    @Test
+    @DisplayName("an invalid filter is recognised by AMQ229020 and explained as nothing searched, not as permission")
+    void explainsAnInvalidFilter()
+    {
+        String reason = "AMQ229020: Invalid filter: n == 2";
+        assertTrue(InvalidFilterException.recognises(reason));
+        assertFalse(InvalidFilterException.recognises("AMQ229069: no operation browse/3"));
+        String explained = InvalidFilterException.explain("queue.orders.browse()", reason);
+        assertTrue(explained.contains("not a result of zero matches"), explained);
+        assertTrue(explained.contains(reason), explained);
+        assertFalse(explained.contains("manage"), explained);
     }
 
     @Test

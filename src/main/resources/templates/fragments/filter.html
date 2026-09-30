@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  The filter builder. It writes a core filter from a few fields and puts it in the filter box; the
+  broker evaluates it exactly as it would a typed one. `action` is the page to submit to, `keep` the
+  hidden fields that page needs (the queue, the page size, internal queues), and the form bean is the
+  model's `guided`, with `built` the last result when there is one.
+-->
+<details th:fragment="builder(action, keep)" class="panel builder" th:open="${built != null}" id="builder">
+    <summary><strong>Build a filter</strong>
+        <span class="muted">&mdash; property, priority, time sent, durability; no syntax needed</span></summary>
+    <form method="get" th:action="${action}" th:object="${guided}">
+        <input type="hidden" th:each="k : ${keep}" th:name="${k.key}" th:value="${k.value}">
+
+        <h3>Properties</h3>
+        <div class="builder-row field-row" th:each="row, it : *{rows}">
+            <div>
+                <label th:for="'c' + ${it.index} + 'name'">Property</label>
+                <input type="text" th:id="'c' + ${it.index} + 'name'" th:name="'conditions[' + ${it.index} + '].name'"
+                       th:value="${row.name}" placeholder="orderId" autocomplete="off">
+            </div>
+            <div>
+                <label th:for="'c' + ${it.index} + 'type'">Sent as</label>
+                <select th:id="'c' + ${it.index} + 'type'" th:name="'conditions[' + ${it.index} + '].type'">
+                    <option th:each="t : *{types}" th:value="${t.name()}" th:text="${t.label()}"
+                            th:selected="${t.name() == row.type}">text</option>
+                </select>
+            </div>
+            <div>
+                <label th:for="'c' + ${it.index} + 'op'">Comparison</label>
+                <select th:id="'c' + ${it.index} + 'op'" th:name="'conditions[' + ${it.index} + '].operator'">
+                    <option th:each="o : *{operators}" th:value="${o.name()}" th:text="${o.label()}"
+                            th:selected="${o.name() == row.operator}">is</option>
+                </select>
+            </div>
+            <div style="flex:1;min-width:12rem">
+                <label th:for="'c' + ${it.index} + 'value'">Value</label>
+                <input type="text" th:id="'c' + ${it.index} + 'value'" th:name="'conditions[' + ${it.index} + '].value'"
+                       th:value="${row.value}" style="width:100%" autocomplete="off">
+            </div>
+        </div>
+        <p class="note">
+            &ldquo;Sent as&rdquo; matters: the broker compares types strictly, so a property the sender set
+            as the text <code>"5"</code> is not found by the number 5, nor <code>true</code> by the text
+            <code>'true'</code>. Text is matched exactly, including case. A name with a hyphen or a dot
+            is quoted for you &mdash; left bare, <code>order-id</code> would be read as
+            <code>order</code> minus <code>id</code> and match nothing.
+        </p>
+
+        <h3>Headers</h3>
+        <div class="field-row">
+            <div>
+                <label for="pmin">Priority from</label>
+                <select id="pmin" name="priorityMin">
+                    <option value="">any</option>
+                    <option th:each="p : ${#numbers.sequence(0, 9)}" th:value="${p}" th:text="${p}"
+                            th:selected="${#strings.toString(p) == guided.priorityMin}">0</option>
+                </select>
+            </div>
+            <div>
+                <label for="pmax">to</label>
+                <select id="pmax" name="priorityMax">
+                    <option value="">any</option>
+                    <option th:each="p : ${#numbers.sequence(0, 9)}" th:value="${p}" th:text="${p}"
+                            th:selected="${#strings.toString(p) == guided.priorityMax}">9</option>
+                </select>
+            </div>
+            <div>
+                <label for="durability">Durability</label>
+                <select id="durability" name="durability">
+                    <option value="ANY" th:selected="${guided.durability == 'ANY'}">any</option>
+                    <option value="DURABLE" th:selected="${guided.durability == 'DURABLE'}">durable (persistent)</option>
+                    <option value="NON_DURABLE" th:selected="${guided.durability == 'NON_DURABLE'}">not durable</option>
+                </select>
+            </div>
+        </div>
+        <div class="field-row" style="margin-top:.6rem">
+            <div>
+                <label for="sentFrom">Sent from (included)</label>
+                <input id="sentFrom" type="datetime-local" step="1" name="sentFrom" th:value="${guided.sentFrom}">
+            </div>
+            <div>
+                <label for="sentTo">Sent before (not included)</label>
+                <input id="sentTo" type="datetime-local" step="1" name="sentTo" th:value="${guided.sentTo}">
+            </div>
+            <div>
+                <label for="zone">in time zone</label>
+                <input id="zone" type="text" name="zone" th:value="${guided.zone}" autocomplete="off"
+                       th:placeholder="${guided.serverZone}" style="width:14rem">
+            </div>
+        </div>
+        <p class="note">
+            Times are read in the zone named, which starts as this server&rsquo;s
+            (<code th:text="${guided.serverZone}">UTC</code>) &mdash; not necessarily your browser&rsquo;s.
+            Any IANA name works (<code>Europe/London</code>, <code>America/New_York</code>, <code>UTC</code>).
+            The instant each end became is shown below the filter.
+        </p>
+
+        <div class="field-row" style="margin-top:.6rem">
+            <button type="submit" name="build" value="run">Search with it</button>
+            <button type="submit" name="build" value="show" class="secondary">Only show the filter</button>
+        </div>
+    </form>
+
+    <th:block th:if="${built != null}">
+        <div class="error" th:unless="${built.errors().isEmpty()}">
+            <strong>No filter written:</strong>
+            <ul><li th:each="e : ${built.errors()}" th:text="${e}">error</li></ul>
+        </div>
+        <p class="muted" th:if="${built.empty()}">Nothing was filled in, so there is no filter to write.</p>
+        <th:block th:if="${built.ok()}">
+            <p>Written as <code class="expression" th:text="${built.expression()}">AMQPriority = 4</code>
+                &mdash; it is in the filter box too, to run again or change by hand.</p>
+            <table class="clauses">
+                <tbody>
+                <tr th:each="c : ${built.clauses()}">
+                    <td th:text="${c.described()}">priority 4</td>
+                    <td><code th:text="${c.text()}">AMQPriority = 4</code></td>
+                </tr>
+                </tbody>
+            </table>
+        </th:block>
+        <ul class="note" th:unless="${built.notes().isEmpty()}">
+            <li th:each="n : ${built.notes()}" th:text="${n}">note</li>
+        </ul>
+    </th:block>
+</details>
+
+<!--
+  Save the filter just run, with where it was run. Names, filters and scopes only: no results, no
+  bodies, no credentials. It posts, so it carries the CSRF token Thymeleaf adds to a th:action form.
+-->
+<form th:fragment="save(scope, target, filter, internal)" method="post" th:action="@{/saved}"
+      class="field-row save-search">
+    <input type="hidden" name="scope" th:value="${scope}">
+    <input type="hidden" name="target" th:value="${target}">
+    <input type="hidden" name="filter" th:value="${filter}">
+    <input type="hidden" name="internal" th:value="${internal}">
+    <div>
+        <label th:for="'save-name-' + ${scope}">Save this search as</label>
+        <input type="text" th:id="'save-name-' + ${scope}" name="name" required maxlength="100" autocomplete="off"
+               placeholder="stuck EU orders">
+    </div>
+    <div>
+        <button type="submit" class="secondary">Save</button>
+    </div>
+    <p class="note" style="width:100%">
+        Saves the filter and where it runs, on this machine, in the list under <a th:href="@{/saved}">Saved</a>
+        &mdash; not the results. It runs again only when you open it and choose to.
+    </p>
+</form>
+
+</body>
+</html>

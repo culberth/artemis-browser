@@ -6,6 +6,7 @@ import com.culberth.tools.artemisbrowser.broker.Reading;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.InFlightService;
+import com.culberth.tools.artemisbrowser.broker.InvalidFilterException;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
@@ -14,6 +15,7 @@ import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.RateService;
 import com.culberth.tools.artemisbrowser.broker.TransactionService;
 import com.culberth.tools.artemisbrowser.broker.Transactions;
+import com.culberth.tools.artemisbrowser.filter.GuidedFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -24,6 +26,7 @@ import java.util.Map;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
 import tools.jackson.databind.ObjectMapper;
 
@@ -140,7 +143,9 @@ public class QueueController
             @RequestParam(name = "filter", required = false) String filter,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "50") int size,
-            @RequestParam(name = "refresh", defaultValue = "0") int refresh, Model model)
+            @RequestParam(name = "refresh", defaultValue = "0") int refresh,
+            @RequestParam(name = "build", required = false) String build,
+            @ModelAttribute("guided") GuidedFilterForm guided, Model model)
     {
 
         if (!brokerSession.isConnected())
@@ -149,6 +154,22 @@ public class QueueController
         }
 
         int pageSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
+        // A built filter replaces the typed one and starts from the first page. When it cannot be
+        // written, or was only asked to be shown, the queue is listed unfiltered rather than with
+        // something the user did not choose.
+        boolean builtOnly = false;
+        if (build != null && !build.isBlank())
+        {
+            GuidedFilter.Result built = GuidedFilter.build(guided.toRequest());
+            model.addAttribute("built", built);
+            if (built.ok())
+            {
+                filter = built.expression();
+                page = 1;
+            }
+            builtOnly = !built.ok() || "show".equals(build);
+        }
+        model.addAttribute("builderKeep", Map.of("name", name == null ? "" : name, "size", Integer.toString(pageSize)));
         model.addAttribute("connection", brokerSession.info());
         model.addAttribute("size", pageSize);
         model.addAttribute("sizeChoices", PAGE_SIZE_CHOICES);
@@ -189,7 +210,16 @@ public class QueueController
         {
             stats = queueDirectory.stats(name);
             model.addAttribute("stats", stats);
-            model.addAttribute("messages", browseService.page(name, filter, Math.max(1, page), pageSize));
+            if (!builtOnly)
+            {
+                model.addAttribute("messages", browseService.page(name, filter, Math.max(1, page), pageSize));
+            }
+        }
+        catch (InvalidFilterException e)
+        {
+            model.addAttribute("error", e.getMessage());
+            model.addAttribute("invalidFilter", true);
+            return "queues";
         }
         catch (BrokerException e)
         {
