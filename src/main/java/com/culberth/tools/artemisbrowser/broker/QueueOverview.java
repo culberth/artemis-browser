@@ -12,11 +12,22 @@ package com.culberth.tools.artemisbrowser.broker;
  * @param messagesKilled  messages removed for exceeding max delivery attempts, dead-lettered or dropped alike — and, on
  *                        a queue that purges when its last consumer leaves, the purged ones too
  * @param behavior        its configuration, from the same listing row
+ * @param id              the broker's id for this queue, or -1 when the row had none. Verified on 2.55.0: a queue
+ *                        deleted and created again under the same name gets a new id, and a durable queue keeps its id
+ *                        across a restart — so a changed id is a different queue, whatever its name.
  */
 public record QueueOverview(String name, String address, String routingType, long messageCount, long deliveringCount,
         long scheduledCount, int consumerCount, long messagesAdded, long messagesAcked, boolean durable, boolean paused,
-        boolean internalQueue, long messagesExpired, long messagesKilled, QueueBehavior behavior)
+        boolean internalQueue, long messagesExpired, long messagesKilled, QueueBehavior behavior, long id)
 {
+
+    public QueueOverview(String name, String address, String routingType, long messageCount, long deliveringCount,
+            long scheduledCount, int consumerCount, long messagesAdded, long messagesAcked, boolean durable,
+            boolean paused, boolean internalQueue, long messagesExpired, long messagesKilled, QueueBehavior behavior)
+    {
+        this(name, address, routingType, messageCount, deliveringCount, scheduledCount, consumerCount, messagesAdded,
+                messagesAcked, durable, paused, internalQueue, messagesExpired, messagesKilled, behavior, -1);
+    }
 
     public QueueOverview(String name, String address, String routingType, long messageCount, long deliveringCount,
             long scheduledCount, int consumerCount, long messagesAdded, long messagesAcked, boolean durable,
@@ -32,7 +43,15 @@ public record QueueOverview(String name, String address, String routingType, lon
     {
         return new QueueOverview(name, address, routingType, messageCount, deliveringCount, scheduledCount,
                 consumerCount, messagesAdded, messagesAcked, durable, paused, internalQueue, messagesExpired,
-                messagesKilled, behavior);
+                messagesKilled, behavior, id);
+    }
+
+    /** The same row with its broker id — for tests. */
+    public QueueOverview withId(long id)
+    {
+        return new QueueOverview(name, address, routingType, messageCount, deliveringCount, scheduledCount,
+                consumerCount, messagesAdded, messagesAcked, durable, paused, internalQueue, messagesExpired,
+                messagesKilled, behavior, id);
     }
 
     public QueueOverview(String name, String address, String routingType, long messageCount, long deliveringCount,

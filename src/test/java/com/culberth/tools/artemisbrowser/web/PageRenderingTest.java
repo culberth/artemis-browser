@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.culberth.tools.artemisbrowser.broker.AddressDetail;
 import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
+import com.culberth.tools.artemisbrowser.broker.RateTracker;
 import com.culberth.tools.artemisbrowser.broker.QueueBehavior;
 import com.culberth.tools.artemisbrowser.broker.AddressPressure;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
@@ -642,6 +643,57 @@ class PageRenderingTest
                 .willReturn(List.of(queue(QUEUE, 2, 0).withBehavior(behavior("consumersBeforeDispatch", "2"))));
 
         page("/overview").andExpect(content().string(containsString("waits for 2 consumers")));
+    }
+
+    @Test
+    @DisplayName("the queue page draws this session's trend: line, summaries, intervals and a break")
+    void rendersTheQueueTrend() throws Exception
+    {
+        RateTracker tracker = new RateTracker();
+        long t0 = 1_790_000_000_000L;
+        tracker.observe("b", 3_600_000L, List.of(queue(QUEUE, 10, 0)), t0);
+        tracker.observe("b", 3_615_000L, List.of(queue(QUEUE, 40, 0)), t0 + 15_000);
+        tracker.observe("b", 3_630_000L, List.of(queue(QUEUE, 40, 0).withId(7)), t0 + 30_000);
+        tracker.observe("b", 3_645_000L, List.of(queue(QUEUE, 55, 0).withId(8)), t0 + 45_000);
+        given(rateService.trends()).willReturn(tracker.trends());
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 55, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("Recent trend")))
+                .andExpect(content().string(containsString("<polyline")))
+                .andExpect(content().string(containsString("the queue was deleted and created again")))
+                .andExpect(content().string(containsString("Not measured")))
+                .andExpect(content().string(containsString("10 → 40")))
+                .andExpect(content().string(containsString("kept apart from expired and killed")));
+    }
+
+    @Test
+    @DisplayName("with one reading the queue page says the trend needs another, and claims nothing older")
+    void rendersTheQueueTrendWithOneReading() throws Exception
+    {
+        RateTracker tracker = new RateTracker();
+        tracker.observe("b", 3_600_000L, List.of(queue(QUEUE, 1, 0)), 1_790_000_000_000L);
+        given(rateService.trends()).willReturn(tracker.trends());
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 1, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("One reading so far")));
+    }
+
+    @Test
+    @DisplayName("the overview shows each queue's trend and change")
+    void rendersTheOverviewTrend() throws Exception
+    {
+        RateTracker tracker = new RateTracker();
+        tracker.observe("b", 3_600_000L, List.of(queue(QUEUE, 10, 0)), 1_790_000_000_000L);
+        tracker.observe("b", 3_615_000L, List.of(queue(QUEUE, 40, 0)), 1_790_000_015_000L);
+        given(rateService.trends()).willReturn(tracker.trends());
+
+        page("/overview").andExpect(content().string(containsString("class=\"spark\"")))
+                .andExpect(content().string(containsString("+30")))
+                .andExpect(content().string(containsString("reaching back about")));
     }
 
     @Test

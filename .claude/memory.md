@@ -231,6 +231,10 @@ from — a wrong parse here yields a believable number rather than an error.
   emptied durable queues went from added=1 (and killed=1) to 0. `messagesAcked`/`Killed` went to 0.
   So a restart can look like a drop, like no change, or — with new traffic after it — like a
   plausible rate. A per-queue "counter went down" check alone cannot see it.
+- **A queue's `id` in `listQueues` changes when it is deleted and recreated, and survives a restart**
+  (2026-09-29, 2.55.0): `it-p3` was …931, destroyed and created again → …940; after `docker restart`
+  still …940, while `messagesAdded` restarted at what was held (ring 10→3, LVQ 5→1). So id change =
+  recreated, shorter uptime = restarted; neither interval may be joined in a trend.
 - **`broker.uptimeMillis`** is a `Long` attribute (`uptime` is a String like "39.079 seconds"). An
   uptime shorter than the time since the previous reading means the broker restarted in between —
   that, not the counters, is the restart test.

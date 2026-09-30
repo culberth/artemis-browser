@@ -94,6 +94,7 @@ public class QueueController
         {
             List<QueueOverview> all = queueDirectory.overview();
             model.addAttribute("rates", rateService.observe(all));
+            model.addAttribute("trends", rateService.trends());
             List<QueueOverview> shown = all.stream().filter(queue -> matches(queue, search))
                     .sorted(order(sortKey, descending)).toList();
             model.addAttribute("queues", shown);
@@ -163,6 +164,7 @@ public class QueueController
         }
         model.addAttribute("queueNames", queues.stream().map(QueueOverview::name).toList());
         model.addAttribute("rates", rateService.observe(queues));
+        model.addAttribute("trends", rateService.trends());
 
         if (name == null || name.isBlank())
         {

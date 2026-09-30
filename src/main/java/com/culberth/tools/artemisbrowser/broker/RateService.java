@@ -33,6 +33,12 @@ public class RateService
         this.queueDirectory = queueDirectory;
     }
 
+    /** What this session has kept for trends, as of the latest reading. */
+    public Trends trends()
+    {
+        return tracker.trends();
+    }
+
     public Rates observe(List<QueueOverview> queues)
     {
         return tracker.observe(broker(), uptimeMillis(), queues, System.currentTimeMillis());
@@ -68,9 +74,14 @@ public class RateService
         return info == null ? "" : info.host() + ":" + info.port();
     }
 
+    /**
+     * The broker's uptime, or -1 when it could not be read. Before Phase 13 P3 an unreadable uptime became
+     * {@code Long.MAX_VALUE}, which reads as "certainly not restarted"; -1 says "could not check" instead.
+     */
     private long uptimeMillis()
     {
-        Object uptime = brokerSession.requireManagement().attribute(ResourceNames.BROKER, "uptimeMillis");
-        return uptime instanceof Number number ? number.longValue() : Long.MAX_VALUE;
+        Reading<Object> uptime = Reading
+                .attempt(() -> brokerSession.requireManagement().attribute(ResourceNames.BROKER, "uptimeMillis"));
+        return uptime.available() && uptime.value() instanceof Number number ? number.longValue() : -1;
     }
 }
