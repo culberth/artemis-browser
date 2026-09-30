@@ -23,7 +23,7 @@ connections, bridges, broker connections, all as this broker reports them) — m
 transactions and permissions (`/transactions`: prepared and hand-resolved XA branches; roles per
 address and per client) — merged (PR #36). Phase 14 (incident investigation) P1 — snapshot
 comparison: `/compare` reads two saved JSON snapshots offline, no broker, and refuses a different
-broker or schema — on branch `phase14-p1-snapshot-comparison`. Planned in
+broker or schema — merged (PR #39). P2 (unified message-ID investigation) is next. Planned in
 [docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 511 unit tests,
 72 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).

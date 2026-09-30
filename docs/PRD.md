@@ -947,7 +947,7 @@ Done means two saved snapshots can answer what observably changed, without turni
 into a change or a reset into throughput. Cover compatible and incompatible schemas, identity
 mismatches, incomplete snapshots and counter discontinuities.
 
-**P1 done (2026-09-30):** `/compare`, offline. Snapshots now record `uptimeMillis` (an added field,
+**P1 done (2026-09-30, PR #39):** `/compare`, offline. Snapshots now record `uptimeMillis` (an added field,
 schema still 1) so a restart between two can be seen; older ones compare with continuity unknown.
 Queue depth, counters and configuration, addresses, address settings, consumers, connections and
 diagnose findings are compared, each difference beside its section and read times. Refused: other
