@@ -575,8 +575,8 @@ Planned 2026-09-29 following a review of the implemented services, pages and tes
 phase extends the existing message browser into a more complete explanation of the connected
 broker: why producers are blocked, why queues behave differently, when conditions changed, and
 which broker-side evidence can be saved for an incident. **All six feature areas below belong to
-this phase**, with reliability work supporting each increment. P0 and P1 are complete; the remaining
-areas are tracked below.
+this phase**, with reliability work supporting each increment. P0 and all six areas are complete;
+the phase acceptance checks at the end remain open.
 
 Keep the existing strengths: scheduled and in-flight inspection, subscriber lag, rates, client
 drilldowns, settings and diverts. Extend those views rather than duplicating them. Every new
@@ -820,17 +820,42 @@ fixtures, while the application itself retains a single broker connection contex
 
 ### P6 — Transactions and address permissions
 
-- [ ] **Inspect prepared transactions.** Show unresolved prepared XA transactions, identifiers,
+- [x] **Inspect prepared transactions.** Show unresolved prepared XA transactions, identifiers,
       reported creation times/ages, and related message/address information where available. Bound
       detail collection and distinguish prepared XA evidence from unobservable application or local
       transaction state. Offer no commit, rollback or transaction-resolution operations.
-- [ ] **Inspect address permissions.** Show the roles and permissions reported for an address,
+      Done 2026-09-30: `/transactions`, linked from the nav. Probed first on 2.55.0 with a branch
+      left prepared by closing its XA connection, and one committed through management. Each branch
+      shows its Xid (base64, format id, global id, branch), the broker's creation time and an age,
+      and every message it sends or received, headers and properties. Branches resolved by hand are
+      listed. The page says active branches and local transactions are not reported. Bounded by
+      `artemis.transactions.detail-limit` (100) branches, past which only summary lines are read,
+      and 50 messages per branch. Commit and rollback stay off the allowlist. Two traps: the creation
+      time is a locale string with no zone, so the zone is worked out from the connection listings
+      and no age is claimed without it; and a message received in a prepared branch stays on its
+      queue as delivering with no consumer, invisible to browse and the in-flight list.
+- [x] **Inspect address permissions.** Show the roles and permissions reported for an address,
       with clear names for send, consume, browse and management-related rights where exposed.
       Permission to inspect security information may itself be denied; keep the rest of the page
       usable. Do not equate a role definition with proof of a particular client's effective access.
-- [ ] **Link the evidence.** Connect transaction findings to related local resources and permission
+      Done 2026-09-30: a *Permissions* panel on each address page from `getRolesAsJSON`, all twelve
+      permissions by name with what each allows, and whether the broker enforces security at all. A
+      permission a broker does not report is shown as not reported, not as no. A denied roles call
+      shows as not permitted with the rest of the page intact, and is not repeated per address. The
+      panel says a role is not a user and the matching setting is not named by the broker.
+- [x] **Link the evidence.** Connect transaction findings to related local resources and permission
       information to the address/client investigation workflow. Include both in incident snapshots
       subject to the same availability and secret-exclusion rules.
+      Done 2026-09-30. Diagnose names each prepared branch with what it holds and links its address;
+      a queue whose messages are all in delivery with no consumer is no longer called waiting, and
+      names the transaction when one holds them. The queue page's in-flight panel and the address page
+      say which messages prepared branches hold, linking to `/transactions`. The client page shows the
+      roles that may send, consume and browse on each address the client uses, beside the user it
+      connects as. The snapshot gains `transactions` (headers only, no properties) and `permissions`
+      sections, with refusals listed once. Covered by `TransactionServiceTest`,
+      `PermissionServiceTest`, rendered-page tests, `TransactionsIT` (prepared and hand-committed
+      branches per supported version, counters and prepared set unchanged by reading) and
+      `PartialAvailabilityIT` (both reads denied by management RBAC).
 
 Done means unresolved prepared work and broker-reported address permissions are inspectable without
 changing them, tested with prepared XA fixtures and users with different inspection permissions.

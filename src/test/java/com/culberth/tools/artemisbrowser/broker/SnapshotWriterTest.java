@@ -164,8 +164,10 @@ class SnapshotWriterTest
                         new BrokerConnection("c2", "10.0.0.2", "", 1, false),
                         new BrokerConnection("c3", "10.0.0.3", "", 1, true))), 2),
                 IncidentSnapshot.Listing.of(Reading.of(List.of()), 2),
-                IncidentSnapshot.Listing.of(Reading.of(List.of()), 2), Reading.of(connectivity()), Trends.none(),
-                Reading.of(diagnosis), new IncidentSnapshot.Limits(2, 1, 15_000, 240, 500));
+                IncidentSnapshot.Listing.of(Reading.of(List.of()), 2), Reading.of(connectivity()),
+                Reading.of(TransactionFixtures.held("orders.in", "orders")),
+                Reading.of(TransactionFixtures.defaultRoles("orders")), Trends.none(), Reading.of(diagnosis),
+                new IncidentSnapshot.Limits(2, 1, 15_000, 240, 500, 200, 100));
     }
 
     /**
@@ -246,6 +248,55 @@ class SnapshotWriterTest
                 text);
         assertTrue(text.contains("(AMQP, mirror) to tcp://b:61616?password=[redacted]: connected, 2 waiting"), text);
         assertFalse(text.contains("mirrorsecret"));
+    }
+
+    @Test
+    @DisplayName("transactions carry each prepared branch's Xid, time and message headers — never its properties")
+    void transactionsSection() throws Exception
+    {
+        JsonNode json = json(snapshot());
+        JsonNode data = json.get("sections").get("transactions").get("data");
+
+        JsonNode branch = data.get("prepared").get("branches").get(0);
+        assertEquals(TransactionFixtures.XID, branch.get("xidBase64").asText());
+        assertEquals("gtrid-p6.xa", branch.get("globalTransactionId").asText());
+        assertEquals(1, branch.get("receives").asLong());
+        assertEquals(2, branch.get("sends").asLong());
+        assertEquals("receive", branch.get("messages").get(2).get("operation").asText());
+        assertEquals("orders.in", branch.get("messages").get(2).get("address").asText());
+        assertTrue(branch.has("ageMillis"));
+        assertEquals(1, data.get("heuristicallyCommitted").size());
+        assertFalse(json.toString().contains("orderId"), "message properties must not be in a snapshot");
+        assertEquals(100, json.get("limits").get("transactionDetailLimit").asInt());
+    }
+
+    @Test
+    @DisplayName("permissions carry each address's roles by permission name, with a note that roles are not users")
+    void permissionsSection() throws Exception
+    {
+        JsonNode permissions = json(snapshot()).get("sections").get("permissions");
+
+        assertTrue(permissions.get("note").asText().contains("not proof"));
+        assertTrue(permissions.get("data").get("securityEnabled").asBoolean());
+        JsonNode amq = permissions.get("data").get("byAddress").get("orders").get(0);
+        assertEquals("amq", amq.get("role").asText());
+        assertTrue(amq.get("send").asBoolean());
+        assertFalse(amq.get("manage").asBoolean());
+    }
+
+    @Test
+    @DisplayName("the text summary lists prepared branches and the permissions read")
+    void transactionsText()
+    {
+        StringWriter out = new StringWriter();
+        SnapshotWriter.writeText(new PrintWriter(out, true), snapshot());
+        String text = out.toString();
+
+        assertTrue(text.contains("TRANSACTIONS (1 prepared XA branch(es))"), text);
+        assertTrue(text.contains("gtrid-p6.xa / branch-1: prepared since"), text);
+        assertTrue(text.contains("holds 1 received, 2 sent on orders.in, orders"), text);
+        assertTrue(text.contains("Resolved by hand: committed 1, rolled back 0"), text);
+        assertTrue(text.contains("Roles read for 1 of 1 address(es)"), text);
     }
 
     @Test

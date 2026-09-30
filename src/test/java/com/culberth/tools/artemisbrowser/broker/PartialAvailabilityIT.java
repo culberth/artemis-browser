@@ -71,7 +71,9 @@ class PartialAvailabilityIT
                         + "<permission type=\"view\" roles=\"amq,viewer\"/><permission type=\"edit\" roles=\"amq\"/>"
                         + "</security-setting>" + deniedToViewer("mops.broker." + DENIED_OPERATION)
                         + deniedToViewer("mops.broker.getDiskStoreUsage") + deniedToViewer("mops.broker.getDivertNames")
-                        + deniedToViewer("mops.address.\\#") + "#' etc/broker.xml",
+                        + deniedToViewer("mops.broker.listPreparedTransactions")
+                        + deniedToViewer("mops.broker.getRolesAsJSON") + deniedToViewer("mops.address.\\#")
+                        + "#' etc/broker.xml",
                 "exec ./bin/artemis run", "");
     }
 
@@ -136,7 +138,7 @@ class PartialAvailabilityIT
         Diagnosis diagnosis = new StuckDiagnosisService(queues, new AddressDirectory(viewer, queues), info,
                 new QueueBrowseService(viewer, 200, 200000, 20000, 20_000_000L), new DivertDirectory(viewer),
                 new InFlightService(viewer, info, 5000), new RateService(viewer, new RateTracker(), queues),
-                new ConnectivityService(viewer)).run(false);
+                new ConnectivityService(viewer), new TransactionService(viewer, 100)).run(false);
 
         assertTrue(diagnosis.unchecked().stream().anyMatch(line -> line.startsWith("Disk use")),
                 diagnosis.unchecked().toString());
@@ -160,8 +162,10 @@ class PartialAvailabilityIT
         IncidentSnapshot snapshot = new SnapshotService(viewer, info, queues, addresses, rates,
                 new StuckDiagnosisService(queues, addresses, info,
                         new QueueBrowseService(viewer, 200, 200000, 20000, 20_000_000L), new DivertDirectory(viewer),
-                        new InFlightService(viewer, info, 5000), rates, new ConnectivityService(viewer)),
-                new ConnectivityService(viewer), 1000, 200).collect();
+                        new InFlightService(viewer, info, 5000), rates, new ConnectivityService(viewer),
+                        new TransactionService(viewer, 100)),
+                new ConnectivityService(viewer), new TransactionService(viewer, 100), new PermissionService(viewer),
+                1000, 200, 200).collect();
 
         assertEquals(Availability.DENIED, snapshot.acceptors().rows().availability());
         assertEquals(Availability.UNAVAILABLE, snapshot.health().diskUsedPercent().availability());
@@ -169,6 +173,32 @@ class PartialAvailabilityIT
         String json = SnapshotWriter.toJson(snapshot).get("unavailable").toString();
         assertTrue(json.contains("\"section\":\"acceptors\""), json);
         assertTrue(json.contains("\"item\":\"diskStoreUsedPercent\""), json);
+        assertTrue(json.contains("\"section\":\"transactions.prepared\""), json);
+        assertTrue(json.contains("\"section\":\"permissions\""), json);
+    }
+
+    @Test
+    @DisplayName("prepared transactions and roles refused are 'denied', the heuristic lists still read, diagnose says so")
+    void deniesTransactionsAndRoles()
+    {
+        BrokerSession viewer = connectAs("viewer");
+
+        Transactions transactions = new TransactionService(viewer, 100).collect();
+        Permissions permissions = new PermissionService(viewer).forAddresses(List.of("DLQ", "ExpiryQueue"), 10);
+
+        assertEquals(Availability.DENIED, transactions.prepared().availability(), transactions.prepared().detail());
+        assertTrue(transactions.prepared().detail().contains("mops.broker.listPreparedTransactions"),
+                transactions.prepared().detail());
+        assertTrue(transactions.heuristicCommitted().available(), transactions.heuristicCommitted().explained());
+        assertEquals(Availability.DENIED, permissions.of("DLQ").availability());
+        assertEquals(Availability.DENIED, permissions.of("ExpiryQueue").availability());
+        assertTrue(permissions.securityEnabled().available(), permissions.securityEnabled().explained());
+
+        List<String> unchecked = new java.util.ArrayList<>();
+        TransactionService.findings(transactions, java.time.Instant.now(), new java.util.ArrayList<>(), unchecked);
+        assertTrue(unchecked.stream().anyMatch(line -> line.startsWith("Prepared XA transactions")),
+                unchecked.toString());
+        assertTrue(viewer.isConnected());
     }
 
     @Test

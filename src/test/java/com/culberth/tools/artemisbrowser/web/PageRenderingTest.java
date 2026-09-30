@@ -61,6 +61,10 @@ import com.culberth.tools.artemisbrowser.broker.StuckDiagnosisService;
 import com.culberth.tools.artemisbrowser.broker.SubscriberConsumer;
 import com.culberth.tools.artemisbrowser.broker.Subscription;
 import com.culberth.tools.artemisbrowser.broker.SubscriptionSearch;
+import com.culberth.tools.artemisbrowser.broker.PermissionService;
+import com.culberth.tools.artemisbrowser.broker.Permissions;
+import com.culberth.tools.artemisbrowser.broker.TransactionFixtures;
+import com.culberth.tools.artemisbrowser.broker.TransactionService;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
@@ -154,6 +158,12 @@ class PageRenderingTest
     @MockitoBean
     private ConnectivityService connectivity;
 
+    @MockitoBean
+    private TransactionService transactions;
+
+    @MockitoBean
+    private PermissionService permissions;
+
     @BeforeEach
     void connected()
     {
@@ -171,6 +181,12 @@ class PageRenderingTest
         given(queueDirectory.overview()).willReturn(List.of(queue(QUEUE, 2, 0)));
         given(connectionStore.all()).willReturn(List.of());
         given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
+        given(transactions.collect()).willReturn(TransactionFixtures.none());
+        given(permissions.forAddress(org.mockito.ArgumentMatchers.anyString()))
+                .willAnswer(call -> TransactionFixtures.defaultRoles(call.getArgument(0)));
+        given(permissions.forAddresses(org.mockito.ArgumentMatchers.anyCollection(),
+                org.mockito.ArgumentMatchers.anyInt()))
+                .willReturn(new Permissions(Reading.of(true), java.util.Map.of(), 0, java.time.Instant.now()));
     }
 
     // ---------------------------------------------------------------- connectivity
@@ -216,6 +232,114 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("Not shown: not permitted for this user.")))
                 .andExpect(content().string(containsString("Not shown: not supported by this broker.")))
                 .andExpect(content().string(containsString("unknown: the HA policy could not be read")));
+    }
+
+    // ---------------------------------------------------------------- transactions
+
+    @Test
+    @DisplayName("the transactions page says when nothing is prepared, and offers nothing that resolves one")
+    void rendersNoTransactions() throws Exception
+    {
+        page("/transactions").andExpect(content().string(containsString("holds no prepared transaction branch")))
+                .andExpect(content().string(containsString("href=\"/transactions\"")))
+                .andExpect(content().string(containsString("Resolved by hand")))
+                .andExpect(content().string(not(containsString("<form method=\"post\" action=\"/transactions"))));
+    }
+
+    @Test
+    @DisplayName("a prepared branch renders its Xid, age, what it holds and what it sent, each address linked")
+    void rendersAPreparedTransaction() throws Exception
+    {
+        given(transactions.collect()).willReturn(TransactionFixtures.held("p6.src", "p6.dst"));
+
+        page("/transactions").andExpect(content().string(containsString("gtrid-p6.xa / branch-1")))
+                .andExpect(content().string(containsString(TransactionFixtures.XID)))
+                .andExpect(content().string(containsString("holds 1 received")))
+                .andExpect(content().string(containsString("2 sent, not yet delivered")))
+                .andExpect(content().string(containsString("10m 0s")))
+                .andExpect(content().string(containsString("href=\"/address?name=p6.src\"")))
+                .andExpect(content().string(containsString("href=\"/address?name=p6.dst\"")))
+                .andExpect(content().string(containsString("orderId=o-1")))
+                .andExpect(content().string(containsString("committed <code>YnJhbmNoLTFndHJpZC1wNi54YqIQAAA=</code>")));
+    }
+
+    @Test
+    @DisplayName("a user refused the transaction listings sees why, and the page still renders")
+    void rendersDeniedTransactions() throws Exception
+    {
+        given(transactions.collect()).willReturn(TransactionFixtures.denied());
+
+        page("/transactions").andExpect(content().string(containsString("Not shown: not permitted for this user")))
+                .andExpect(content().string(containsString("mops.broker.listPreparedTransactions")));
+    }
+
+    @Test
+    @DisplayName("the in-flight panel says which delivering messages a prepared transaction holds")
+    void rendersInFlightHeldByATransaction() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 1, 1, 0, 0, 1, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 1, 5000, false, false, List.of()));
+        given(transactions.collect()).willReturn(TransactionFixtures.held(QUEUE, "elsewhere"));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("held by prepared XA transaction")))
+                .andExpect(content().string(containsString("See the transactions")));
+    }
+
+    @Test
+    @DisplayName("an address renders its roles, and the prepared transactions that hold its messages")
+    void rendersAddressPermissionsAndTransactions() throws Exception
+    {
+        AddressOverview events = new AddressOverview("p6.src", "ANYCAST", 1, 0, 1, 0, false, false, false, List.of());
+        given(addressDetail.detail("p6.src"))
+                .willReturn(new AddressDetail(events, List.of(), List.of(), List.of(), Map.of()));
+        given(transactions.collect()).willReturn(TransactionFixtures.held("p6.src", "p6.dst"));
+
+        page("/address?name=p6.src").andExpect(content().string(containsString("id=\"permissions\"")))
+                .andExpect(content().string(containsString("<code>amq</code>")))
+                .andExpect(content().string(containsString("create durable queue")))
+                .andExpect(content().string(containsString("A role is not a user")))
+                .andExpect(content().string(containsString("Prepared transactions")))
+                .andExpect(content().string(containsString("href=\"/transactions#" + TransactionFixtures.XID + "\"")));
+    }
+
+    @Test
+    @DisplayName("an address whose roles are refused says so, and keeps its other panels")
+    void rendersAddressWithRolesDenied() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        given(addressDetail.detail("events"))
+                .willReturn(new AddressDetail(events, List.of(), List.of(), List.of(), Map.of()));
+        given(permissions.forAddress("events")).willReturn(TransactionFixtures.deniedRoles("events"));
+
+        page("/address?name=events").andExpect(content().string(containsString("Not shown: not permitted")))
+                .andExpect(content().string(containsString("Subscriptions")))
+                .andExpect(content().string(not(containsString("Prepared transactions"))));
+    }
+
+    @Test
+    @DisplayName("a client page names the roles that may send and consume where it does, and the user it connects as")
+    void rendersClientPermissions() throws Exception
+    {
+        given(clientDirectory.find("billing-svc", null)).willReturn(new ClientView("billing-svc", null,
+                List.of(new ClientView.Connection("a018fd3b", "172.17.0.1:52716", "billing", "AMQP", "", 1)),
+                List.of(new ClientView.Session("446d24d0", "a018fd3b", 1, 1, "")),
+                List.of(new ClientView.Consumer("11", "446d24d0", "client-q", "client-q", "", 9, 5, 4)),
+                List.of(new ClientView.Producer("6", "446d24d0", "client-out", 12, 2048, ""))));
+        given(permissions.forAddresses(org.mockito.ArgumentMatchers.anyCollection(),
+                org.mockito.ArgumentMatchers.eq(50))).willReturn(
+                        new Permissions(Reading.of(true),
+                                Map.of("client-q", Reading.of(List.of(TransactionFixtures.amq())), "client-out",
+                                        Reading.missing(Availability.DENIED, "AMQ229032")),
+                                0, java.time.Instant.now()));
+
+        page("/client?id=billing-svc").andExpect(content().string(containsString("Permissions where it sends")))
+                .andExpect(content().string(containsString("href=\"/address?name=client-q#permissions\"")))
+                .andExpect(content().string(containsString("<code>billing</code>")))
+                .andExpect(content().string(containsString("not permitted for this user")))
+                .andExpect(content().string(containsString(">consume<")));
     }
 
     // ---------------------------------------------------------------- broker

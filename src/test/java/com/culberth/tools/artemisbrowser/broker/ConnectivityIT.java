@@ -138,10 +138,10 @@ class ConnectivityIT
         RateService rates = new RateService(brokerSession, new RateTracker(), queues);
         diagnosis = new StuckDiagnosisService(queues, addresses, info,
                 new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
-                new DivertDirectory(brokerSession), new InFlightService(brokerSession, info, 5000), rates,
-                connectivity);
-        snapshots = new SnapshotService(brokerSession, info, queues, addresses, rates, diagnosis, connectivity, 1000,
-                200);
+                new DivertDirectory(brokerSession), new InFlightService(brokerSession, info, 5000), rates, connectivity,
+                new TransactionService(brokerSession, 100));
+        snapshots = new SnapshotService(brokerSession, info, queues, addresses, rates, diagnosis, connectivity,
+                new TransactionService(brokerSession, 100), new PermissionService(brokerSession), 1000, 200, 200);
 
         seed();
         await("the replica to synchronize, the peer to join, the bridge and mirror to connect", () ->

@@ -26,6 +26,8 @@ class SnapshotServiceTest
     private RateService rates;
     private StuckDiagnosisService diagnosis;
     private ConnectivityService connectivity;
+    private TransactionService transactions;
+    private PermissionService permissions;
 
     @BeforeEach
     void mocks()
@@ -37,6 +39,12 @@ class SnapshotServiceTest
         rates = mock(RateService.class);
         diagnosis = mock(StuckDiagnosisService.class);
         connectivity = mock(ConnectivityService.class);
+        transactions = mock(TransactionService.class);
+        given(transactions.collect()).willReturn(TransactionFixtures.none());
+        permissions = mock(PermissionService.class);
+        given(permissions.forAddresses(org.mockito.ArgumentMatchers.anyCollection(),
+                org.mockito.ArgumentMatchers.anyInt()))
+                .willReturn(new Permissions(Reading.of(true), Map.of(), 0, java.time.Instant.now()));
         given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
         given(session.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(info.health()).willReturn(BrokerHealth.of("2.55.0", "1h", "STARTED", "n", 1, 1, 1, 0, 0, 10, 90));
@@ -48,7 +56,7 @@ class SnapshotServiceTest
         given(addresses.overview()).willReturn(List.of());
         given(addresses.settings(anyString())).willReturn(AddressSettings.of(Map.of()));
         given(rates.trends()).willReturn(Trends.none());
-        given(diagnosis.run(anyBoolean(), org.mockito.ArgumentMatchers.any()))
+        given(diagnosis.run(anyBoolean(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .willReturn(new Diagnosis(List.of(), 0, 0));
     }
 
@@ -63,7 +71,8 @@ class SnapshotServiceTest
 
         assertEquals(troubled, snapshot.connectivity().value());
         verify(connectivity, org.mockito.Mockito.times(1)).collect(org.mockito.ArgumentMatchers.any());
-        verify(diagnosis).run(false, troubled);
+        verify(diagnosis).run(org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.eq(troubled),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -129,8 +138,8 @@ class SnapshotServiceTest
 
     private SnapshotService service(int maxRows, int maxSettings)
     {
-        return new SnapshotService(session, info, queues, addresses, rates, diagnosis, connectivity, maxRows,
-                maxSettings);
+        return new SnapshotService(session, info, queues, addresses, rates, diagnosis, connectivity, transactions,
+                permissions, maxRows, maxSettings, 200);
     }
 
     private static AddressOverview address(String name, boolean paging, long unrouted)

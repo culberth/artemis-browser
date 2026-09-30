@@ -19,10 +19,11 @@ merged (PR #30); P2 — queue behavior: effective settings, findings with explan
 (PR #31); P3 — bounded session trends, broken at restarts, recreations and resets — merged
 (PR #33); P4 — incident snapshot (`/snapshot`, JSON and text, completeness listed, secrets masked) —
 merged (PR #34); P5 — connectivity and HA (`/connectivity`: replica sync, topology, cluster
-connections, bridges, broker connections, all as this broker reports them) — done on
-`phase13-p5-connectivity`. Planned in [docs/PRD.md](docs/PRD.md); see
-*Closed as won't do* there before proposing more. 438 unit tests, 58 integration, run once per
-supported broker version.
+connections, bridges, broker connections, all as this broker reports them) — merged (PR #35); P6 —
+transactions and permissions (`/transactions`: prepared and hand-resolved XA branches; roles per
+address and per client) — done on `phase13-p6-transactions-permissions`. Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 471 unit tests,
+66 integration, run once per supported broker version.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
 deletes a message, and anything that could is out of scope until deliberately put in scope. Read
@@ -50,7 +51,8 @@ lives — read [docs/architecture.md](docs/architecture.md) before changing any 
    gets an apostrophe, so a body cannot become a spreadsheet formula. Don't "simplify" it.
 6. **`browse` returns neither scheduled nor in-flight messages.** Scheduled ones are counted by the
    queue and read through `listScheduledMessagesAsJSON`; ones delivered to a consumer and not yet
-   acked cannot be read at all. Either way a queue can report messages and browse as empty — and a
+   acked cannot be read at all. A message received in a prepared XA transaction is delivering with
+   no consumer, and only `listPreparedTransactionDetailsAsJSON` shows it. Either way a queue can report messages and browse as empty — and a
    search that finds nothing has not shown the message is gone while `deliveringCount` > 0.
 7. **A value the broker did not give is a `Reading`, never a zero.** Unsupported, denied and failed
    reads are told apart where the broker allows (an attribute failure it does not: "unavailable"),

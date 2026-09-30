@@ -53,8 +53,9 @@ class SnapshotControllerTest
                 IncidentSnapshot.Listing.of(Reading.of(List.of()), 10),
                 IncidentSnapshot.Listing.of(Reading.of(List.of()), 10),
                 IncidentSnapshot.Listing.of(Reading.of(List.of()), 10), Reading.notCollected("not in this test"),
-                Trends.none(), Reading.notCollected("not in this test"),
-                new IncidentSnapshot.Limits(10, 10, 15_000, 240, 500)));
+                Reading.notCollected("not in this test"), Reading.notCollected("not in this test"), Trends.none(),
+                Reading.notCollected("not in this test"),
+                new IncidentSnapshot.Limits(10, 10, 15_000, 240, 500, 10, 10)));
     }
 
     @Test

@@ -250,7 +250,7 @@ class AddressDetailIT
                 new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession),
                 new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000),
                 new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
-                new ConnectivityService(brokerSession)).diagnose(false);
+                new ConnectivityService(brokerSession), new TransactionService(brokerSession, 100)).diagnose(false);
 
         assertTrue(findings.stream().anyMatch(finding -> ArtemisBrokerSupport.FEED_ABANDONED.equals(finding.queue())
                 && finding.title().startsWith("Durable subscription")), findings.toString());

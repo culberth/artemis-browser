@@ -114,6 +114,44 @@
             </div>
         </div>
 
+        <!-- Who may do what this client does, on the addresses it uses: roles as the broker reports them. -->
+        <div class="panel" id="permissions" th:if="${permissions != null and !used.isEmpty()}">
+            <h3 style="margin-top:0">Permissions where it sends and consumes
+                <span th:replace="~{fragments/layout :: collected(${permissions.securityEnabled()})}"></span></h3>
+            <p class="error" th:if="${permissions.securityEnabled().available() and !permissions.securityEnabled().value()}">
+                Security is disabled on this broker: every connection may do everything, whatever the roles say.
+            </p>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr><th>Address</th><th>It does</th><th>Roles that may send</th><th>Roles that may consume</th>
+                        <th>Roles that may browse</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="addr : ${used}" th:with="roles=${permissions.of(addr)}">
+                        <td class="nowrap"><a th:href="@{/address(name=${addr})} + '#permissions'" th:text="${addr}">orders</a></td>
+                        <td th:text="${client.uses(addr)}">consume</td>
+                        <th:block th:if="${roles.available()}">
+                            <td th:text="${permissions.rolesThatMayText(addr, 'send')}">amq</td>
+                            <td th:text="${permissions.rolesThatMayText(addr, 'consume')}">amq</td>
+                            <td th:text="${permissions.rolesThatMayText(addr, 'browse')}">amq</td>
+                        </th:block>
+                        <td colspan="3" th:unless="${roles.available()}"><span th:replace="~{fragments/layout :: missing(${roles})}"></span></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note" th:if="${permissions.notRead() > 0}"
+               th:text="${permissions.notRead()} + ' more address(es) were not read.'">more</p>
+            <p class="note">
+                It connects as
+                <th:block th:each="c, s : ${client.connections()}"><code th:text="${#strings.isEmpty(c.user()) ? '(no user)' : c.user()}">artemis</code><th:block th:unless="${s.last}">, </th:block></th:block>.
+                Which roles that user holds is in the broker&rsquo;s login module, which the broker does not report
+                &mdash; so these are the roles that would allow it, not proof that this client has one of them. That
+                it is already sending or consuming says more than this table can.
+            </p>
+        </div>
+
         <div class="panel">
             <h3 style="margin-top:0">Sessions</h3>
             <div class="table-scroll">

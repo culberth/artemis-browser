@@ -166,7 +166,8 @@ class ReadOnlyGuaranteeIT
                 List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
                         new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
                         new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
-                        new ConnectivityService(brokerSession)).diagnose(false);
+                        new ConnectivityService(brokerSession), new TransactionService(brokerSession, 100))
+                        .diagnose(false);
                 assertEquals(before, counters(), "diagnosing moved a counter");
 
                 Finding hoarding = findings.stream()
@@ -290,10 +291,14 @@ class ReadOnlyGuaranteeIT
                 addresses.find(detail, "AMQPriority >= 0");
             }
         }
+        new TransactionService(brokerSession, 100).collect();
+        new PermissionService(brokerSession).forAddresses(
+                new AddressDirectory(brokerSession, queues).overview().stream().map(AddressOverview::name).toList(),
+                500);
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
                 new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
                 new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
-                new ConnectivityService(brokerSession)).diagnose(true);
+                new ConnectivityService(brokerSession), new TransactionService(brokerSession, 100)).diagnose(true);
     }
 
     /**

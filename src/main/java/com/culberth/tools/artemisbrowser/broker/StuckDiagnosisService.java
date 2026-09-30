@@ -1,5 +1,6 @@
 package com.culberth.tools.artemisbrowser.broker;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,8 +21,9 @@ import org.springframework.stereotype.Service;
  * <p>
  * Built from the cheap reads only: one {@code listQueues}, one consumer listing, one address listing, the health
  * attributes, a scheduled-message read for the few queues that have any, and the connectivity reads — HA attributes,
- * the topology and broker-connection listings, and a few attributes per bridge and cluster connection. Nothing browses
- * a message body, so this page costs the same on a broker with a 50,000-message dead-letter queue as on an empty one.
+ * the topology and broker-connection listings, a few attributes per bridge and cluster connection, and the prepared
+ * transaction listings — details only for a bounded number of branches. Nothing browses a message body, so this page
+ * costs the same on a broker with a 50,000-message dead-letter queue as on an empty one.
  *
  * <p>
  * The one exception is how long messages have been in flight, which only each queue's delivering list can say. Those
@@ -41,6 +43,7 @@ public class StuckDiagnosisService
     private final InFlightService inFlightService;
     private final RateService rateService;
     private final ConnectivityService connectivityService;
+    private final TransactionService transactionService;
 
     /**
      * Fewest in-flight messages one consumer must hold, with every other consumer on the queue holding none, to be
@@ -69,7 +72,8 @@ public class StuckDiagnosisService
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
             BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
-            InFlightService inFlightService, RateService rateService, ConnectivityService connectivityService)
+            InFlightService inFlightService, RateService rateService, ConnectivityService connectivityService,
+            TransactionService transactionService)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
@@ -79,6 +83,7 @@ public class StuckDiagnosisService
         this.inFlightService = inFlightService;
         this.rateService = rateService;
         this.connectivityService = connectivityService;
+        this.transactionService = transactionService;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
@@ -96,14 +101,14 @@ public class StuckDiagnosisService
      */
     public Diagnosis run(boolean includeInternal)
     {
-        return run(includeInternal, null);
+        return run(includeInternal, null, null);
     }
 
     /**
      * The same, with connectivity already read — the incident snapshot reads it for its own section and hands it on,
-     * rather than asking the broker twice. Null reads it here, from this run's queue listing.
+     * rather than asking the broker twice. Null reads it here, from this run's queue listing. Transactions likewise.
      */
-    public Diagnosis run(boolean includeInternal, Connectivity connectivity)
+    public Diagnosis run(boolean includeInternal, Connectivity connectivity, Transactions transactions)
     {
         List<Finding> findings = new ArrayList<>();
         List<String> unchecked = new ArrayList<>();
@@ -126,9 +131,12 @@ public class StuckDiagnosisService
         }
         List<BrokerConsumer> consumers = consumerReading.orElse(List.of());
         Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
+        // Before the queues: a message received in a prepared XA transaction stays on its queue as
+        // delivering with no consumer, and a queue's finding should say what holds it.
+        Transactions prepared = transactions != null ? transactions : transactionService.collect();
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, unchecked, queue, consumers, rates, settings);
+            queueLevel(findings, unchecked, queue, consumers, rates, settings, prepared);
         }
         if (consumerReading.available())
         {
@@ -151,6 +159,7 @@ public class StuckDiagnosisService
         // a cluster peer's store-and-forward queue and a mirror's queue are where their backlogs show.
         ConnectivityService.findings(connectivity != null ? connectivity : connectivityService.collect(Reading.of(all)),
                 findings, unchecked);
+        TransactionService.findings(prepared, Instant.now(), findings, unchecked);
         if (health.memoryPressure())
         {
             findings.add(memoryFindingAt, memoryPressure(health, addresses.orElse(List.of()), includeInternal));
@@ -356,7 +365,8 @@ public class StuckDiagnosisService
     }
 
     private void queueLevel(List<Finding> findings, List<String> unchecked, QueueOverview queue,
-            List<BrokerConsumer> consumers, Rates rates, Map<String, Reading<AddressSettings>> settings)
+            List<BrokerConsumer> consumers, Rates rates, Map<String, Reading<AddressSettings>> settings,
+            Transactions transactions)
     {
         if (queue.paused())
         {
@@ -378,10 +388,7 @@ public class StuckDiagnosisService
         }
         else if (queue.messageCount() > 0 && queue.consumerCount() == 0)
         {
-            findings.add(Finding.stuck("Nothing is reading '" + queue.name() + "'",
-                    queue.messageCount() + " message(s) waiting with no consumer attached. Either the consumer is not"
-                            + " running, or it is connected somewhere other than where you think.",
-                    queue.name()));
+            findings.add(unread(queue, transactions));
         }
         else if (queue.messageCount() > 0 && onlyBrowsersAttached(queue, consumers))
         {
@@ -431,6 +438,39 @@ public class StuckDiagnosisService
         {
             overdue(findings, unchecked, queue);
         }
+    }
+
+    /**
+     * Messages on a queue no consumer is attached to. Usually they are waiting; but a message received in a prepared XA
+     * transaction also stays on its queue, counted as delivering, with no consumer holding it — measured on 2.55.0 and
+     * 2.57.0 — so delivering with no consumer is told apart, and linked to the transactions when they hold some.
+     */
+    private Finding unread(QueueOverview queue, Transactions transactions)
+    {
+        long waiting = Math.max(0, queue.messageCount() - queue.deliveringCount());
+        long held = transactions.heldFrom(queue.address());
+        String explanation = held == 0 ? null
+                : held + " message(s) received from '" + queue.address() + "' are held by prepared XA transaction(s)."
+                        + " They count as delivering on this queue until their transaction manager commits or rolls"
+                        + " back, and neither browse nor the in-flight list shows them. The Transactions page lists"
+                        + " them.";
+        if (waiting == 0)
+        {
+            return Finding.stuck(
+                    "'" + queue.name() + "' holds " + queue.deliveringCount() + " message(s) in delivery with no"
+                            + " consumer attached",
+                    "None is waiting for a consumer: all " + queue.messageCount() + " are counted as delivering, and"
+                            + " no consumer is attached to hold them. A prepared XA transaction holds messages this"
+                            + " way; so, for a moment, does a consumer that has just closed.",
+                    queue.name()).explainedBy(explanation);
+        }
+        return Finding.stuck("Nothing is reading '" + queue.name() + "'", waiting
+                + " message(s) waiting with no consumer attached"
+                + (queue.deliveringCount() > 0
+                        ? ", and " + queue.deliveringCount() + " more counted as delivering with none to" + " hold them"
+                        : "")
+                + ". Either the consumer is not running, or it is connected somewhere other than where you" + " think.",
+                queue.name()).explainedBy(explanation);
     }
 
     /**
