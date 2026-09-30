@@ -17,6 +17,8 @@ import java.util.Map;
  * @param addressSettings        settings for the addresses chosen to include, by address; see
  *                               {@code addressSettingsOmitted}
  * @param addressSettingsOmitted addresses whose settings were not read because of the limit
+ * @param connectivity           HA state, topology, cluster connections, bridges and broker connections, as this broker
+ *                               reports them
  * @param trends                 this session's trend history as of the snapshot — observations it made, never older
  * @param diagnosis              diagnose's findings, or why they could not be made
  */
@@ -24,7 +26,8 @@ public record IncidentSnapshot(Instant startedAt, Instant finishedAt, Connection
         Reading<List<QueueOverview>> queues, Reading<List<AddressOverview>> addresses,
         Map<String, Reading<AddressSettings>> addressSettings, int addressSettingsOmitted,
         Listing<AcceptorInfo> acceptors, Listing<BrokerConnection> connections, Listing<BrokerConsumer> consumers,
-        Listing<BrokerProducer> producers, Trends trends, Reading<Diagnosis> diagnosis, Limits limits)
+        Listing<BrokerProducer> producers, Reading<Connectivity> connectivity, Trends trends,
+        Reading<Diagnosis> diagnosis, Limits limits)
 {
 
     /** Bumped whenever a field changes meaning or is removed, so two saved snapshots can be compared knowingly. */

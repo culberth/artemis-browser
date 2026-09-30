@@ -18,8 +18,10 @@ matrix — merged (PR #29); P1 — address pressure: usage beside policy, observ
 merged (PR #30); P2 — queue behavior: effective settings, findings with explanations — merged
 (PR #31); P3 — bounded session trends, broken at restarts, recreations and resets — merged
 (PR #33); P4 — incident snapshot (`/snapshot`, JSON and text, completeness listed, secrets masked) —
-done on `phase13-p4-incident-snapshot`. Planned in [docs/PRD.md](docs/PRD.md); see
-*Closed as won't do* there before proposing more. 410 unit tests, 50 integration, run once per
+merged (PR #34); P5 — connectivity and HA (`/connectivity`: replica sync, topology, cluster
+connections, bridges, broker connections, all as this broker reports them) — done on
+`phase13-p5-connectivity`. Planned in [docs/PRD.md](docs/PRD.md); see
+*Closed as won't do* there before proposing more. 438 unit tests, 58 integration, run once per
 supported broker version.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

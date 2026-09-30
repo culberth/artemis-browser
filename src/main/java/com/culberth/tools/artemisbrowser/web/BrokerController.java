@@ -8,6 +8,8 @@ import com.culberth.tools.artemisbrowser.broker.BrokerInfoService;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
 import com.culberth.tools.artemisbrowser.broker.ClientView;
+import com.culberth.tools.artemisbrowser.broker.ConnectivityService;
+import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.Reading;
 import java.util.List;
 import java.util.Map;
@@ -28,15 +30,20 @@ public class BrokerController
     private final AddressDirectory addressDirectory;
     private final AddressDetailService addressDetail;
     private final ClientDirectory clientDirectory;
+    private final ConnectivityService connectivity;
+    private final QueueDirectory queueDirectory;
 
     public BrokerController(BrokerSession brokerSession, BrokerInfoService brokerInfo,
-            AddressDirectory addressDirectory, AddressDetailService addressDetail, ClientDirectory clientDirectory)
+            AddressDirectory addressDirectory, AddressDetailService addressDetail, ClientDirectory clientDirectory,
+            ConnectivityService connectivity, QueueDirectory queueDirectory)
     {
         this.brokerSession = brokerSession;
         this.brokerInfo = brokerInfo;
         this.addressDirectory = addressDirectory;
         this.addressDetail = addressDetail;
         this.clientDirectory = clientDirectory;
+        this.connectivity = connectivity;
+        this.queueDirectory = queueDirectory;
     }
 
     /**
@@ -97,6 +104,25 @@ public class BrokerController
         model.addAttribute("consumers", Reading.attempt(brokerInfo::consumers));
         model.addAttribute("producers", Reading.attempt(brokerInfo::producers));
         return "broker";
+    }
+
+    /**
+     * Where messages can leave this broker, and its HA relationships, as it reports them. The queue listing is read
+     * once, for the backlogs behind each path; a broker that will not list its queues still shows the paths.
+     */
+    @GetMapping("/connectivity")
+    public String connectivity(@RequestParam(name = "refresh", defaultValue = "0") int refresh, Model model)
+    {
+        if (!brokerSession.isConnected())
+        {
+            return "redirect:/";
+        }
+        model.addAttribute("connection", brokerSession.info());
+        model.addAttribute("refresh", REFRESH_CHOICES.contains(refresh) ? refresh : 0);
+        model.addAttribute("refreshChoices", REFRESH_CHOICES);
+        model.addAttribute("viewParams", Map.of());
+        model.addAttribute("net", connectivity.collect(Reading.attempt(queueDirectory::overview)));
+        return "connectivity";
     }
 
     @GetMapping("/addresses")

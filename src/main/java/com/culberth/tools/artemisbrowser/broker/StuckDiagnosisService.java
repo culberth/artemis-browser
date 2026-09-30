@@ -19,8 +19,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>
  * Built from the cheap reads only: one {@code listQueues}, one consumer listing, one address listing, the health
- * attributes, and a scheduled-message read for the few queues that have any. Nothing browses a message body, so this
- * page costs the same on a broker with a 50,000-message dead-letter queue as on an empty one.
+ * attributes, a scheduled-message read for the few queues that have any, and the connectivity reads — HA attributes,
+ * the topology and broker-connection listings, and a few attributes per bridge and cluster connection. Nothing browses
+ * a message body, so this page costs the same on a broker with a 50,000-message dead-letter queue as on an empty one.
  *
  * <p>
  * The one exception is how long messages have been in flight, which only each queue's delivering list can say. Those
@@ -39,6 +40,7 @@ public class StuckDiagnosisService
     private final DivertDirectory divertDirectory;
     private final InFlightService inFlightService;
     private final RateService rateService;
+    private final ConnectivityService connectivityService;
 
     /**
      * Fewest in-flight messages one consumer must hold, with every other consumer on the queue holding none, to be
@@ -67,7 +69,7 @@ public class StuckDiagnosisService
 
     public StuckDiagnosisService(QueueDirectory queueDirectory, AddressDirectory addressDirectory,
             BrokerInfoService brokerInfo, QueueBrowseService browseService, DivertDirectory divertDirectory,
-            InFlightService inFlightService, RateService rateService)
+            InFlightService inFlightService, RateService rateService, ConnectivityService connectivityService)
     {
         this.queueDirectory = queueDirectory;
         this.addressDirectory = addressDirectory;
@@ -76,6 +78,7 @@ public class StuckDiagnosisService
         this.divertDirectory = divertDirectory;
         this.inFlightService = inFlightService;
         this.rateService = rateService;
+        this.connectivityService = connectivityService;
     }
 
     public List<Finding> diagnose(boolean includeInternal)
@@ -92,6 +95,15 @@ public class StuckDiagnosisService
      * so in {@link Diagnosis#unchecked()}. A page that says "nothing wrong" must have looked.
      */
     public Diagnosis run(boolean includeInternal)
+    {
+        return run(includeInternal, null);
+    }
+
+    /**
+     * The same, with connectivity already read — the incident snapshot reads it for its own section and hands it on,
+     * rather than asking the broker twice. Null reads it here, from this run's queue listing.
+     */
+    public Diagnosis run(boolean includeInternal, Connectivity connectivity)
     {
         List<Finding> findings = new ArrayList<>();
         List<String> unchecked = new ArrayList<>();
@@ -135,6 +147,10 @@ public class StuckDiagnosisService
             unchecked.add("Addresses — dropped messages, addresses with no queues, where killed or expired"
                     + " messages went, and which addresses are at their limits: " + addresses.explained());
         }
+        // Paths leaving this broker and its replica, from the listing already read: a bridge's queue,
+        // a cluster peer's store-and-forward queue and a mirror's queue are where their backlogs show.
+        ConnectivityService.findings(connectivity != null ? connectivity : connectivityService.collect(Reading.of(all)),
+                findings, unchecked);
         if (health.memoryPressure())
         {
             findings.add(memoryFindingAt, memoryPressure(health, addresses.orElse(List.of()), includeInternal));

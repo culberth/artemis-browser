@@ -349,6 +349,48 @@ from — a wrong parse here yields a believable number rather than an error.
   inherits the other defaults; an auto-created one lists 10. `it-d.#` works; `it-q-eff#` (no dot)
   matched nothing — a wildcard is a whole word.
 
+### Connectivity and HA (2026-09-30, 2.55.0 and 2.57.0 identical, before Phase 13 P5 parsed any of it)
+
+Fixture: primary A (replication, `group-name`), its backup, peer B, cluster connection `c1` A↔B,
+core bridges `to-b` (connected) and `to-nowhere` (unresolvable host), AMQP broker connections
+`mirror-b` (`<mirror/>`) and `sender-nowhere`. Over the JMS management channel:
+
+- **Broker attributes**: `active`, `backup`, `replicaSync`, `sharedStore`, `clustered` Boolean;
+  `HAPolicy` a String — `"Primary Only"` (standalone), `"Replication Primary w/quorum voting"`,
+  `"Replication Backup w/quorum voting"`; `bridgeNames`, `clusterConnectionNames`,
+  `connectorServices` → `Object[]` of String (empty, not null, when none); `pendingMirrorAcks` Long.
+- **`listNetworkTopology()`** → JSON String array `[{"nodeID","live","primary","backup"?}]`, `live`
+  and `primary` both present and equal (`host:port`), `backup` only when one announced. **It lists
+  this broker itself.** Standalone → `"[]"`. **A stopped backup stays in it** (still there 70s later)
+  while `replicaSync` went false within 8s — so `backup` in the topology is not evidence the backup is
+  up; `replicaSync` is. A stopped *peer* dropped out within 20s.
+- **`listBrokerConnections()`** → JSON String array `{"name","protocol","started","uri","connected"}`,
+  booleans bare. `brokerconnection.<name>` attributes add `user`, `retryInterval`, `reconnectAttempts`.
+  No counters anywhere; a mirror's backlog is the internal queue **`$ACTIVEMQ_ARTEMIS_MIRROR_<name>`**
+  (in `listQueues`, `internalQueue:"true"`). `uri` is whatever was configured — could carry a password.
+- **`bridge.<name>`** attributes: `queueName`, `forwardingAddress` (null when unset: the message keeps
+  its address), `filterString` null, `staticConnectors` `Object[]`, `discoveryGroupName` null,
+  `started`, `connected`, `HA` Boolean, `retryInterval`/`reconnectAttempts` Long, `metrics` a HashMap of
+  Long. **No user/password attribute.** A bridge that cannot reach its target: `started` true,
+  `connected` false, its source queue simply holds the messages (6 on `bridge.lost`, delivering 0).
+- **`messagesPendingAcknowledgement` on a bridge is cumulative sent, not pending now**: 10 sent and
+  acked read acked=10, pending=10, source queue empty. Outstanding = pending − acked.
+- **`clusterconnection.<name>`**: `address` `""`, `started`, `nodeID` (this broker), `nodes` a
+  HashMap nodeId → `"host/ip:port"` of **connected peers only** (empty when B was stopped, and never
+  the backup), `maxHops`, `messageLoadBalancingType`, `staticConnectors`, `metrics` as bridges.
+  `topology` is a `toString()` — not worth parsing. Its store-and-forward queue is
+  **`$.artemis.internal.sf.<cluster>.<peer nodeId>`**, internal, one per peer.
+- **`connectorsAsJSON` leaks secrets**: a connector URI's `user`/`password` come back in `extraProps`
+  in clear (`"password":"connectorsecret"`). Read only name/host/port from `params`.
+- **A bridge or broker connection that does not exist** → "Problem while retrieving attribute".
+- **A replicated backup accepts no client connections** (JMS to it timed out); Jolokia still answers.
+  Its `nodeID` is the primary's.
+- **Fixture traps**: `cluster-user` must not be a real user — with `cluster-user=artemis` and another
+  cluster password, an ordinary `artemis/artemis` login (the mirror's) was rejected and the
+  ClusterManager stopped. A backup with no `group-name` paired itself with the wrong primary. The
+  image binds the console to localhost unless `artemis create` gets `$EXTRA_ARGS`. broker.xml's
+  `<core>` is `xsd:all`: a second `<addresses>` fails validation — insert into the existing one.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

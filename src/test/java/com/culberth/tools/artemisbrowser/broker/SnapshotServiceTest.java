@@ -25,6 +25,7 @@ class SnapshotServiceTest
     private AddressDirectory addresses;
     private RateService rates;
     private StuckDiagnosisService diagnosis;
+    private ConnectivityService connectivity;
 
     @BeforeEach
     void mocks()
@@ -35,6 +36,8 @@ class SnapshotServiceTest
         addresses = mock(AddressDirectory.class);
         rates = mock(RateService.class);
         diagnosis = mock(StuckDiagnosisService.class);
+        connectivity = mock(ConnectivityService.class);
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
         given(session.info()).willReturn(new ConnectionInfo("localhost", 61616, "artemis"));
         given(info.health()).willReturn(BrokerHealth.of("2.55.0", "1h", "STARTED", "n", 1, 1, 1, 0, 0, 10, 90));
         given(info.acceptors()).willReturn(List.of());
@@ -45,7 +48,22 @@ class SnapshotServiceTest
         given(addresses.overview()).willReturn(List.of());
         given(addresses.settings(anyString())).willReturn(AddressSettings.of(Map.of()));
         given(rates.trends()).willReturn(Trends.none());
-        given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(), 0, 0));
+        given(diagnosis.run(anyBoolean(), org.mockito.ArgumentMatchers.any()))
+                .willReturn(new Diagnosis(List.of(), 0, 0));
+    }
+
+    @Test
+    @DisplayName("connectivity is read once, from the snapshot's own queue listing, and handed to diagnose")
+    void connectivityIsReadOnce()
+    {
+        Connectivity troubled = ConnectivityFixtures.troubled();
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(troubled);
+
+        IncidentSnapshot snapshot = service(1000, 200).collect();
+
+        assertEquals(troubled, snapshot.connectivity().value());
+        verify(connectivity, org.mockito.Mockito.times(1)).collect(org.mockito.ArgumentMatchers.any());
+        verify(diagnosis).run(false, troubled);
     }
 
     @Test
@@ -111,7 +129,8 @@ class SnapshotServiceTest
 
     private SnapshotService service(int maxRows, int maxSettings)
     {
-        return new SnapshotService(session, info, queues, addresses, rates, diagnosis, maxRows, maxSettings);
+        return new SnapshotService(session, info, queues, addresses, rates, diagnosis, connectivity, maxRows,
+                maxSettings);
     }
 
     private static AddressOverview address(String name, boolean paging, long unrouted)

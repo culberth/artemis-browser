@@ -43,8 +43,8 @@ Shipped so far:
 ## Next: Phase 13 (planned)
 
 Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
-first four feature areas (P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots)
-are done, and the rest are not yet built:
+first five feature areas (P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots,
+P5 connectivity and HA) are done, and the last is not yet built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
@@ -55,6 +55,7 @@ are done, and the rest are not yet built:
 4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
    **Done.**
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
+   **Done.**
 6. Read-only prepared-transaction and address-permission inspection.
 
 Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
@@ -84,8 +85,16 @@ reset breaks the line instead of joining two different things.
 Done in P4: `/snapshot` downloads an incident snapshot, as JSON or as a text summary. It is linked
 from the broker and diagnose pages. It holds the broker's identity and health, queues, addresses,
 settings, clients, this session's trends and a diagnose run. Everything the broker would not give,
-and everything the limits left out, is listed. There are no message bodies or credentials. Connectivity
-and HA come next, and all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+and everything the limits left out, is listed. There are no message bodies or credentials.
+
+Done in P5: `/connectivity` shows the broker's HA role and replica synchronization, the cluster
+topology it reports, its cluster connections with the backlog waiting for each peer, its core bridges
+with their source queue's depth, and its broker connections (AMQP mirrors, federation, senders) with
+a mirror's backlog. It is all this broker's view: nothing connects to a peer, backup or target.
+Diagnose names an unconnected bridge, mirror or cluster peer with what is waiting behind it, and a
+replication primary with no synchronized backup. The snapshot has a connectivity section. Connector
+credentials, which the broker returns in clear, are never read, and a password in a URI is masked.
+Transactions and permissions come next. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -373,6 +382,20 @@ names each unit (`addressSizeBytes`), uses ISO-8601 UTC times, and lists `unavai
 `omitted` rows, so two snapshots can be compared. Message bodies are never included. Setting values
 under keys that look like secrets are masked.
 
+## Connectivity and HA
+
+`/connectivity` reads what this broker reports about its peers and paths; it never opens a connection
+to another broker, so *connected* means this broker holds a connection, not that the far side is
+healthy. What shows the problem is usually a backlog: a bridge that cannot connect leaves its
+messages on its source queue, a cluster peer that is gone leaves them in the store-and-forward queue
+`$.artemis.internal.sf.<cluster>.<node>`, and a mirror's backlog is `$ACTIVEMQ_ARTEMIS_MIRROR_<name>`.
+Two counters mean less than their names: a bridge's "pending acknowledgement" is a running total of
+what it sent, so the page shows sent minus acknowledged as *outstanding*; and a backup listed in the
+topology was only announced — it stays listed after it stops, while *replica synchronized* goes false
+within seconds. Bridges and cluster connections have no listing operation, so each is read field by
+field, at most 100 of each per page. Core federation (`<federations>`) and connector services are not
+read.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -430,6 +453,9 @@ com.culberth.tools.artemisbrowser
 │   ├── SnapshotService / SnapshotWriter / IncidentSnapshot / Redaction
 │   │                              Incident snapshot: bounded collection, JSON and text, masked secrets
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
+│   ├── ConnectivityService        HA state, topology, cluster connections, bridges, broker connections; their findings
+│   ├── Connectivity / HaState / TopologyMember / ClusterLink / Bridge / BrokerLink / Connector
+│   │                              This broker's view of its peers and outbound paths, with backlogs from the listing
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueBehavior              A queue's effective settings from its listing row, and what each looks like from outside
 │   ├── ListingFields              One listing field as a Reading: absent is unsupported, malformed is failed
@@ -448,7 +474,7 @@ com.culberth.tools.artemisbrowser
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
-│   ├── BrokerController           /broker, /addresses, /address, /client
+│   ├── BrokerController           /broker, /connectivity, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── DiagnoseController         /diagnose

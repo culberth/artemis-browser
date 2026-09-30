@@ -15,9 +15,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>
  * Built from reads the pages already make — the queue and address listings, the health attributes, the client listings
- * — plus address settings for a bounded set of addresses and one diagnose run. Nothing browses a message, so nothing
- * here touches a body. The queue listing is read once and handed to the trend tracker as this session's next reading,
- * so the snapshot's trend section includes the snapshot's own moment.
+ * — plus address settings for a bounded set of addresses, the connectivity reads, and one diagnose run. Nothing browses
+ * a message, so nothing here touches a body. The queue listing is read once and handed to the trend tracker as this
+ * session's next reading, so the snapshot's trend section includes the snapshot's own moment.
  *
  * <p>
  * Bounded: each client listing keeps at most {@code artemis.snapshot.max-rows} rows and says how many there were;
@@ -35,12 +35,13 @@ public class SnapshotService
     private final AddressDirectory addressDirectory;
     private final RateService rateService;
     private final StuckDiagnosisService diagnosis;
+    private final ConnectivityService connectivityService;
     private final int maxRows;
     private final int maxAddressSettings;
 
     public SnapshotService(BrokerSession brokerSession, BrokerInfoService brokerInfo, QueueDirectory queueDirectory,
             AddressDirectory addressDirectory, RateService rateService, StuckDiagnosisService diagnosis,
-            @Value("${artemis.snapshot.max-rows:1000}") int maxRows,
+            ConnectivityService connectivityService, @Value("${artemis.snapshot.max-rows:1000}") int maxRows,
             @Value("${artemis.snapshot.max-address-settings:200}") int maxAddressSettings)
     {
         this.brokerSession = brokerSession;
@@ -49,6 +50,7 @@ public class SnapshotService
         this.addressDirectory = addressDirectory;
         this.rateService = rateService;
         this.diagnosis = diagnosis;
+        this.connectivityService = connectivityService;
         this.maxRows = Math.max(1, maxRows);
         this.maxAddressSettings = Math.max(0, maxAddressSettings);
     }
@@ -91,12 +93,14 @@ public class SnapshotService
         IncidentSnapshot.Listing<BrokerProducer> producers = IncidentSnapshot.Listing
                 .of(Reading.attempt(brokerInfo::producers), maxRows);
 
-        Reading<Diagnosis> found = Reading.attempt(() -> diagnosis.run(false));
+        // Read once, for its own section and for diagnose's findings about it.
+        Reading<Connectivity> connectivity = Reading.attempt(() -> connectivityService.collect(queues));
+        Reading<Diagnosis> found = Reading.attempt(() -> diagnosis.run(false, connectivity.orElse(null)));
         Trends trends = rateService.trends();
 
         return new IncidentSnapshot(started, Instant.now(), connection, health, queues, addresses, settings, omitted,
-                acceptors, connections, consumers, producers, trends, found, new IncidentSnapshot.Limits(maxRows,
-                        maxAddressSettings, trends.spacingMillis(), trends.maxReadings(), trends.maxQueues()));
+                acceptors, connections, consumers, producers, connectivity, trends, found, new IncidentSnapshot.Limits(
+                        maxRows, maxAddressSettings, trends.spacingMillis(), trends.maxReadings(), trends.maxQueues()));
     }
 
     /**

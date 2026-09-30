@@ -749,7 +749,7 @@ separately available broker metrics source and are not promised by the managemen
       broker identity and health, every queue with counters, id and configuration, every address with
       its storage figures, address settings, acceptors, connections, consumers, producers, this
       session's trend readings, and a full diagnose run. Both formats come from one
-      `IncidentSnapshot`. Connectivity and permission sections join it when P5 and P6 exist.
+      `IncidentSnapshot`. Connectivity joined it with P5; permissions join it with P6.
 - [x] **Describe completeness.** Include a schema version, collection start/end times, sampling
       intervals, unsupported/denied/failed reads and any truncation or omitted sections. This is a
       sequence of observations, not an atomic broker snapshot. Keep collection bounded and reuse
@@ -780,16 +780,39 @@ with tests for completeness metadata, bounds, secret exclusion and non-destructi
 
 ### P5 — Broker connectivity and high availability
 
-- [ ] **Inspect this broker's reported topology and HA state.** Show local identity, active/backup
+- [x] **Inspect this broker's reported topology and HA state.** Show local identity, active/backup
       role and replication synchronization where applicable, together with the peers and topology
       the connected broker exposes. Mark unsupported or inapplicable states explicitly.
-- [ ] **Inspect outbound messaging paths.** Show configured core bridges and supported broker
+      Done 2026-09-30: `/connectivity`, linked from the nav. Probed first on 2.55.0 and 2.57.0
+      (identical) with a replication primary, its backup, a cluster peer, two bridges and two AMQP
+      broker connections. The HA panel reads eight broker attributes, each its own reading; replica
+      synchronization is "not applicable" under `Primary Only` and shared store, never a failure.
+      The topology marks this broker's own entry. A backup listed there is only announced: it stayed
+      70s after the backup stopped, while `replicaSync` went false in 8s. A replicated backup takes no
+      client connections, so the page is seen from the primary.
+- [x] **Inspect outbound messaging paths.** Show configured core bridges and supported broker
       connections, including federation/mirroring information where exposed. Report destination,
       connected/started state and available traffic counters with links to local addresses/queues.
       Never expose connector passwords or infer an end-to-end healthy path from a local connection.
-- [ ] **Extend Diagnose and snapshots.** Identify observed disconnected paths or incomplete
+      Done 2026-09-30. Cluster connections with their connected peers and the store-and-forward queue
+      waiting for each; bridges with source queue and its depth, target connector (host:port),
+      forwarding address, state, acknowledged and outstanding; broker connections with URI, state and,
+      for a mirror, its queue's backlog. Every backlog links to its local queue. Traps: a bridge's
+      "pending" counter is cumulative sent; `connectorsAsJSON` returns connector credentials in clear,
+      so only name, host and port are read; a broker-connection URI is masked. Bridges and cluster
+      connections have no listing, so they are read per field, at most 100 of each. Not read: core
+      federation (`<federations>`) and connector services.
+- [x] **Extend Diagnose and snapshots.** Identify observed disconnected paths or incomplete
       synchronization with evidence and applicability. Describe peer information as this broker's
       view; do not claim to have inspected a remote broker.
+      Done 2026-09-30. Diagnose names a stopped or unconnected bridge, broker connection or cluster
+      connection, messages waiting for a peer that is not connected, and a replication primary with
+      no synchronized backup. Each is not moving when messages wait behind it, otherwise worth a
+      look, and each says the far side was not inspected. A connectivity read that fails is listed
+      as not checked. The snapshot gains a `connectivity` section, read once and handed to its
+      diagnose run. Covered by `ConnectivityServiceTest`, rendered-page tests, and `ConnectivityIT`:
+      three brokers per supported version, the app on the primary, secrets checked absent, counters
+      unchanged, and the backup stopped to see the replica finding appear.
 
 Done means a user can see where traffic may leave the connected broker and the reported state of
 its HA relationships. Verify the supported paths using appropriately configured multi-broker test

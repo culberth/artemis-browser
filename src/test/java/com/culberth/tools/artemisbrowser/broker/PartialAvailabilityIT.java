@@ -135,7 +135,8 @@ class PartialAvailabilityIT
         BrokerInfoService info = new BrokerInfoService(viewer);
         Diagnosis diagnosis = new StuckDiagnosisService(queues, new AddressDirectory(viewer, queues), info,
                 new QueueBrowseService(viewer, 200, 200000, 20000, 20_000_000L), new DivertDirectory(viewer),
-                new InFlightService(viewer, info, 5000), new RateService(viewer, new RateTracker(), queues)).run(false);
+                new InFlightService(viewer, info, 5000), new RateService(viewer, new RateTracker(), queues),
+                new ConnectivityService(viewer)).run(false);
 
         assertTrue(diagnosis.unchecked().stream().anyMatch(line -> line.startsWith("Disk use")),
                 diagnosis.unchecked().toString());
@@ -159,8 +160,8 @@ class PartialAvailabilityIT
         IncidentSnapshot snapshot = new SnapshotService(viewer, info, queues, addresses, rates,
                 new StuckDiagnosisService(queues, addresses, info,
                         new QueueBrowseService(viewer, 200, 200000, 20000, 20_000_000L), new DivertDirectory(viewer),
-                        new InFlightService(viewer, info, 5000), rates),
-                1000, 200).collect();
+                        new InFlightService(viewer, info, 5000), rates, new ConnectivityService(viewer)),
+                new ConnectivityService(viewer), 1000, 200).collect();
 
         assertEquals(Availability.DENIED, snapshot.acceptors().rows().availability());
         assertEquals(Availability.UNAVAILABLE, snapshot.health().diskUsedPercent().availability());
