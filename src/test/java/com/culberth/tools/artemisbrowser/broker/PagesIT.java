@@ -53,7 +53,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  * Phase 14's paths are in the same visit: exact message-ID lookups (one of them for the message the branch holds),
  * built filters on the search and queue pages, the saved-search pages for every scope, and {@code /compare}. Two of
  * them are held to what they promise: comparing two snapshots this broker just produced reads nothing from it, and
- * opening a saved search reads only the listing that says whether its scope is still there.
+ * opening a saved search reads only the listing that says whether its scope is still there. Dead-letter triage
+ * ({@code /triage}) is visited for every queue, plain and grouped by a property.
  */
 @SpringBootTest(properties =
 { "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash=",
@@ -165,6 +166,7 @@ class PagesIT
         assertTrue(visited.stream().anyMatch(path -> path.startsWith("/search?filter=ID:")), visited.toString());
         assertTrue(visited.stream().anyMatch(path -> path.startsWith("/saved/")), visited.toString());
         assertTrue(visited.contains("/compare"), visited.toString());
+        assertTrue(visited.stream().anyMatch(path -> path.startsWith("/triage?name=")), visited.toString());
     }
 
     @Test
@@ -313,6 +315,8 @@ class PagesIT
             paths.add("/queues?name=" + queue.name());
             paths.add("/queues?name=" + queue.name() + "&filter=" + FILTER);
             paths.add("/export?name=" + queue.name() + "&format=json");
+            paths.add("/triage?name=" + queue.name());
+            paths.add("/triage?name=" + queue.name() + "&sample=3&by=_AMQ_ORIG_QUEUE");
             for (MessageSummary message : browse.page(queue.name(), null, 1, 5).messages())
             {
                 // Each exact-ID lookup reads every queue, so a few real messages are enough to exercise it.

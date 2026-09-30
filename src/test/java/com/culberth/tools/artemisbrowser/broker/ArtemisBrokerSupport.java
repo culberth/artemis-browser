@@ -158,6 +158,13 @@ final class ArtemisBrokerSupport
         }
     }
 
+    /** A command run inside the test broker's container — the bundled CLI, for a sender this JVM has no client for. */
+    static org.testcontainers.containers.Container.ExecResult exec(String... command) throws Exception
+    {
+        start();
+        return container.execInContainer(command);
+    }
+
     static BrokerCredentials credentials()
     {
         return new BrokerCredentials(container.getHost(), container.getMappedPort(61616), USER, PASSWORD);
