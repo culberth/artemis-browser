@@ -43,14 +43,15 @@ Shipped so far:
 ## Next: Phase 13 (planned)
 
 Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
-first two feature areas (P1 address pressure, P2 queue behavior) are done, and the rest are not yet
-built:
+first three feature areas (P1 address pressure, P2 queue behavior, P3 trends) are done, and the
+rest are not yet built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
 2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
    **Done.**
 3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
+   **Done.**
 4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
 6. Read-only prepared-transaction and address-permission inspection.
@@ -72,7 +73,13 @@ and what each one looks like from outside, plus the address's defaults for new q
 and subscription rows badge last-value, ring, exclusive, purging and dispatch-gated queues. Diagnose
 findings now keep what was observed apart from configuration that may explain it. It no longer
 reports an exclusive queue's single busy consumer as hoarding, nor a purge as a failed delivery.
-Trends come next, and all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+
+Done in P3: the overview has a *Trend* column, and each queue page a *Recent trend* panel. Both are
+built from readings this session takes while pages are open, so there is no background polling. They show
+the depth over time, whether the backlog is growing, when acknowledgments stopped or resumed,
+expired and killed messages now, and consumer changes. A restart, a recreated queue or a counter
+reset breaks the line instead of joining two different things. Incident snapshots come next, and
+all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -326,8 +333,12 @@ the reported unsearched states and limits. In-flight bodies are not available th
 
 Ingress and acknowledgment rates compare two readings in the current HTTP session. The first
 reading has no rate; the page shows the measurement interval. A broker restart or counter reset
-invalidates the affected interval. Acknowledgments are separate from expired and killed messages,
-and the current implementation keeps one interval, not a trend history.
+invalidates the affected interval. Acknowledgments are separate from expired and killed messages.
+
+Trends keep up to `artemis.trends.max-readings` (240) readings, at most one per
+`artemis.trends.spacing-seconds` (15), for up to `artemis.trends.max-queues` (500) queues. That is
+about an hour while a page is open, and it lasts only as long as the HTTP session. A gap in the line
+is time no page was open. Nothing is shown from before this session's first reading.
 
 The address page measures subscriber lag using the oldest undelivered message's age. In-flight
 message age is measured from send time, not delivery time, so it cannot prove how long a consumer
@@ -395,6 +406,8 @@ com.culberth.tools.artemisbrowser
 │   ├── MessageSearchService       Cross-queue search: browses every queue, because a filtered count is a sample
 │   ├── StuckDiagnosisService      "Why is this not moving": cheap reads, in-flight ages within a budget, rates
 │   ├── RateTracker / RateService  Per-session previous reading of queue counters, for in/acked per second
+│   ├── TrendHistory / Trends / QueueTrend / TrendPoint
+│   │                              Bounded session history of queue counters; intervals, breaks and gaps
 │   ├── ClientDirectory            One client: connections → sessions → its consumers and producers
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers

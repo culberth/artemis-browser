@@ -214,7 +214,8 @@ public class QueueDirectory
                 number(node, "messageCount"), number(node, "deliveringCount"), number(node, "scheduledCount"),
                 (int) number(node, "consumerCount"), number(node, "messagesAdded"), number(node, "messagesAcked"),
                 flag(node, "durable"), flag(node, "paused"), flag(node, "internalQueue"),
-                number(node, "messagesExpired"), number(node, "messagesKilled"), QueueBehavior.from(node));
+                number(node, "messagesExpired"), number(node, "messagesKilled"), QueueBehavior.from(node),
+                ListingFields.number(node, "id", "queue listing").orElse(-1L));
     }
 
     private String text(JsonNode node, String field)

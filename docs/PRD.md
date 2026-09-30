@@ -706,17 +706,33 @@ behavior, with integration coverage for the semantics used by diagnostic finding
 
 ### P3 — Bounded short-term trends
 
-- [ ] **Extend the existing rate tracker with session history.** Retain bounded observations of
+- [x] **Extend the existing rate tracker with session history.** Retain bounded observations of
       queue depth, ingress, acknowledgments, expired/killed counts and consumer counts. Collect
       during page reads/refreshes, reuse listings, and expose trends on the overview and queue view.
       Define configurable retention and sample/entity limits so memory stays bounded on large brokers.
-- [ ] **Show honest time intervals.** Display timestamps and sampling gaps, and distinguish an
+      Done 2026-09-29: `RateTracker` keeps a `TrendHistory` beside its one interval. It records depth,
+      added, acknowledged, expired, killed and consumers from the listing each page already made, with
+      no new broker call. The limits are `artemis.trends.spacing-seconds` (15),
+      `artemis.trends.max-readings` (240, about an hour) and `artemis.trends.max-queues` (500). A
+      session therefore holds at most 120,000 small points.
+- [x] **Show honest time intervals.** Display timestamps and sampling gaps, and distinguish an
       absent sample from zero activity. Handle broker changes/restarts, counter resets, queue
       recreation and session expiry without joining unrelated measurements. Keep acknowledged
       throughput separate from expiry and killed-message rates.
-- [ ] **Use history to explain change.** Show whether a backlog is growing or shrinking, when
+      Done 2026-09-29. Each interval is a measurement or a break. A restart (from uptime), a recreated
+      queue (a new `id`) or counters going back is a break: shown, never averaged across, and it
+      starts a new line. Verified on 2.55.0 that the id changes on recreation and survives a
+      restart. A long wait is a *gap*; a reading the queue was missing from is counted, not taken
+      as zero. Another broker, or a new session, starts over. An unreadable uptime is no longer
+      read as "not restarted", and the page says a restart could not be checked.
+- [x] **Use history to explain change.** Show whether a backlog is growing or shrinking, when
       consumption changed within the observed window, and whether expirations or killed messages
       are increasing now. Do not imply observations exist from before the session began collecting.
+      Done 2026-09-29. The queue page has a *Recent trend* panel: a depth line, the backlog's change
+      since the latest break, when acknowledgments stopped or resumed, expired and killed messages in
+      the latest interval, consumer changes, and the last 12 intervals. The overview has a *Trend*
+      column. Every trend is dated "since" this session's first reading. Covered by `QueueTrendTest`,
+      and against a real broker by `TrendsIT`, which recreates a queue mid-history.
 
 Done means a user can compare recent behavior across multiple intervals, with bounded memory and
 tests for gaps, resets, retention and reconnects. Long-term metrics storage remains an optional

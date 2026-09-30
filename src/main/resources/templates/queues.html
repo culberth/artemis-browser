@@ -100,6 +100,70 @@
         </p>
     </div>
 
+    <div class="panel" th:if="${stats}" th:with="t=${trends != null} ? ${trends.of(stats.name())} : null">
+        <h2>Recent trend <span class="muted" th:if="${trends != null and !trends.empty()}"
+                              th:text="'(this session, since ' + ${trends.sinceText()} + ')'">(since 10:00:00)</span></h2>
+        <p class="muted" th:if="${t == null or t.intervals().isEmpty()}">
+            One reading so far. The trend needs a second reading of this queue in this session &mdash; reload
+            this page, or keep the overview open with auto-refresh, and it builds from there. Nothing here is
+            older than this session&rsquo;s first reading.
+        </p>
+        <th:block th:if="${t != null and !t.intervals().isEmpty()}">
+            <p><svg th:replace="~{fragments/layout :: sparkline(${t}, 480, 60)}"></svg></p>
+            <ul class="trend-summary">
+                <li th:if="${t.backlog() != null}" th:text="${t.backlog()}">The backlog grew.</li>
+                <li th:if="${t.consumption() != null}" th:text="${t.consumption()}">Acknowledgments stopped.</li>
+                <li th:if="${t.removalsNow() != null}" th:text="${t.removalsNow()}">3 expired.</li>
+                <li th:if="${t.consumers() != null}" th:text="${t.consumers()}">Consumers went from 2 to 0.</li>
+                <li th:if="${t.lastBreak() != null}" th:text="${t.lastBreak()}">The broker restarted.</li>
+            </ul>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>From</th><th>To</th><th class="num">Depth</th><th class="num">In/s</th>
+                        <th class="num">Acked/s</th>
+                        <th class="num" title="Expired in this interval: left without being consumed">Expired</th>
+                        <th class="num" title="Killed in this interval: left without being consumed">Killed</th>
+                        <th class="num">Consumers</th><th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="i : ${t.recent(12)}" th:classappend="${!i.measured()} ? 'row-warn' : ''">
+                        <td class="nowrap" th:text="${i.fromText()}">10:00:00</td>
+                        <td class="nowrap" th:text="${i.toText()}">10:00:15</td>
+                        <td class="num" th:text="${i.depthFrom()} + ' → ' + ${i.depthTo()}">0 → 5</td>
+                        <th:block th:if="${i.measured()}">
+                            <td class="num" th:text="${i.inText()}">0</td>
+                            <td class="num" th:text="${i.ackedText()}">0</td>
+                            <td class="num" th:classappend="${i.expired() > 0} ? 'strong' : 'muted'" th:text="${i.expired()}">0</td>
+                            <td class="num" th:classappend="${i.killed() > 0} ? 'strong' : 'muted'" th:text="${i.killed()}">0</td>
+                        </th:block>
+                        <td th:unless="${i.measured()}" colspan="4" class="muted"
+                            th:text="'Not measured: ' + ${i.breakText()}">Not measured</td>
+                        <td class="num" th:text="${i.consumersFrom() == i.consumersTo()} ? ${i.consumersTo()} : ${i.consumersFrom()} + ' → ' + ${i.consumersTo()}">1</td>
+                        <td class="muted">
+                            <span th:if="${i.gap()}" th:title="'No reading for ' + ${i.lengthText()} + '; rates are averages over time nobody was looking at'"
+                                  th:text="'gap of ' + ${i.lengthText()}">gap</span>
+                            <span th:if="${i.missed() > 0}" th:text="'absent from ' + ${i.missed()} + ' reading(s)'">absent</span>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </th:block>
+        <p class="note" th:if="${trends != null and !trends.empty()}"
+           th:text="'One reading at most every ' + ${trends.spacingText()} + ', taken only while a page lists the queues, kept for about ' + ${trends.reachText()} + '. Acknowledged is kept apart from expired and killed: a queue emptying by expiry is not being consumed.'">
+            Readings note.</p>
+        <p class="note" th:if="${trends != null and trends.restartsUnchecked()}">
+            The broker&rsquo;s uptime could not be read for some readings, so a restart then would show
+            only as counters going back.
+        </p>
+        <p class="note" th:if="${trends != null and trends.untrackedQueues() > 0}"
+           th:text="${trends.untrackedQueues()} + ' queue(s) are past the ' + ${trends.maxQueues()} + ' this session follows (artemis.trends.max-queues) and have no trend.'">
+            Queues not followed.</p>
+    </div>
+
     <div class="panel" th:if="${stats}" th:with="b=${stats.behavior()}">
         <h2>Configuration and behavior</h2>
         <th:block th:unless="${b.known()}"><p th:replace="~{fragments/layout :: panelMissing(${b.ringSize()})}"></p></th:block>

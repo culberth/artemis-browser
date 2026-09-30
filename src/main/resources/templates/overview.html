@@ -65,6 +65,7 @@
                     </th>
                     <th class="num" title="Messages added per second since the previous reading in this session">In/s</th>
                     <th class="num" title="Messages acknowledged per second since the previous reading in this session">Acked/s</th>
+                    <th title="Depth over this session's readings, and its change since the latest break">Trend</th>
                     <th>Flags</th>
                 </tr>
                 </thead>
@@ -89,6 +90,15 @@
                         th:text="${rate != null} ? ${rate.inText()} : '—'">—</td>
                     <td class="num" th:with="rate=${rates != null} ? ${rates.of(queue.name())} : null"
                         th:text="${rate != null} ? ${rate.ackedText()} : '—'">—</td>
+                    <td class="nowrap" th:with="t=${trends != null} ? ${trends.of(queue.name())} : null">
+                        <th:block th:if="${t != null and t.comparable()}">
+                            <svg th:replace="~{fragments/layout :: sparkline(${t}, 64, 16)}"></svg>
+                            <span class="muted" th:text="${t.depthChangeText()}"
+                                  th:title="'Depth change over ' + ${t.spanText()}">+0</span>
+                        </th:block>
+                        <span class="muted" th:unless="${t != null and t.comparable()}"
+                              title="Needs two readings of this queue in this session">&mdash;</span>
+                    </td>
                     <td>
                         <span class="badge" th:if="${queue.paused()}">paused</span>
                         <span class="badge" th:if="${queue.internalQueue()}">internal</span>
@@ -104,6 +114,9 @@
         <p class="note" th:if="${rates != null and !rates.measured()}"
            th:text="'In/s and Acked/s need two readings: ' + ${rates.unavailable()} + '. Load this page again, or turn on auto-refresh, and they appear.'">
             Rates need two readings.</p>
+        <p class="note" th:if="${trends != null and !trends.empty()}"
+           th:text="'Trend is each queue depth over the readings this session has taken since ' + ${trends.sinceText()} + ': one reading at most every ' + ${trends.spacingText()} + ', kept only while a page is open, reaching back about ' + ${trends.reachText()} + '. A gap in the line is time nobody was looking; a new line starts after a restart, a recreated queue or a counter reset.'">
+            Trend since the first reading.</p>
         <p class="note">
             <strong>Expired</strong> and <strong>Killed</strong> are messages that left a queue without
             being consumed, since the broker started: expired past their time to live, or killed after

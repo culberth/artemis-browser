@@ -171,6 +171,33 @@ may be why" apart, which the PRD asks for. Where the configuration makes the obs
 setting itself working, as with one consumer holding everything on an exclusive queue, there is no
 finding at all.
 
+## Trends: bounded, session-only, and broken where they must be
+
+Trends extend the one-interval rate tracker rather than add a collector. A reading is taken only
+when a page lists the queues anyway. So there is no background polling, no store beyond the HTTP
+session, and no reading from before the session began. Three limits bound the memory: one reading
+per `artemis.trends.spacing-seconds`, at most `max-readings` of them, and at most `max-queues`
+queues followed. That is at most `max-readings × max-queues` small points per session.
+
+Joining two readings into a rate is where a trend can lie, so an interval is a measurement only
+when both ends are the same thing:
+
+- **Restart:** the broker's uptime is shorter than the time since the last reading. A restart
+  cannot be seen from the counters: `messagesAdded` restarts at what the journal reloads, so it
+  can even look like no change.
+- **Recreated queue:** the `listQueues` `id` changed. Verified on 2.55.0 that a queue deleted and
+  made again gets a new id, and a durable queue keeps its id across a restart.
+- **Reset:** a counter went back.
+
+Each of these is a *break*. It is shown, it starts a new line, and nothing is compared across it.
+A long wait between readings is a *gap*: still a measurement, but an average over time nobody saw,
+so it is labelled. A reading a queue was missing from is counted as absent, never taken as zero. An
+uptime that could not be read used to become `Long.MAX_VALUE`, which reads as "certainly not
+restarted". Now it means "not checked", and the page says so.
+
+Acknowledged throughput never includes expiry or killing. A queue emptying by expiry is not being
+consumed.
+
 ## Two filter dialects, and mixing them fails silently
 
 Management operations (`countMessages`, `browse`) take Artemis **core** filter syntax:

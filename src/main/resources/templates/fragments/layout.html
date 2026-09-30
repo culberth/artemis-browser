@@ -100,6 +100,17 @@
           th:text="${label}" title="Configured behavior; the queue page explains it">ring 3</span>
 </th:block>
 
+<!--
+  A queue's depth over this session's readings, as a line per unbroken stretch: a restart, a recreated
+  queue or a counter reset starts a new line rather than joining two different things. All lines share
+  the session's time axis, so two queues' shapes can be compared side by side.
+-->
+<svg th:fragment="sparkline(t, w, h)" class="spark" th:attr="viewBox='0 0 ' + ${w} + ' ' + ${h},width=${w},height=${h}"
+     role="img" aria-label="Queue depth over this session">
+    <polyline th:each="pl : ${t.polylines(w, h)}" th:attr="points=${pl}" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
+
 <!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->
 <span th:fragment="collected(reading)" class="muted collected"
       th:text="'read ' + ${reading.collectedText()}">read 12:00:00</span>
