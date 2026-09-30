@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
 Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
-complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 done, P5 optional. Phase 15 specified
+complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 merged (PR #46), P5 optional. Phase 15 specified
 2026-09-29: interactive regression lab, not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
@@ -1027,7 +1027,7 @@ Done means a user can identify common origins or reported diagnostic patterns in
 sample. Cover heterogeneous and absent metadata, bounded collection and non-destructive reads.
 There are no retry, move or delete controls.
 
-**P4 done (2026-09-30):** *Triage by origin* on every queue page (`/triage`). Checked first on 2.55.0 and
+**P4 done (2026-09-30, PR #46):** *Triage by origin* on every queue page (`/triage`). Checked first on 2.55.0 and
 2.57.0: every broker move — a kill, an expiry, an operator's `sendMessageToDeadLetterAddress`, a
 `moveMessages` — sets `_AMQ_ORIG_ADDRESS`, `_AMQ_ORIG_QUEUE`, `_AMQ_ORIG_ROUTING_TYPE` and
 `_AMQ_ORIG_MESSAGE_ID`; expiry adds `_AMQ_ACTUAL_EXPIRY`; nothing records a reason or delivery count; an
