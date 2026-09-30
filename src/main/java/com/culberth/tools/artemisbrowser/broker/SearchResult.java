@@ -9,27 +9,23 @@ import java.util.List;
  *                            at"
  * @param matches             only queues that matched; queues with zero hits are left out entirely
  * @param truncated           true when some queue had more matches than were fetched
- * @param messageId           the ID looked up when the filter was an exact lookup ({@link MessageIdLookup}), else null
- * @param inFlight            where that message was found in flight — delivered to a consumer, not acknowledged, and so
- *                            invisible to the browse that found {@code matches}
- * @param inFlightNotSearched messages in flight on the searched queues that this search could not look at: all of them
- *                            for an ordinary filter, and for an ID lookup those on queues over
- *                            {@code artemis.in-flight-limit}
+ * @param inFlightNotSearched messages in flight to a consumer, on queues where nothing matched, that the filter could
+ *                            not be checked against — browse cannot see them. An exact ID lookup is answered by
+ *                            {@link MessageInvestigationService} instead, which can
  */
 public record SearchResult(String filter, int queuesSearched, long totalMatches, boolean truncated,
-        List<QueueMatches> matches, String messageId, List<InFlightLookup> inFlight, long inFlightNotSearched)
+        List<QueueMatches> matches, long inFlightNotSearched)
 {
 
     public SearchResult(String filter, int queuesSearched, long totalMatches, boolean truncated,
             List<QueueMatches> matches)
     {
-        this(filter, queuesSearched, totalMatches, truncated, matches, null, List.of(), 0);
+        this(filter, queuesSearched, totalMatches, truncated, matches, 0);
     }
 
-    /** Nothing waiting and nothing in flight: the only case where the page may say nothing was found. */
     public boolean nothingFound()
     {
-        return matches.isEmpty() && inFlight.isEmpty();
+        return matches.isEmpty();
     }
 
     /**

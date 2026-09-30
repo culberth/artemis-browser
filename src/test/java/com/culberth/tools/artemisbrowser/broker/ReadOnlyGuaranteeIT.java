@@ -36,6 +36,7 @@ class ReadOnlyGuaranteeIT
     private static QueueBrowseService browse;
     private static MessageSearchService search;
     private static InFlightService inFlight;
+    private static MessageInvestigationService investigation;
 
     @BeforeAll
     static void connect() throws Exception
@@ -44,7 +45,9 @@ class ReadOnlyGuaranteeIT
         queues = new QueueDirectory(brokerSession);
         browse = new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L);
         inFlight = new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000);
-        search = new MessageSearchService(queues, browse, inFlight, 50);
+        search = new MessageSearchService(queues, browse, 50);
+        investigation = new MessageInvestigationService(queues, browse, inFlight,
+                new TransactionService(brokerSession, 100), 2000, 100, 20000, 5000, 20000);
     }
 
     @AfterAll
@@ -103,12 +106,12 @@ class ReadOnlyGuaranteeIT
                     held = inFlight.inFlight(queues.stats(queue));
                     readEverything();
                 }
-                // A search by its ID finds the held message in flight, where browse alone cannot see it.
-                SearchResult byId = search.search(first.getJMSMessageID(), false);
-                assertEquals(0, byId.totalMatches(), "browse should not see a message in flight");
-                assertEquals(1, byId.inFlight().size(), "the ID lookup did not find the message in flight");
-                assertEquals(queue, byId.inFlight().get(0).queueName());
-                assertEquals(first.getJMSMessageID(), byId.inFlight().get(0).message().messageId());
+                // A lookup by its ID finds the held message in flight, where browse alone cannot see it.
+                MessageInvestigation byId = investigation.investigate(first.getJMSMessageID(), false);
+                assertEquals(1, byId.hits().size(), "the ID lookup did not find the message exactly once");
+                assertEquals(MessageInvestigation.State.IN_FLIGHT, byId.hits().get(0).state());
+                assertEquals(queue, byId.hits().get(0).queueName());
+                assertEquals(first.getJMSMessageID(), byId.hits().get(0).inFlight().messageId());
 
                 // All five in flight: nothing for browse to page through, whatever countMessages says.
                 MessagePage page = browse.page(queue, null, 1, 50);
@@ -276,6 +279,7 @@ class ReadOnlyGuaranteeIT
             new MessageExporter().writeCsv(csv, queue.name(), page.messages());
         }
         search.search("AMQPriority >= 0", true);
+        investigation.investigate("ID:not-a-message-anyone-sent", true);
         new BrokerInfoService(brokerSession).consumers();
         for (BrokerConnection connection : new BrokerInfoService(brokerSession).connections())
         {

@@ -3,6 +3,8 @@ package com.culberth.tools.artemisbrowser.web;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
+import com.culberth.tools.artemisbrowser.broker.MessageIdLookup;
+import com.culberth.tools.artemisbrowser.broker.MessageInvestigationService;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
 import com.culberth.tools.artemisbrowser.broker.MessageSearchService;
 import com.culberth.tools.artemisbrowser.broker.MessageSummary;
@@ -31,17 +33,20 @@ public class SearchController
 
     private final BrokerSession brokerSession;
     private final MessageSearchService searchService;
+    private final MessageInvestigationService investigationService;
     private final QueueDirectory queueDirectory;
     private final QueueBrowseService browseService;
     private final MessageExporter exporter;
     private final int exportMax;
 
     public SearchController(BrokerSession brokerSession, MessageSearchService searchService,
-            QueueDirectory queueDirectory, QueueBrowseService browseService, MessageExporter exporter,
+            MessageInvestigationService investigationService, QueueDirectory queueDirectory,
+            QueueBrowseService browseService, MessageExporter exporter,
             @Value("${artemis.export-max-messages:5000}") int exportMax)
     {
         this.brokerSession = brokerSession;
         this.searchService = searchService;
+        this.investigationService = investigationService;
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
         this.exporter = exporter;
@@ -65,9 +70,19 @@ public class SearchController
         {
             return "search";
         }
+        // An exact message ID is investigated in every state a queue can hold it in; any other
+        // filter can only be handed to browse, which sees waiting messages alone.
+        String messageId = MessageIdLookup.messageId(filter);
         try
         {
-            model.addAttribute("result", searchService.search(filter, internal));
+            if (messageId != null)
+            {
+                model.addAttribute("investigation", investigationService.investigate(messageId, internal));
+            }
+            else
+            {
+                model.addAttribute("result", searchService.search(filter, internal));
+            }
         }
         catch (BrokerException e)
         {

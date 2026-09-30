@@ -44,6 +44,8 @@ import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.ManagementRefusal;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
+import com.culberth.tools.artemisbrowser.broker.MessageInvestigation;
+import com.culberth.tools.artemisbrowser.broker.MessageInvestigationService;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
 import com.culberth.tools.artemisbrowser.broker.MessageSearchService;
 import com.culberth.tools.artemisbrowser.broker.MessageSummary;
@@ -68,6 +70,7 @@ import com.culberth.tools.artemisbrowser.broker.RoleGrant;
 import com.culberth.tools.artemisbrowser.broker.Transactions;
 import com.culberth.tools.artemisbrowser.broker.TransactionFixtures;
 import com.culberth.tools.artemisbrowser.broker.TransactionService;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
@@ -154,6 +157,9 @@ class PageRenderingTest
 
     @MockitoBean
     private MessageSearchService searchService;
+
+    @MockitoBean
+    private MessageInvestigationService investigation;
 
     @MockitoBean
     private MessageExporter exporter;
@@ -630,7 +636,8 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("in flight to audit-reader (CORE, 10.0.0.9:6000)")))
                 .andExpect(content().string(containsString("href=\"/queues?name=app-1.audit#in-flight\"")))
                 .andExpect(content().string(containsString("ID:held-1 — in flight")))
-                .andExpect(content().string(containsString("Looking up one message by its ID")));
+                .andExpect(content().string(containsString("Looking up one message by its ID")))
+                .andExpect(content().string(containsString("href=\"/search?filter=ID:held-1\"")));
     }
 
     @Test
@@ -1121,23 +1128,110 @@ class PageRenderingTest
     }
 
     @Test
-    @DisplayName("a message-ID search renders where the message is in flight, and what it could not check")
-    void rendersTheSearchPageWithAnInFlightHit() throws Exception
+    @DisplayName("a message-ID lookup renders every state it was seen in, each with where and when")
+    void rendersAnInvestigationWithHitsInEveryState() throws Exception
     {
-        InFlightMessage held = new InFlightMessage("ID:held-1", 30L, "Text", 4, true, 1L, "2026-09-27 10:00:00",
-                "4m 12s", Map.of("region", "eu"));
+        Instant at = Instant.parse("2026-09-30T10:00:00Z");
+        InFlightMessage held = new InFlightMessage("ID:m-1", 30L, "Text", 4, true, 1L, "2026-09-30 09:58:00", "2m",
+                Map.of());
         InFlightConsumer holder = new InFlightConsumer("", "c", "s", "0", List.of(held),
                 new SubscriberConsumer("7", QUEUE, "billing-worker", "artemis", "10.0.0.7:5000", "AMQP", "", 3, 0), 3L);
-        given(searchService.search(anyString(), anyBoolean())).willReturn(new SearchResult("AMQUserID = 'ID:held-1'", 3,
-                0, false, List.of(), "ID:held-1", List.of(new InFlightLookup(QUEUE, true, holder, held)), 9000));
+        PreparedTransaction branch = TransactionFixtures.branch("orders", "invoices", at);
+        List<MessageInvestigation.Hit> hits = List.of(
+                MessageInvestigation.Hit.scheduled("delayed", "delayed", at,
+                        new ScheduledMessage("ID:m-1", 1L, "Text", 4, true, "2026-09-30 09:00:00",
+                                "2026-09-30 09:30:00", true, Map.of())),
+                MessageInvestigation.Hit.waiting(QUEUE, QUEUE, at, summary(1, "ID:m-1")),
+                MessageInvestigation.Hit.inFlight("work", "work", at, new InFlightLookup("work", true, holder, held)),
+                MessageInvestigation.Hit.prepared(at, branch, branch.messages().get(2)));
+        given(investigation.investigate("ID:m-1", false)).willReturn(investigation("ID:m-1", hits,
+                List.of(covered(QUEUE)), MessageInvestigation.Check.checked(at), 0, false));
 
-        page("/search?filter=ID:held-1")
-                .andExpect(content().string(containsString("in flight to billing-worker (AMQP, 10.0.0.7:5000)")))
-                .andExpect(content().string(containsString("href=\"/queues?name=orders#in-flight\"")))
-                .andExpect(content().string(containsString("4m 12s ago")))
-                .andExpect(content().string(containsString("0 in 0 of 3 queues, and in flight on 1")))
-                .andExpect(content().string(containsString("9000 message(s) in flight could not be checked")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Nothing matched"))));
+        page("/search?filter=ID:m-1").andExpect(content().string(containsString("seen 4 time(s), in 4 state(s)")))
+                .andExpect(content().string(containsString("held back until its delivery time")))
+                .andExpect(content().string(containsString("overdue")))
+                .andExpect(content().string(containsString("href=\"/message?name=orders&amp;id=ID:m-1\"")))
+                .andExpect(content().string(containsString("held by billing-worker (AMQP, 10.0.0.7:5000)")))
+                .andExpect(content().string(containsString("href=\"/client?id=billing-worker\"")))
+                .andExpect(content().string(containsString("received in a prepared transaction")))
+                .andExpect(content().string(containsString("gtrid-p6.xa / branch-1")))
+                .andExpect(content().string(containsString("href=\"/address?name=orders\"")))
+                .andExpect(content().string(containsString("a delivery history")))
+                .andExpect(content().string(containsString("Seen more than once")))
+                .andExpect(content().string(containsString("Every queue in scope was checked")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Not seen"))));
+        org.mockito.Mockito.verify(searchService, org.mockito.Mockito.never()).search(anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("a message-ID lookup that saw nothing with gaps in coverage says where it could not look")
+    void rendersAnInvestigationWithIncompleteCoverage() throws Exception
+    {
+        Instant at = Instant.now();
+        MessageInvestigation.Check skipped = MessageInvestigation.Check
+                .skipped("9000 in flight, over the per-queue limit (5000, artemis.in-flight-limit)");
+        MessageInvestigation.QueueCoverage hoard = new MessageInvestigation.QueueCoverage("hoard", "hoard",
+                MessageInvestigation.Check.nothingThere(""), MessageInvestigation.Check.checked(at), skipped);
+        MessageInvestigation.Check denied = new MessageInvestigation.Check(MessageInvestigation.Outcome.DENIED,
+                "AMQ229032: User: x does not have permission", at);
+        given(investigation.investigate(anyString(), anyBoolean()))
+                .willReturn(investigation("ID:gone", List.of(), List.of(covered(QUEUE), hoard), denied, 2, false));
+
+        page("/search?filter=AMQUserID = 'ID:gone'")
+                .andExpect(content().string(containsString("Not seen where this tool could look")))
+                .andExpect(content().string(containsString("does not show that it was consumed, deleted or never")))
+                .andExpect(content().string(containsString("Queues not fully checked (1)")))
+                .andExpect(content().string(containsString("skipped — 9000 in flight, over the per-queue limit")))
+                .andExpect(content().string(containsString("not permitted for this user — AMQ229032")))
+                .andExpect(content().string(containsString("2 internal queue(s) were not looked at")))
+                .andExpect(content().string(containsString("skipped: 1")))
+                .andExpect(content().string(containsString("checked: 2")));
+    }
+
+    @Test
+    @DisplayName("a message-ID lookup that looked everywhere and saw nothing still does not call it gone")
+    void rendersAnInvestigationThatSawNothing() throws Exception
+    {
+        given(investigation.investigate(anyString(), anyBoolean())).willReturn(investigation("ID:gone", List.of(),
+                List.of(covered(QUEUE)), MessageInvestigation.Check.checked(Instant.now()), 0, false));
+
+        page("/search?filter=ID:gone").andExpect(content().string(containsString("in any state, on any of the")))
+                .andExpect(content().string(containsString("does not show that it was consumed")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Queues not fully checked"))));
+    }
+
+    @Test
+    @DisplayName("a message-ID lookup that filled its result limit says the rest was not reached")
+    void rendersAnInvestigationAtItsResultLimit() throws Exception
+    {
+        Instant at = Instant.now();
+        MessageInvestigation.Check unreachedCheck = MessageInvestigation.Check
+                .notReached("the result limit (100) filled");
+        MessageInvestigation.QueueCoverage unreached = new MessageInvestigation.QueueCoverage("later", "later",
+                unreachedCheck, unreachedCheck, unreachedCheck);
+        given(investigation.investigate(anyString(), anyBoolean())).willReturn(investigation("ID:m-1",
+                List.of(MessageInvestigation.Hit.waiting(QUEUE, QUEUE, at, summary(1, "ID:m-1"))),
+                List.of(covered(QUEUE), unreached),
+                MessageInvestigation.Check.notReached("the result limit (100) filled first"), 0, true));
+
+        page("/search?filter=ID:m-1").andExpect(content().string(containsString("The result limit (100")))
+                .andExpect(content().string(containsString("not reached — the result limit (100) filled")));
+    }
+
+    private static MessageInvestigation investigation(String id, List<MessageInvestigation.Hit> hits,
+            List<MessageInvestigation.QueueCoverage> coverage, MessageInvestigation.Check prepared, int internal,
+            boolean limitReached)
+    {
+        Instant now = Instant.now();
+        return new MessageInvestigation(id, now, now, now, hits, limitReached,
+                new MessageInvestigation.Budget(2000, 100, 5000, 20000, 5000, 20000, 100), coverage, internal, prepared,
+                0, 0);
+    }
+
+    private static MessageInvestigation.QueueCoverage covered(String queue)
+    {
+        return new MessageInvestigation.QueueCoverage(queue, queue, MessageInvestigation.Check.nothingThere(""),
+                MessageInvestigation.Check.checked(Instant.now()), MessageInvestigation.Check.nothingThere(""));
     }
 
     @Test
@@ -1145,7 +1239,7 @@ class PageRenderingTest
     void rendersTheSearchPageWithInFlightNotSearched() throws Exception
     {
         given(searchService.search(anyString(), anyBoolean()))
-                .willReturn(new SearchResult("region = 'eu'", 3, 0, false, List.of(), null, List.of(), 7));
+                .willReturn(new SearchResult("region = 'eu'", 3, 0, false, List.of(), 7));
 
         page("/search?filter=region = 'eu'").andExpect(content().string(containsString("Nothing matched")))
                 .andExpect(content().string(containsString("7 message(s) in flight to a consumer")))

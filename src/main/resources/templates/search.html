@@ -34,16 +34,174 @@
             <code>AMQSize</code>. JMS selector names such as <code>JMSCorrelationID</code> are not
             rejected; they simply match nothing.
             To look up one message, paste its <code>ID:&hellip;</code> (or
-            <code>AMQUserID = 'ID:&hellip;'</code>): that also checks messages in flight to a consumer,
-            which no other search can see.
+            <code>AMQUserID = 'ID:&hellip;'</code>): that looks for it in every state a queue can hold
+            it in &mdash; scheduled, waiting, in flight to a consumer, or held by a prepared
+            transaction &mdash; and reports where it could not look.
         </p>
     </form>
+
+    <div class="panel" th:if="${investigation}" th:with="inv=${investigation}">
+        <h2>
+            Where is <code th:text="${inv.messageId()}">ID:…</code>
+            <span class="muted" style="font-weight:normal"
+                  th:text="${inv.found()} ? '— seen ' + ${inv.hits().size()} + ' time(s), in ' + ${inv.statesSeen()} + ' state(s)' : '— not seen'">
+                — not seen</span>
+        </h2>
+        <p class="collected"
+           th:text="'Looked from ' + ${inv.startedText()} + ' to ' + ${inv.finishedText()} + ' (' + ${inv.tookMillis()} + ' ms); queues and their counts listed at ' + ${inv.listedText()} + '.'">
+            Looked from … to ….</p>
+
+        <!-- What a result proves, said every time: an observation, not a history. -->
+        <p class="note">
+            Each row is an observation: the message was in that state when that read returned. It is not
+            a delivery history &mdash; a message can move between reads, and the reads here are made one
+            queue and one state at a time. A message in flight or held by a transaction has no body to
+            show; the broker returns none.
+        </p>
+        <p class="note" th:if="${inv.hits().size() > 1}">
+            Seen more than once: a multicast address keeps a copy per subscription, and a message that
+            moved while being looked for (scheduled, then waiting, say) is seen once in each state. The
+            times say which came first.
+        </p>
+
+        <div th:if="${!inv.found()}">
+            <p th:if="${inv.complete()}">
+                <strong>Not seen</strong> in any state, on any of the
+                <span th:text="${inv.coverage().size()}">0</span> queue(s) looked at, nor in a prepared
+                transaction.
+            </p>
+            <p th:unless="${inv.complete()}">
+                <strong>Not seen where this tool could look</strong> &mdash; but not everything could be
+                looked at. The coverage below says what was not, and why; it may be there.
+            </p>
+            <p class="note">
+                Not seeing a message does not show that it was consumed, deleted or never arrived. It may
+                have been acknowledged, expired, dead-lettered or diverted to a queue already looked at, or
+                sent to a queue created after the queues were listed &mdash; and a message returned from a
+                consumer to its queue between two reads can be missed by both.
+            </p>
+        </div>
+
+        <div class="table-scroll" th:if="${inv.found()}">
+            <table>
+                <thead>
+                <tr><th>State</th><th>Where</th><th>Seen at</th><th>What was seen</th><th></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="h : ${inv.hits()}">
+                    <td>
+                        <strong th:text="${h.state().label()}">waiting</strong>
+                        <div class="muted" th:text="${h.state().meaning()}">on the queue</div>
+                    </td>
+                    <td>
+                        <div th:if="${h.queueName() != null}">
+                            queue <a th:href="@{/queues(name=${h.queueName()})}" th:text="${h.queueName()}">queue</a>
+                        </div>
+                        <div th:if="${h.queueName() == null}" class="muted">on no queue yet</div>
+                        <div th:unless="${#strings.isEmpty(h.address())}">
+                            address <a th:href="@{/address(name=${h.address()})}" th:text="${h.address()}">address</a>
+                        </div>
+                    </td>
+                    <td class="nowrap" th:text="${h.seenText()}">12:00:00.000</td>
+                    <td th:switch="${h.state().name()}">
+                        <span th:case="'WAITING'"
+                              th:text="${h.waiting().type()} + ', sent ' + ${h.waiting().timestampText()} + ', priority ' + ${h.waiting().priority()}">Text</span>
+                        <span th:case="'SCHEDULED'">
+                            <span th:text="'due ' + ${h.scheduled().scheduledForText()} + ', sent ' + ${h.scheduled().timestampText()}">due</span>
+                            <span class="badge badge-warn" th:if="${h.scheduled().overdue()}"
+                                  title="Its delivery time has passed and the broker still holds it back">overdue</span>
+                        </span>
+                        <span th:case="'IN_FLIGHT'">
+                            <span th:text="'held by ' + ${h.holder().describe()} + ', sent ' + ${h.inFlight().timestampText()}">held by</span>
+                        </span>
+                        <span th:case="*"
+                              th:text="'branch ' + ${h.branch().title()} + ', prepared ' + ${h.branch().createdText()}">branch</span>
+                    </td>
+                    <td class="nowrap" th:switch="${h.state().name()}">
+                        <a class="badge-link" th:case="'WAITING'"
+                           th:href="@{/message(name=${h.queueName()},id=${h.waiting().messageId()})}">Open</a>
+                        <th:block th:case="'IN_FLIGHT'">
+                            <a class="badge-link" th:href="@{/queues(name=${h.queueName()})} + '#in-flight'">In flight</a>
+                            <a class="badge-link" th:if="${h.holder().identified()}"
+                               th:href="${h.holder().client() != null and !#strings.isEmpty(h.holder().client().clientId())} ? @{/client(id=${h.holder().client().clientId()})} : @{/client(connection=${h.holder().connectionId()})}">Client</a>
+                        </th:block>
+                        <a class="badge-link" th:case="'SCHEDULED'"
+                           th:href="@{/queues(name=${h.queueName()})}">Queue</a>
+                        <a class="badge-link" th:case="*" th:href="@{/transactions}">Transactions</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${inv.hitLimitReached()}"
+           th:text="'The result limit (' + ${inv.budget().maxHits()} + ', artemis.investigate.max-hits) filled, so the queues after the last one read, and the prepared transactions, were not looked at.'">
+            Result limit reached.</p>
+
+        <h3 style="margin:1.25rem 0 .5rem">Coverage</h3>
+        <p class="muted" th:if="${inv.complete()}">
+            Every queue in scope was checked in every state, and so were the prepared transactions.
+        </p>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>State</th><th>Queues, by what happened</th></tr></thead>
+                <tbody>
+                <tr th:each="st : ${inv.queueStates()}">
+                    <td th:text="${st.label()}">waiting</td>
+                    <td>
+                        <span th:if="${inv.coverage().isEmpty()}" class="muted">no queues in scope</span>
+                        <span th:each="e : ${inv.tally(st)}" th:class="${e.key.complete()} ? 'badge' : 'badge badge-warn'"
+                              th:text="${e.key.label()} + ': ' + ${e.value}">checked: 3</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>prepared transactions</td>
+                    <td>
+                        <span th:class="${inv.prepared().complete()} ? 'badge' : 'badge badge-warn'"
+                              th:text="${inv.prepared().explained()}">checked</span>
+                        <span class="collected" th:unless="${#strings.isEmpty(inv.prepared().atText())}"
+                              th:text="'at ' + ${inv.prepared().atText()}">at</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            &ldquo;Nothing in this state when listed&rdquo; means the queue reported none scheduled, or none
+            in flight, when the queues were listed, so there was nothing to read. Waiting messages are
+            always browsed.
+            <span th:text="'Budgets for this lookup: ' + ${inv.budget().maxQueues()} + ' queues, ' + ${inv.budget().maxHits()} + ' results, ' + ${inv.budget().inFlightLimit()} + ' in flight per queue and ' + ${inv.budget().maxInFlight()} + ' in all (' + ${inv.inFlightRead()} + ' read), ' + ${inv.budget().maxScheduledPerQueue()} + ' scheduled per queue and ' + ${inv.budget().maxScheduled()} + ' in all (' + ${inv.scheduledRead()} + ' read), ' + ${inv.budget().transactionLimit()} + ' prepared branches.'">
+                Budgets.</span>
+        </p>
+        <p class="note" th:if="${inv.internalExcluded() > 0}"
+           th:text="${inv.internalExcluded()} + ' internal queue(s) were not looked at. Tick Include internal queues to look there too.'">
+            Internal queues excluded.</p>
+
+        <div th:if="${!inv.incomplete().isEmpty()}">
+            <h3 style="margin:1.25rem 0 .5rem"
+                th:text="'Queues not fully checked (' + ${inv.incomplete().size()} + ')'">Queues not fully checked</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr><th>Queue</th><th>Scheduled</th><th>Waiting</th><th>In flight</th></tr></thead>
+                    <tbody>
+                    <tr th:each="c : ${inv.incompleteShown()}">
+                        <td><a th:href="@{/queues(name=${c.queueName()})}" th:text="${c.queueName()}">queue</a></td>
+                        <td th:class="${c.scheduled().complete()} ? 'muted' : ''" th:text="${c.scheduled().explained()}">checked</td>
+                        <td th:class="${c.waiting().complete()} ? 'muted' : ''" th:text="${c.waiting().explained()}">checked</td>
+                        <td th:class="${c.inFlight().complete()} ? 'muted' : ''" th:text="${c.inFlight().explained()}">checked</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note" th:if="${inv.incomplete().size() > inv.incompleteShown().size()}"
+               th:text="'Showing the first ' + ${inv.incompleteShown().size()} + '.'">Showing the first 200.</p>
+        </div>
+    </div>
 
     <div class="panel" th:if="${result}">
         <h2>
             Results
             <span class="muted"
-                  th:text="${result.totalMatches()} + ' in ' + ${result.matches().size()} + ' of ' + ${result.queuesSearched()} + ' queues' + (${result.inFlight().isEmpty()} ? '' : ', and in flight on ' + ${result.inFlight().size()})">
+                  th:text="${result.totalMatches()} + ' in ' + ${result.matches().size()} + ' of ' + ${result.queuesSearched()} + ' queues'">
                 0 in 0 of 0 queues</span>
             <span th:if="${!result.matches().isEmpty()}" style="float:right;font-size:.8rem;font-weight:normal">
                 <a class="badge-link"
@@ -73,52 +231,9 @@
           Browse cannot see a message delivered to a consumer and not yet acknowledged, so a search that
           found nothing has not shown the message is gone. Say how many it could not look at.
         -->
-        <p class="note" th:if="${result.inFlightNotSearched() > 0 and result.messageId() == null}"
+        <p class="note" th:if="${result.inFlightNotSearched() > 0}"
            th:text="${result.inFlightNotSearched()} + ' message(s) in flight to a consumer on the queues searched could not be looked at — a search only sees messages still waiting. Look up a single message by its ID to check those too.'">
             In-flight messages not searched.</p>
-        <p class="note" th:if="${result.inFlightNotSearched() > 0 and result.messageId() != null}"
-           th:text="${result.inFlightNotSearched()} + ' message(s) in flight could not be checked, on queues holding more in flight than this tool will read (artemis.in-flight-limit). It may be among them.'">
-            In-flight messages not checked.</p>
-
-        <div th:each="f : ${result.inFlight()}" style="margin-top:1.25rem">
-            <h3 style="margin:0 0 .5rem">
-                <a th:href="@{/queues(name=${f.queueName()})} + '#in-flight'" th:text="${f.queueName()}">queue</a>
-                <span class="muted" style="font-weight:normal"
-                      th:text="'— in flight to ' + ${f.holder().describe()} + ', delivered and not yet acknowledged'">
-                    — in flight</span>
-                <a class="badge-link" style="font-weight:normal" th:if="${f.holder().identified()}"
-                   th:href="${f.holder().client() != null and !#strings.isEmpty(f.holder().client().clientId())} ? @{/client(id=${f.holder().client().clientId()})} : @{/client(connection=${f.holder().connectionId()})}">Open this client</a>
-            </h3>
-            <div class="table-scroll">
-                <table>
-                    <thead>
-                    <tr><th>Message ID</th><th>Sent</th><th>Type</th><th class="num">Priority</th><th>Properties</th></tr>
-                    </thead>
-                    <tbody>
-                    <tr>
-                        <td><code class="muted" th:text="${f.message().messageId()}">ID</code></td>
-                        <td>
-                            <span th:text="${f.message().timestampText()}">&mdash;</span>
-                            <span class="muted" th:unless="${#strings.isEmpty(f.message().ageText())}"
-                                  th:text="'(' + ${f.message().ageText()} + ' ago)'">(1m ago)</span>
-                        </td>
-                        <td th:text="${f.message().type()}">Text</td>
-                        <td class="num" th:text="${f.message().priority()}">4</td>
-                        <td class="props-cell">
-                            <span th:if="${f.message().properties().isEmpty()}" class="muted">&mdash;</span>
-                            <span th:each="p : ${f.message().properties()}" class="badge"
-                                  th:title="${p.key} + ' = ' + ${p.value}"
-                                  th:text="${p.key} + '=' + ${p.value}">k=v</span>
-                        </td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-            <p class="note">
-                No body, and nothing to open: the broker does not return one for a message in flight. It
-                is not in an export either.
-            </p>
-        </div>
 
         <div th:each="m : ${result.matches()}" style="margin-top:1.25rem">
             <h3 style="margin:0 0 .5rem">

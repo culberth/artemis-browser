@@ -23,9 +23,12 @@ connections, bridges, broker connections, all as this broker reports them) — m
 transactions and permissions (`/transactions`: prepared and hand-resolved XA branches; roles per
 address and per client) — merged (PR #36). Phase 14 (incident investigation) P1 — snapshot
 comparison: `/compare` reads two saved JSON snapshots offline, no broker, and refuses a different
-broker or schema — merged (PR #39). P2 (unified message-ID investigation) is next. Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 511 unit tests,
-72 integration, run once per supported broker version (plus the opt-in
+broker or schema — merged (PR #39). P2 — unified message-ID investigation: an exact `ID:…` on
+`/search` is looked for scheduled, waiting, in flight and in prepared XA branches, each sighting timed,
+with per-queue, per-state coverage and preflight budgets (`artemis.investigate.*`) — done on branch
+`phase14-p2-message-id-investigation`. P3 (guided filters, saved searches) is next. Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 527 unit tests,
+81 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

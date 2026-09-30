@@ -228,6 +228,36 @@ answers 413 itself while the multipart body is parsed (whether the CSRF token is
 URL — checked against the running app), so `templates/error/413.html` says what happened and links
 back. The file-size check inside `SnapshotReader` covers the same limit for anything under it.
 
+## Looking up one message: observations, and where it could not look
+
+A message on a queue is in one of several states, and no single read sees them all: `browse` sees
+waiting ones, `listScheduledMessagesAsJSON` scheduled ones, `listDeliveringMessagesAsJSON` ones held
+by a consumer, and `listPreparedTransactionDetailsAsJSON` ones received or sent inside a prepared XA
+branch — a received one stays on its queue as delivering with no consumer, and is in neither of the
+other lists. Only a filter needs evaluating to search those lists, and this tool does not evaluate
+Artemis's filter language; an exact ID needs only a string comparison, and all four reads report the
+sender's `JMSMessageID` as `userID` (verified on 2.55.0 and 2.57.0). So an exact-ID `/search` is
+handed to `MessageInvestigationService`, and any other filter stays a browse.
+
+Three decisions follow from the reads being separate and taking time:
+
+- **Read in the order a message moves.** Per queue: scheduled, waiting, in flight; prepared branches
+  once, last. A message moving forward is then seen at least once — perhaps twice, which the page
+  explains — unless it is acknowledged, expired or moved to another queue in the gap. Moving backward
+  (a rollback returning it to waiting) can slip between two reads, and nothing can prevent that.
+- **Every sighting is timed, and a result is a set of observations.** Never a delivery history, and a
+  miss is never "consumed" or "never arrived": the page says what not seeing it does not prove.
+- **Coverage is half the answer.** Each queue has a check per state — checked, nothing there when
+  listed, partly checked, skipped, not reached, refused, unsupported, unavailable, failed — carrying the
+  limit or the broker's reason, so "not seen" is never shown without what was not looked at.
+
+The scheduled, delivering and prepared-detail replies cannot be paged, so the budgets are preflight:
+each queue's counts from the one `listQueues` read decide whether its list is asked for at all, per
+queue and summed over the lookup, and a queue over one is recorded as skipped with that limit. A
+state with nothing in it when listed is not read, which keeps a lookup on 1,000 idle queues to
+about one browse each. A result budget stops the lookup once it holds enough sightings, and the queues
+after that are reported as not reached rather than dropped.
+
 ## Connectivity: this broker's view, and the backlog behind it
 
 `/connectivity`, diagnose's connectivity findings and the snapshot's connectivity section come from
