@@ -16,9 +16,10 @@ measuring at scale, expired/killed counts, in/out rates, and a page per client. 
 visibility, six areas) is in progress: P0 — explicit availability, isolated panels, a pinned version
 matrix — merged (PR #29); P1 — address pressure: usage beside policy, observed vs inferred findings —
 merged (PR #30); P2 — queue behavior: effective settings, findings with explanations — merged
-(PR #31); P3 — bounded session trends, broken at restarts, recreations and resets — done on
-`phase13-p3-trends`. Planned in [docs/PRD.md](docs/PRD.md); see
-*Closed as won't do* there before proposing more. 395 unit tests, 47 integration, run once per
+(PR #31); P3 — bounded session trends, broken at restarts, recreations and resets — merged
+(PR #33); P4 — incident snapshot (`/snapshot`, JSON and text, completeness listed, secrets masked) —
+done on `phase13-p4-incident-snapshot`. Planned in [docs/PRD.md](docs/PRD.md); see
+*Closed as won't do* there before proposing more. 410 unit tests, 50 integration, run once per
 supported broker version.
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

@@ -416,6 +416,11 @@ End-to-end HTTP from the browser, three runs each, warm.
   turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
   templates are LF; `docs/PRD.md` was CRLF until 2026-09-29 and is LF since — detect, don't assume.
   Check `git diff --stat` after any scripted edit.
+- **Stale surefire reports can pass a broken build** (2026-09-30): `mvn -q test | grep "Tests run:"`
+  showed nothing, and summing `target/surefire-reports` gave the previous run's green total — the
+  compile had failed, and `-q` plus a grep for "Tests run" hid it. Delete the reports first, and grep
+  for `ERROR` too. Also: a `'\n'` written through a quoted heredoc reached the Java file as a real
+  line break.
 - **A multi-line Python heredoc in the Bash tool can fail** with "unexpected EOF while looking for
   matching `''" when the script holds many quotes (2026-09-29). Write the script to the scratchpad
   and run it instead.

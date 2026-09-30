@@ -23,6 +23,7 @@
                    th:text="${internal} ? 'Hide internal queues' : 'Include internal queues'">Include internal</a>
             </span>
         </h2>
+        <p th:replace="~{fragments/layout :: snapshotLinks}"></p>
 
         <p class="muted" th:if="${findings.isEmpty() and unchecked.isEmpty()}">
             Nothing on this broker looks blocked: no paused queues, nothing waiting without a

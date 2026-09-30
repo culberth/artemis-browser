@@ -174,6 +174,7 @@ class PageRenderingTest
     void rendersTheBrokerPage() throws Exception
     {
         page("/broker").andExpect(content().string(containsString("2.42.0")))
+                .andExpect(content().string(containsString("/snapshot?format=json")))
                 // The refresh control comes from the shared fragment, which is what broke.
                 .andExpect(content().string(containsString("Auto-refresh")));
     }
@@ -924,7 +925,8 @@ class PageRenderingTest
         given(diagnosis.run(anyBoolean())).willReturn(
                 new Diagnosis(List.of(Finding.stuck("Nothing is consuming", "No consumers attached", QUEUE)), 0, 0));
 
-        page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")));
+        page("/diagnose").andExpect(content().string(containsString("Nothing is consuming")))
+                .andExpect(content().string(containsString("/snapshot?format=text")));
     }
 
     @Test
