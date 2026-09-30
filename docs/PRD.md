@@ -956,19 +956,31 @@ by `artemis.compare.max-file-bytes` and `artemis.compare.max-rows`; trends are s
 
 ### P2 — Unified message-ID investigation
 
-- [ ] **One exact-ID lookup across message states.** Extend the existing lookup to report observed
+- [x] **One exact-ID lookup across message states.** Extend the existing lookup to report observed
       matches among waiting, scheduled and in-flight messages, with links to the queue, address
       and identified consumer where available. Keep state and collection time visible for each hit.
-- [ ] **Report search coverage.** Show which queues and states were checked, skipped, denied or
+- [x] **Report search coverage.** Show which queues and states were checked, skipped, denied or
       unavailable, and why. Use explicit per-request collection and result budgets, including
       preflight limits for operations whose broker replies cannot be paged.
-- [ ] **Explain what a result proves.** A match is an observation during collection, not a delivery
+- [x] **Explain what a result proves.** A match is an observation during collection, not a delivery
       history. A message may move between reads. No match must never be presented as proof that it
       was consumed, deleted or never arrived. In-flight bodies remain unavailable.
 
 Done means an exact-ID investigation provides a state-labelled result and an understandable coverage
 report. Verify scheduled-message ID shapes on supported brokers before implementation, and test
 matches in every supported state, partial failures, budget limits and movement between reads.
+
+**P2 done (2026-09-30):** an exact `ID:…` on `/search` is looked up in every state: scheduled, waiting,
+in flight, and received or sent in a prepared XA branch (the fourth list a message can be in). Scheduled
+IDs were verified first on 2.55.0 and 2.57.0: `listScheduledMessagesAsJSON`'s `userID` is the sender's
+`JMSMessageID`. Each queue is read in the order a message moves, every sighting carries its read time,
+and the page says what a sighting and a miss do and do not prove. Coverage is per queue and state —
+checked, nothing there, partial, skipped, not reached, refused, unavailable, failed — with the limit or
+the broker's reason. Budgets are preflight on the listing's counts (`artemis.investigate.*`, plus the
+existing in-flight and prepared-detail limits), per queue and per lookup, with a result limit. The
+address page's lookup links to it. `MessageInvestigationIT` covers each state, fan-out, movement from
+scheduled to waiting, budgets and unchanged counters on both versions; refusals and partial reads are
+unit-tested.
 
 ### P3 — Guided filters and saved searches
 

@@ -122,6 +122,13 @@ compared, so nothing in it is called removed. Counters are subtracted only acros
 a restart (from the snapshot's new `uptimeMillis`), a recreated queue (a changed id) or a counter
 that went down shows two readings, not traffic.
 
+Done in P2: a `/search` for an exact message ID (`ID:…`, or `AMQUserID = 'ID:…'`) looks for that one
+message in every state a queue can hold it in — scheduled, waiting, in flight to a consumer, and
+received or sent inside a prepared XA branch — and reports each sighting with its state, queue,
+address, the consumer or branch holding it, and when it was seen. Beside it is the coverage: for
+each state, how many queues were checked, had nothing in that state, or were skipped, refused or
+unreadable, and why. See **Looking up one message** below.
+
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
 and environment quirks are logged in `.claude/memory.md`.
@@ -228,7 +235,7 @@ never persisted). From there:
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
 | `/address?name=` | One address: storage and limits beside its full policy, its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts, prepared transactions holding its messages, and its roles |
-| `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
+| `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below). An exact `ID:…` looks for that message in every state, with a coverage report |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
 | `/connectivity` | HA role and replica sync, cluster topology, cluster connections, bridges and broker connections, each with its backlog — as this broker reports them |
@@ -331,6 +338,11 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.snapshot.max-address-permissions` | `200` | Addresses whose roles an incident snapshot reads, in the same order as address settings |
 | `artemis.compare.max-file-bytes` | `67108864` | Largest snapshot file `/compare` reads (64MB); `spring.servlet.multipart.max-file-size` follows it |
 | `artemis.compare.max-rows` | `50000` | Most entries in any one section of a compared snapshot; past it the file is refused, not cut short |
+| `artemis.investigate.max-queues` | `2000` | Queues a message-ID lookup looks at; the rest are listed as not reached |
+| `artemis.investigate.max-hits` | `100` | Sightings a lookup keeps; once full, later queues and prepared transactions are not reached |
+| `artemis.investigate.max-in-flight` | `20000` | In-flight messages one lookup may read across all queues (the per-queue limit is `artemis.in-flight-limit`) |
+| `artemis.investigate.max-scheduled-per-queue` | `5000` | Most scheduled messages a queue may hold for a lookup to read its scheduled list, which comes in one reply |
+| `artemis.investigate.max-scheduled` | `20000` | Scheduled messages one lookup may read across all queues |
 
 ## Security posture
 
@@ -382,10 +394,34 @@ Filtered queue pages likewise avoid that sampled count: they show whether anothe
 without claiming an exact total. Unfiltered paging excludes scheduled and in-flight messages from
 the browsable total. Those states have their own panels because management browse returns neither.
 
-An exact message-ID search can also check in-flight messages within the configured reading limit.
-General property filters cannot search that state, and scheduled messages are not included in the
-browse search. An empty search result therefore does not prove that a message is absent; inspect
-the reported unsearched states and limits. In-flight bodies are not available through this view.
+A general filter can only be handed to browse, which sees waiting messages alone: the page says how
+many in-flight messages on the searched queues it could not look at. An empty result therefore does
+not prove that a message is absent.
+
+## Looking up one message
+
+A search for an exact message ID is different: comparing one ID needs no filter evaluation, so it
+can be answered in the states browse cannot see. Each queue is read in the order a message moves:
+its scheduled list, then a filtered browse, then its delivering list; prepared XA branches are read
+last, once. Each sighting carries the time its read returned.
+
+- **What a sighting proves**: that the message was in that state when that read returned — not a
+  delivery history. A message seen twice either has a copy per subscription on a multicast address,
+  or moved between reads (scheduled, then waiting).
+- **What no sighting proves**: nothing about consumption. A message may have been acknowledged,
+  expired, dead-lettered, diverted or sent to a queue created after the list was read; one returned
+  from a consumer to its queue between two reads can be missed by both. The page says so every time.
+- **Coverage**: per state, how many queues were checked, had nothing in that state when listed (and
+  were not read), or were skipped, not reached, refused or unreadable — and a row per queue that was
+  not fully checked, with the limit or the broker's reason. Internal queues are left out unless asked
+  for, and counted.
+- **Budgets**: the scheduled, delivering and prepared-detail replies cannot be paged, so each queue's
+  counts from the queue listing are checked against the `artemis.investigate.*` limits (and
+  `artemis.in-flight-limit`, `artemis.transactions.detail-limit`) *before* the call. A queue over one is
+  skipped and says which.
+- In-flight and prepared messages have no body to show; the broker returns none.
+
+The address page's per-subscription lookup links to this one.
 
 ## Rates and diagnostic evidence
 
@@ -542,6 +578,8 @@ com.culberth.tools.artemisbrowser
 │   ├── QueueBrowseService         Both read paths (management browse, JMS QueueBrowser), plus scheduled messages
 │   ├── InFlightService            Delivered-not-acked messages, which browse cannot see; capped, tied to their clients
 │   ├── MessageIdLookup            Recognises an exact message-ID search, the one kind in-flight messages can answer
+│   ├── MessageInvestigation       Where one message was seen, state by state, and where the lookup could not look
+│   ├── MessageInvestigationService One message ID looked up in every state, under per-request budgets
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts, pressure; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)

@@ -429,6 +429,14 @@ connection closed without commit or rollback. Over the JMS management channel:
 - The image's default `#` grants `amq` everything but manage/view/edit; `activemq.management.#` grants
   manage but not browse or durable queues.
 
+### Scheduled message IDs (2026-09-30, 2.55.0 and 2.57.0 identical, before Phase 14 P2 matched on them)
+
+- **`listScheduledMessagesAsJSON`'s `userID` is the sender's `JMSMessageID`, verbatim** (`ID:…`), whether
+  scheduled by JMS 2 `setDeliveryDelay` or by setting `_AMQ_SCHED_DELIVERY`; `messageID` is the numeric core id.
+  So an exact-ID lookup can string-compare scheduled entries as it does the delivering list.
+- **A filtered `browse`/`countMessages` for `AMQUserID = '<scheduled id>'` finds nothing** — browse never sees a
+  scheduled message, filtered or not. The scheduled list is the only place it is.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -553,6 +561,13 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
   shows. `MockMvc` enforces no multipart limit, so only the running app shows this.
 - **`docs/PRD.md` was LF in the working copy again at the start of 2026-09-30's P1 session**, before
   anything here touched it; `git checkout -- docs/PRD.md` restored CRLF. Check `git diff --stat` first.
+- **Closing an `ActiveMQConnectionFactory` closes the connections it made** (2026-09-30): a test's
+  "holder" connection created inside `try (factory)` was gone once the block ended, and its three
+  unacked messages were back to waiting — "never reached 3 delivering". Keep that factory open.
+- **Docker/WSL can drop containers mid-run** (2026-09-30): one `-Pintegration` run lost
+  `TransactionsIT`'s broker ("Session is closed") and `TrendsIT` timed out connecting, while the
+  long-running `artemis-test` container exited 255 at the same moment. Re-run before suspecting code;
+  check `docker ps -a` for exits.
 - **`@WithMockUser` does not authenticate in these MockMvc tests** (2026-09-27, Boot 4.1.1): in the
   full-context `SecurityConfigTest` a request under it was redirected to `/login`, and in
   `PageRenderingTest` the page rendered with no `Principal`. A CSRF test "passed" on that redirect

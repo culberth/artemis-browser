@@ -19,6 +19,7 @@ import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
+import com.culberth.tools.artemisbrowser.broker.MessageInvestigationService;
 import com.culberth.tools.artemisbrowser.broker.MessageSearchService;
 import com.culberth.tools.artemisbrowser.broker.MessageSummary;
 import com.culberth.tools.artemisbrowser.broker.QueueBrowseService;
@@ -50,6 +51,9 @@ class SearchControllerTest
 
     @MockitoBean
     private MessageSearchService searchService;
+
+    @MockitoBean
+    private MessageInvestigationService investigationService;
 
     @MockitoBean
     private QueueDirectory queueDirectory;
@@ -90,6 +94,21 @@ class SearchControllerTest
                 .andExpect(status().isOk()).andExpect(model().attributeExists("result"));
 
         verify(searchService).search("count = 1", true);
+        verify(investigationService, never()).investigate(anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("an exact message ID, bare or as a filter, is investigated in every state rather than only browsed")
+    void investigatesAMessageId() throws Exception
+    {
+        mockMvc.perform(get("/search").param("filter", "ID:abc-1").header("Host", "localhost"))
+                .andExpect(status().isOk()).andExpect(model().attributeDoesNotExist("result"));
+        mockMvc.perform(get("/search").param("filter", "AMQUserID = 'ID:abc-1'").param("internal", "true")
+                .header("Host", "localhost")).andExpect(status().isOk());
+
+        verify(investigationService).investigate("ID:abc-1", false);
+        verify(investigationService).investigate("ID:abc-1", true);
+        verify(searchService, never()).search(anyString(), anyBoolean());
     }
 
     @Test

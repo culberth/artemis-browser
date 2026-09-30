@@ -23,9 +23,9 @@ import org.springframework.stereotype.Service;
  *
  * <p>
  * Browse cannot see a message delivered to a consumer and not yet acknowledged, so every search reports how many such
- * messages it could not look at. An exact message-ID lookup ({@link MessageIdLookup}) then checks them after all, by
- * string comparison against each queue's delivering list — any other filter cannot be, without evaluating Artemis's
- * filter language here.
+ * messages it could not look at: checking them against a filter would mean evaluating Artemis's filter language here.
+ * An exact message-ID lookup can be answered in those states, by string comparison, and is — by
+ * {@link MessageInvestigationService}, which the search page hands every such lookup to.
  *
  * <p>
  * Read-only throughout: counting and browsing both leave the queue untouched.
@@ -36,15 +36,13 @@ public class MessageSearchService
 
     private final QueueDirectory queueDirectory;
     private final QueueBrowseService browseService;
-    private final InFlightService inFlightService;
     private final int maxPerQueue;
 
     public MessageSearchService(QueueDirectory queueDirectory, QueueBrowseService browseService,
-            InFlightService inFlightService, @Value("${artemis.search-max-per-queue:50}") int maxPerQueue)
+            @Value("${artemis.search-max-per-queue:50}") int maxPerQueue)
     {
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
-        this.inFlightService = inFlightService;
         this.maxPerQueue = maxPerQueue;
     }
 
@@ -77,10 +75,8 @@ public class MessageSearchService
         {
             throw new BrokerException("Enter a filter to search for.");
         }
-        String messageId = MessageIdLookup.messageId(effectiveFilter);
 
         List<SearchResult.QueueMatches> matches = new ArrayList<>();
-        List<InFlightLookup> inFlight = new ArrayList<>();
         long inFlightNotSearched = 0;
         long total = 0;
         int searched = 0;
@@ -111,22 +107,7 @@ public class MessageSearchService
             List<MessageSummary> found = browseService.matching(queue.name(), effectiveFilter, perQueue);
             if (found.isEmpty())
             {
-                if (queue.deliveringCount() > 0)
-                {
-                    // Browse first, then the delivering list: a message delivered in between is
-                    // caught by one or the other. One copy per queue, so a queue browse found it
-                    // on needs no second look.
-                    InFlightLookup lookup = messageId == null ? InFlightLookup.notChecked(queue.name())
-                            : inFlightService.locate(queue.name(), queue.deliveringCount(), messageId);
-                    if (lookup.found())
-                    {
-                        inFlight.add(lookup);
-                    }
-                    else if (!lookup.checked())
-                    {
-                        inFlightNotSearched += queue.deliveringCount();
-                    }
-                }
+                inFlightNotSearched += Math.max(0, queue.deliveringCount());
                 continue;
             }
             // The number found, not the number there are: a filtered count stops after the broker's
@@ -136,8 +117,7 @@ public class MessageSearchService
             truncated = truncated || filledTheLimit;
             matches.add(new SearchResult.QueueMatches(queue.name(), found.size(), filledTheLimit, found));
         }
-        return new SearchResult(effectiveFilter, searched, total, truncated, matches, messageId, inFlight,
-                inFlightNotSearched);
+        return new SearchResult(effectiveFilter, searched, total, truncated, matches, inFlightNotSearched);
     }
 
 }

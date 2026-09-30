@@ -408,6 +408,12 @@
                 of <span th:text="${found.rows().size()}">0</span> subscriptions hold a message matching
                 <code th:text="${found.filter()}">filter</code>.
             </p>
+            <p class="note" th:if="${found.messageId() != null}">
+                This checks waiting and in-flight messages on this address only.
+                <a th:href="@{/search(filter=${found.messageId()})}">Look for it everywhere</a>
+                &mdash; every queue, scheduled messages and prepared transactions too, with what could not
+                be checked.
+            </p>
             <div class="table-scroll" th:unless="${found.rows().isEmpty()}">
                 <table>
                     <thead>

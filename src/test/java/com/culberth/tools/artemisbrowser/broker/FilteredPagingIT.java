@@ -101,8 +101,7 @@ class FilteredPagingIT
     @DisplayName("export of a search includes a queue whose only match lies past the counting sample")
     void exportFindsAQueueTheCountMissed()
     {
-        MessageSearchService search = new MessageSearchService(new QueueDirectory(brokerSession), browse,
-                new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000), 50);
+        MessageSearchService search = new MessageSearchService(new QueueDirectory(brokerSession), browse, 50);
 
         SearchResult forExport = search.counts("marker = 1", false);
 

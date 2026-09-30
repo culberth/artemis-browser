@@ -36,14 +36,12 @@ class MessageSearchServiceTest
 
     private QueueDirectory queueDirectory;
     private QueueBrowseService browseService;
-    private InFlightService inFlightService;
 
     @BeforeEach
     void mocks()
     {
         queueDirectory = mock(QueueDirectory.class);
         browseService = mock(QueueBrowseService.class);
-        inFlightService = mock(InFlightService.class);
         given(browseService.matching(anyString(), anyString(), anyInt())).willReturn(List.of());
     }
 
@@ -161,34 +159,11 @@ class MessageSearchServiceTest
 
         // payments had a match, so its in-flight ones do not change the answer for it; orders might.
         assertEquals(3, result.inFlightNotSearched());
-        assertTrue(result.inFlight().isEmpty());
-        verifyNoInteractions(inFlightService);
-    }
-
-    @Test
-    @DisplayName("a message-ID lookup finds the message in flight where browse could not")
-    void findsAMessageInFlightById()
-    {
-        String id = "ID:3be27521-bac0-11f1-8802-00155d348692";
-        given(queueDirectory.overview())
-                .willReturn(List.of(queue("orders", false, 3), queue("hoard", false, 9000), queue("idle", false, 0)));
-        InFlightLookup hit = new InFlightLookup("orders", true, new InFlightConsumer("", "c", "s", "0", List.of()),
-                mock(InFlightMessage.class));
-        given(inFlightService.locate("orders", 3, id)).willReturn(hit);
-        given(inFlightService.locate("hoard", 9000, id)).willReturn(InFlightLookup.notChecked("hoard"));
-
-        SearchResult result = service().search(id, false);
-
-        assertEquals("AMQUserID = '" + id + "'", result.filter());
-        assertEquals(List.of(hit), result.inFlight());
-        assertEquals(9000, result.inFlightNotSearched(), "the queue over the limit was not checked");
-        assertFalse(result.nothingFound());
-        verify(inFlightService, never()).locate(eq("idle"), anyLong(), anyString());
     }
 
     private MessageSearchService service()
     {
-        return new MessageSearchService(queueDirectory, browseService, inFlightService, 50);
+        return new MessageSearchService(queueDirectory, browseService, 50);
     }
 
     private List<MessageSummary> messages(int howMany)

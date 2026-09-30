@@ -137,7 +137,8 @@ class ScaleMeasurementIT
         List<String> pages = List.of("/overview", "/addresses", "/broker", "/connectivity", "/transactions",
                 "/queues?name=" + queue(0), "/address?name=scale-topic-000",
                 "/address?name=scale-topic-000&find=AMQPriority >= 0", "/client?connection=" + someConnection,
-                "/diagnose", "/snapshot?format=json", "/snapshot?format=text", "/search?filter=AMQPriority = 9");
+                "/diagnose", "/snapshot?format=json", "/snapshot?format=text", "/search?filter=AMQPriority = 9",
+                "/search?filter=ID:00000000-0000-0000-0000-000000000000");
         System.out.println("SCALE | Page | Median ms | Response | Management calls |");
         for (String path : pages)
         {
