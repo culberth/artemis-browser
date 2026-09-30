@@ -1,6 +1,7 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 13 planned 2026-09-29: broker visibility and operational explanation.**
+Status: **Phase 13 in progress: broker visibility and operational explanation. Phase 14 planned
+2026-09-29: incident investigation.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
@@ -574,7 +575,8 @@ Planned 2026-09-29 following a review of the implemented services, pages and tes
 phase extends the existing message browser into a more complete explanation of the connected
 broker: why producers are blocked, why queues behave differently, when conditions changed, and
 which broker-side evidence can be saved for an incident. **All six feature areas below belong to
-this phase**, with reliability work supporting each increment. Nothing below is shipped yet.
+this phase**, with reliability work supporting each increment. P0 and P1 are complete; the remaining
+areas are tracked below.
 
 Keep the existing strengths: scheduled and in-flight inspection, subscriber lag, rates, client
 drilldowns, settings and diverts. Extend those views rather than duplicating them. Every new
@@ -800,6 +802,113 @@ selected under P0 before implementing their fields.
 - [Broker management API](https://artemis.apache.org/components/artemis/documentation/javadocs/javadoc-latest/org/apache/activemq/artemis/api/core/management/ActiveMQServerControl.html)
 - [Paging and full policies](https://artemis.apache.org/components/artemis/documentation/latest/paging)
 - [Metrics and optional runtime instrumentation](https://artemis.apache.org/components/artemis/documentation/latest/metrics.html)
+
+## Phase 14 — Incident investigation: what changed, and where is my message?
+
+Planned 2026-09-29 following the Phase 13 PRD review. Phase 13 expands the evidence available about
+the broker; Phase 14 helps use that evidence to investigate an incident: identify what changed,
+locate a message, and repeat a useful search without rebuilding it each time.
+
+### Delivery order and scope
+
+**P1–P3 are the core scope. P4–P5 are optional extensions and do not block phase completion.**
+Snapshot comparison depends on Phase 13's incident snapshot format. The other features extend
+existing search and message inspection. None moves unfinished Phase 13 work into this phase.
+
+Preserve one broker per HTTP session, the single-user deployment, server-rendered Thymeleaf with
+no frontend build step, and the read-only guarantee. Compare snapshots from the same broker over
+time, not different brokers. This phase adds no monitoring, alerting, message mutation or broker
+configuration changes.
+
+### P1 — Incident snapshot comparison
+
+- [ ] **Compare two saved Phase 13 snapshots from the same broker.** Show queue-depth changes,
+      settings changes, consumer and connection changes, and new or resolved Diagnose findings.
+      Show the collection windows and source evidence beside each difference.
+- [ ] **Validate comparability.** Validate schema versions and broker identity, and explain when
+      snapshots cannot be compared. Distinguish an unavailable or omitted resource from a removed
+      one. Handle broker restarts, counter resets and queue recreation without presenting their
+      counter differences as traffic; mark uncertain continuity explicitly.
+- [ ] **Keep comparison bounded and usable offline.** Limit imported file sizes and resource
+      counts, treat snapshot contents as untrusted data, and require no live broker reads to compare
+      them. Preserve units, availability and truncation metadata in the result.
+
+Done means two saved snapshots can answer what observably changed, without turning missing data
+into a change or a reset into throughput. Cover compatible and incompatible schemas, identity
+mismatches, incomplete snapshots and counter discontinuities.
+
+### P2 — Unified message-ID investigation
+
+- [ ] **One exact-ID lookup across message states.** Extend the existing lookup to report observed
+      matches among waiting, scheduled and in-flight messages, with links to the queue, address
+      and identified consumer where available. Keep state and collection time visible for each hit.
+- [ ] **Report search coverage.** Show which queues and states were checked, skipped, denied or
+      unavailable, and why. Use explicit per-request collection and result budgets, including
+      preflight limits for operations whose broker replies cannot be paged.
+- [ ] **Explain what a result proves.** A match is an observation during collection, not a delivery
+      history. A message may move between reads. No match must never be presented as proof that it
+      was consumed, deleted or never arrived. In-flight bodies remain unavailable.
+
+Done means an exact-ID investigation provides a state-labelled result and an understandable coverage
+report. Verify scheduled-message ID shapes on supported brokers before implementation, and test
+matches in every supported state, partial failures, budget limits and movement between reads.
+
+### P3 — Guided filters and saved searches
+
+- [ ] **Build common Artemis core filters.** Provide controls for property equality, priority,
+      timestamp ranges and durability, with the generated expression visible and an advanced text
+      input available. Handle types, literal escaping and time zones explicitly. The broker remains
+      responsible for evaluating the expression; do not implement a local selector engine.
+- [ ] **Save named investigations.** Save a filter and its queue/address scope, then reopen, rename
+      or delete it. Define bounded local persistence appropriate to the existing single-user tool;
+      store no credentials, message bodies or search results. Make saved values visible and removable.
+- [ ] **Handle changed context.** Show the current broker and scope before running a saved search.
+      Missing queues or addresses and invalid filters produce useful explanations rather than an
+      apparent zero-match result. Never run a saved search in the background.
+
+Done means a user can build and repeat a common search without knowing core syntax, while advanced
+filters remain available. Verify generated expressions against real brokers, including quoted
+strings and timestamp boundaries, and cover saved-search persistence and missing scopes.
+
+### P4 — Dead-letter and expiry triage (optional)
+
+- [ ] **Summarize a bounded sample.** On an inspected dead-letter or expiry queue, group sampled
+      messages by original address/queue and available diagnostic properties. Link to representative
+      messages and show the sample size, collection time, limits and excluded or missing metadata.
+- [ ] **Keep explanations evidence-based.** Verify origin and diagnostic metadata on supported
+      brokers before promising groupings. Unknown origin remains unknown; no failure reason is
+      invented from a missing property. Sample proportions are not whole-queue totals.
+
+Done means a user can identify common origins or reported diagnostic patterns in the inspected
+sample. Cover heterogeneous and absent metadata, bounded collection and non-destructive reads.
+There are no retry, move or delete controls.
+
+### P5 — Message comparison (optional)
+
+- [ ] **Compare two browsable messages.** Show header and property differences, and differences in
+      supported text or JSON bodies. Link back to each source and identify when it was read.
+- [ ] **Represent limitations.** Bound body and comparison sizes, label truncation and unsupported
+      body types, and distinguish absent fields from empty values. A message that disappears between
+      selection and reading is unavailable, not an empty message. Never fetch in-flight bodies.
+
+Done means a user can inspect observable differences between two messages without changing either.
+Cover structured and plain text, missing fields, truncation, unavailable messages and safe rendering
+of untrusted content.
+
+### Phase acceptance and documentation
+
+- [ ] Verify every new broker response shape and read operation against the supported-version
+      matrix before relying on it, and extend the management allowlist only for verified reads.
+- [ ] Extend the non-destructive integration guarantee to new collection paths. Cover explicit
+      availability, collection budgets and rendered empty, populated and partial-failure states.
+- [ ] Measure collection cost and memory bounds for the core workflows at representative scale.
+      Do not stream whole queues through the application for lookup, grouping or comparison.
+- [ ] Document search coverage, comparison limits, saved-search storage and deletion, and the
+      distinction between observed evidence and an inferred explanation. Update user documentation
+      as features ship.
+
+Phase 14 is complete when P1–P3 and their supporting acceptance checks are complete. P4–P5 remain
+optional unless explicitly promoted into the committed scope.
 
 ## Open questions
 
