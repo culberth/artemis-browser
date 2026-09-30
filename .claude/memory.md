@@ -543,6 +543,22 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - `/overview` and `/addresses` responses grow with the broker (1–2MB at 1,000 queues); the call
   count does not.
 
+### Phase 14 workflows at scale (2026-09-30, 2.55.0, same broker and method as above)
+
+| Workflow | Time | Response | Calls |
+|---|---|---|---|
+| `/search` exact ID, found on the last of 1,000 queues (bare or `AMQUserID =`) | ~520ms | 18KB | 1,019 |
+| `/search` exact ID nobody sent | 537ms | 18KB | 1,018 |
+| `/search?build=run` (priority, or a property condition), every queue | ~505ms | 15KB | 1,014 |
+| Queue page with a built filter | 102ms | 113KB | 16 |
+| `/saved`, `/compare` (form) | ~1ms | 3–7KB | 0 |
+| `/saved/{id}`: every queue / one queue / one address | 1 / 43 / 68ms | 3KB | 0 / 6 / 12 |
+| `POST /compare`, two 2.7MB snapshots | 52ms | 15KB | 0 |
+
+- **A saved search's scope check costs the paged listing**: 1 and 2 calls on the small shared broker,
+  6 and 12 at 1,000 queues. `PagesIT`'s per-scope bound (0/1/2) holds only for a small broker.
+- **Two read snapshots held ~10MB** (GC-settled delta) for 2.7MB of JSON each, trends skipped.
+
 ## Traps hit while working
 
 - **`mvn spring-boot:run` forks a JVM, and stopping the Maven process does not stop it.** The

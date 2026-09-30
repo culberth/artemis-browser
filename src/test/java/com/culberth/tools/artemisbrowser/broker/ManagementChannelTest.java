@@ -125,6 +125,22 @@ class ManagementChannelTest
         }
     }
 
+    @Test
+    @DisplayName("the allowlist is exactly the reads verified against the supported brokers, and Phase 14 added none")
+    void allowlistIsPinned()
+    {
+        // Each of these had its reply shape recorded in .claude/memory.md against a real broker before anything
+        // parsed it. Adding one means doing that first, then adding it here — a change this test makes visible.
+        // Phase 14 (comparison, message-ID lookup, filters, saved searches) runs on these and nothing more.
+        assertEquals(java.util.Set.of("listQueues", "listAddresses", "getAcceptorsAsJSON", "listConnectionsAsJSON",
+                "listAllConsumersAsJSON", "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON",
+                "getDivertNames", "listConnections", "listSessions", "listProducers", "listNetworkTopology",
+                "listBrokerConnections", "listPreparedTransactions", "listPreparedTransactionDetailsAsJSON",
+                "listHeuristicCommittedTransactions", "listHeuristicRolledBackTransactions", "getRolesAsJSON", "browse",
+                "countMessages", "listScheduledMessagesAsJSON", "listDeliveringMessagesAsJSON"),
+                ManagementChannel.READ_OPERATIONS);
+    }
+
     @ParameterizedTest
     @CsvSource(delimiter = '|', value =
     { "AMQ229069: no operation listBrokerConnections/0|false|UNSUPPORTED",

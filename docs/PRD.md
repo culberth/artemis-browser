@@ -1,14 +1,15 @@
 # artemis-browser — Product Requirements
 
-Status: **Phase 13 in progress: broker visibility and operational explanation. Phase 14 planned
-2026-09-29: incident investigation. Phase 15 specified 2026-09-29: interactive regression lab.**
+Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
+complete 2026-09-30: P1–P3 and the acceptance checks; P4–P5 optional. Phase 15 specified
+2026-09-29: interactive regression lab, not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
 theme: messages delivered to a consumer and not yet acknowledged, which merged as Phase 11. See
-*Phase 10*, *Phase 11*, *Phase 12* and the planned *Phase 13* below. The tool is run by one person, which is what settles the open questions about replicas,
+*Phase 10*, *Phase 11*, *Phase 12*, *Phase 13* and *Phase 14* below. The tool is run by one person, which is what settles the open questions about replicas,
 certificates and multi-user login.
-Last updated: 2026-09-29.
+Last updated: 2026-09-30.
 
 ## What this is
 
@@ -915,7 +916,8 @@ selected under P0 before implementing their fields.
 
 ## Phase 14 — Incident investigation: what changed, and where is my message?
 
-Planned 2026-09-29 following the Phase 13 PRD review. Phase 13 expands the evidence available about
+Planned 2026-09-29 following the Phase 13 PRD review. **Phase 14 is complete**: P1–P3 and the
+phase acceptance checks, as of 2026-09-30; P4–P5 remain optional. Phase 13 expands the evidence available about
 the broker; Phase 14 helps use that evidence to investigate an incident: identify what changed,
 locate a message, and repeat a useful search without rebuilding it each time.
 
@@ -1039,18 +1041,45 @@ of untrusted content.
 
 ### Phase acceptance and documentation
 
-- [ ] Verify every new broker response shape and read operation against the supported-version
+- [x] Verify every new broker response shape and read operation against the supported-version
       matrix before relying on it, and extend the management allowlist only for verified reads.
-- [ ] Extend the non-destructive integration guarantee to new collection paths. Cover explicit
+      Done 2026-09-30. Phase 14 added no management operation: P1 reads files, P2 reuses the
+      scheduled, delivering and prepared-detail reads (the scheduled `userID` shape checked on 2.55.0
+      and 2.57.0 before matching on it), P3 hands filters to `browse`. The filter rules it writes and
+      the snapshot's `uptimeMillis` were verified on both versions (`GuidedFilterIT`,
+      `SnapshotComparisonIT`). `ManagementChannelTest` now pins the allowlist exactly, so adding a
+      read is a visible change.
+- [x] Extend the non-destructive integration guarantee to new collection paths. Cover explicit
       availability, collection budgets and rendered empty, populated and partial-failure states.
-- [ ] Measure collection cost and memory bounds for the core workflows at representative scale.
+      Done 2026-09-30. `PagesIT` visits the Phase 14 routes with every other page, three times, on
+      both versions: exact-ID lookups of real messages, built filters on `/search` and a queue page,
+      `/saved` and every saved-search scope (one missing), and `/compare`; no counter moves and the
+      prepared set is unchanged. It asserts that comparing two snapshots of that broker makes zero
+      management calls, that opening a saved search reads only its scope's listing, and that a lookup
+      finds the message the prepared branch holds as held, with its budgets shown. Budgets per state
+      are exercised by `MessageInvestigationIT`. Each Phase 14 template was broken in turn and the
+      rendering and controller tests failed every time (4–41 tests per break, 6 of 6 caught).
+- [x] Measure collection cost and memory bounds for the core workflows at representative scale.
       Do not stream whole queues through the application for lookup, grouping or comparison.
-- [ ] Document search coverage, comparison limits, saved-search storage and deletion, and the
+      Done 2026-09-30 with `ScaleMeasurementIT` on 1,000 queues. An exact-ID lookup of the last
+      queue's message: 526ms, 1,019 calls (a filtered browse per queue, plus the in-flight and
+      scheduled lists only where the listing shows any), an 18KB page. The broker filters, so no
+      queue passes through the application. A built filter over every queue: ~500ms, 1,014 calls.
+      Opening a saved search: 0 calls for every queue, 6 for one queue, 12 for one address (the paged
+      listing alone). Comparing two 2.7MB snapshots: 52ms, no management call, ~10MB held while it
+      runs, bounded by `artemis.compare.max-file-bytes` and `max-rows`.
+- [x] Document search coverage, comparison limits, saved-search storage and deletion, and the
       distinction between observed evidence and an inferred explanation. Update user documentation
       as features ship.
+      Done 2026-09-30. The README's *Looking up one message*, *Comparing snapshots* and *Building and
+      saving filters* sections cover coverage, limits and storage. Deletion rewrites the file, and
+      removing the file removes every saved search. What a sighting and a miss prove sits beside
+      diagnose's observed and inferred findings. The architecture doc covers the new `PagesIT`
+      assertions and the allowlist pin.
 
 Phase 14 is complete when P1–P3 and their supporting acceptance checks are complete. P4–P5 remain
-optional unless explicitly promoted into the committed scope.
+optional unless explicitly promoted into the committed scope. **Phase 14 is complete**: P1–P3 and
+the acceptance checks, as of 2026-09-30.
 
 ## Phase 15 — Interactive regression lab and regression procedure
 

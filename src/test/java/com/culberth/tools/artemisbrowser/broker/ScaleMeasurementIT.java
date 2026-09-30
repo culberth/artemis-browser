@@ -5,14 +5,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import com.culberth.tools.artemisbrowser.compare.SnapshotComparer;
+import com.culberth.tools.artemisbrowser.compare.SnapshotFile;
+import com.culberth.tools.artemisbrowser.compare.SnapshotReader;
+import com.culberth.tools.artemisbrowser.filter.SavedSearch;
+import com.culberth.tools.artemisbrowser.filter.SavedSearchStore;
 import jakarta.jms.Connection;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
+import java.io.ByteArrayInputStream;
 import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -26,6 +36,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -34,9 +45,10 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * What the Phase 13 pages cost on a large broker: time, response size and management calls per page, the largest
- * transaction reply, and a session's trend memory at its cap. A measurement, not a regression test — it prints a table
- * for the README and PRD and asserts only the bounds the design promises.
+ * What the Phase 13 pages and the Phase 14 workflows cost on a large broker: time, response size and management calls
+ * per page, the largest transaction reply, a session's trend memory at its cap, and what comparing two of its snapshots
+ * holds in memory. A measurement, not a regression test — it prints a table for the README and PRD and asserts only the
+ * bounds the design promises: a comparison makes no management call, and a lookup finds a message on the last queue.
  *
  * <p>
  * Opt-in, since seeding takes minutes: {@code mvn verify -Pintegration -Dit.test=ScaleMeasurementIT -Dmeasure=true
@@ -47,7 +59,8 @@ import org.testcontainers.utility.DockerImageName;
  */
 @SpringBootTest(properties =
 { "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash=",
-        "artemis.connections-file=${java.io.tmpdir}/artemis-browser-scale-it.json"
+        "artemis.connections-file=${java.io.tmpdir}/artemis-browser-scale-it.json",
+        "artemis.saved-searches.file=${java.io.tmpdir}/artemis-browser-scale-it-saved.json"
 })
 @AutoConfigureMockMvc
 class ScaleMeasurementIT
@@ -66,10 +79,17 @@ class ScaleMeasurementIT
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private SavedSearchStore savedSearches;
+
+    @Autowired
+    private SnapshotReader snapshotReader;
+
     @BeforeAll
     static void seed() throws Exception
     {
         assumeTrue(Boolean.getBoolean("measure"), "a measurement: run with -Dmeasure=true");
+        Files.deleteIfExists(Path.of(System.getProperty("java.io.tmpdir"), "artemis-browser-scale-it-saved.json"));
         container = new GenericContainer<>(DockerImageName.parse(ArtemisBrokerSupport.IMAGE))
                 .withEnv("ARTEMIS_USER", ArtemisBrokerSupport.USER)
                 .withEnv("ARTEMIS_PASSWORD", ArtemisBrokerSupport.PASSWORD).withExposedPorts(61616)
@@ -139,6 +159,77 @@ class ScaleMeasurementIT
                 "/address?name=scale-topic-000&find=AMQPriority >= 0", "/client?connection=" + someConnection,
                 "/diagnose", "/snapshot?format=json", "/snapshot?format=text", "/search?filter=AMQPriority = 9",
                 "/search?filter=ID:00000000-0000-0000-0000-000000000000");
+        measure(http, probe, pages);
+    }
+
+    @Test
+    @DisplayName("Phase 14's workflows on a large broker: a real message looked up, a built filter, saved searches")
+    void measureInvestigation() throws Exception
+    {
+        MockHttpSession http = connect();
+        BrokerSession probe = session(http);
+        // The last queue's first message: an exact-ID lookup reads the queues in order, so this is found last.
+        String lastId = new QueueBrowseService(probe, 200, 200000, 20000, 20_000_000L)
+                .page(queue(QUEUES - 1), null, 1, 1).messages().get(0).messageId();
+        String everyQueue = savedSearches
+                .create("scale every queue", "AMQPriority = 9", SavedSearch.Scope.ALL_QUEUES, "", false, "").id();
+        String oneQueue = savedSearches
+                .create("scale one queue", "AMQPriority = 9", SavedSearch.Scope.QUEUE, queue(500), false, "").id();
+        String oneAddress = savedSearches
+                .create("scale one address", "AMQPriority = 9", SavedSearch.Scope.ADDRESS, "scale-topic-050", false, "")
+                .id();
+        measure(http, probe,
+                List.of("/search?filter=" + lastId, "/search?filter=AMQUserID = '" + lastId + "'",
+                        "/search?build=run&priorityMin=9&priorityMax=9",
+                        "/search?build=run&conditions[0].name=missing&conditions[0].type=STRING"
+                                + "&conditions[0].operator=EQUALS&conditions[0].value=x",
+                        "/queues?name=" + queue(500) + "&build=run&priorityMin=4&priorityMax=4", "/saved",
+                        "/saved/" + everyQueue, "/saved/" + oneQueue, "/saved/" + oneAddress, "/compare"));
+        String found = new String(download(http, "/search?filter=" + lastId), StandardCharsets.UTF_8);
+        assertTrue(found.contains(queue(QUEUES - 1)), "the lookup did not find the last queue's message");
+    }
+
+    @Test
+    @DisplayName("comparing two snapshots of the large broker: time, memory held, and no management call")
+    void measureComparison() throws Exception
+    {
+        MockHttpSession http = connect();
+        BrokerSession probe = session(http);
+        byte[] earlier = download(http, "/snapshot?format=json");
+        byte[] later = download(http, "/snapshot?format=json");
+
+        long[] times = new long[3];
+        long calls = 0;
+        long bytes = 0;
+        for (int run = 0; run < 3; run++)
+        {
+            long before = probe.managementCalls();
+            long start = System.nanoTime();
+            MvcResult compared = mockMvc.perform(multipart("/compare")
+                    .file(new MockMultipartFile("earlier", "earlier.json", "application/json", earlier))
+                    .file(new MockMultipartFile("later", "later.json", "application/json", later)).session(http)
+                    .with(csrf()).header("Host", "localhost")).andReturn();
+            times[run] = (System.nanoTime() - start) / 1_000_000;
+            calls = probe.managementCalls() - before;
+            assertEquals(200, compared.getResponse().getStatus());
+            bytes = compared.getResponse().getContentAsByteArray().length;
+        }
+        Arrays.sort(times);
+        System.out.printf("SCALE | `POST /compare`, two %s snapshots | %d | %s | %d |%n", size(earlier.length),
+                times[1], size(bytes), calls);
+        assertEquals(0, calls, "a comparison made management calls");
+
+        // What the two read snapshots hold while they are compared: everything but the trends, which are skipped.
+        long heapBefore = usedHeap();
+        SnapshotFile first = snapshotReader.read("earlier", new ByteArrayInputStream(earlier), earlier.length);
+        SnapshotFile second = snapshotReader.read("later", new ByteArrayInputStream(later), later.length);
+        long heapAfter = usedHeap();
+        System.out.printf("SCALE | two snapshots read for comparison | ~%s retained |%n", size(heapAfter - heapBefore));
+        assertTrue(SnapshotComparer.compare(first, second).identity().confirmed());
+    }
+
+    private void measure(MockHttpSession http, BrokerSession probe, List<String> pages) throws Exception
+    {
         System.out.println("SCALE | Page | Median ms | Response | Management calls |");
         for (String path : pages)
         {
@@ -225,10 +316,15 @@ class ScaleMeasurementIT
 
     private long fetch(MockHttpSession http, String path) throws Exception
     {
+        return download(http, path).length;
+    }
+
+    private byte[] download(MockHttpSession http, String path) throws Exception
+    {
         MvcResult result = mockMvc.perform(get(UriComponentsBuilder.fromUriString(path).encode().build().toUri())
                 .session(http).header("Host", "localhost")).andReturn();
         assertEquals(200, result.getResponse().getStatus(), path);
-        return result.getResponse().getContentAsByteArray().length;
+        return result.getResponse().getContentAsByteArray();
     }
 
     private static long usedHeap() throws InterruptedException
