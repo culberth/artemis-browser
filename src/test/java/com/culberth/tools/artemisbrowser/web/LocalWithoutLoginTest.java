@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
@@ -14,12 +15,16 @@ import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -91,6 +96,26 @@ class LocalWithoutLoginTest
         mockMvc.perform(post("/disconnect").header("Host", "localhost")).andExpect(status().isForbidden());
         mockMvc.perform(post("/disconnect").header("Host", "localhost").with(csrf()))
                 .andExpect(status().is3xxRedirection());
+    }
+
+    /** The compare upload is a POST like any other: refused without the session's token, taken with it. */
+    @Test
+    @DisplayName("the compare upload needs the CSRF token, and the form carries it")
+    void compareUploadNeedsItsToken() throws Exception
+    {
+        MockMultipartFile file = new MockMultipartFile("earlier", "a.json", "application/json", new byte[]
+        { '{', '}'
+        });
+        mockMvc.perform(multipart("/compare").file(file).header("Host", "localhost")).andExpect(status().isForbidden());
+
+        MockHttpSession session = new MockHttpSession();
+        String form = mockMvc.perform(get("/compare").session(session).header("Host", "localhost")).andReturn()
+                .getResponse().getContentAsString();
+        Matcher token = Pattern.compile("name=\"_csrf\" value=\"([^\"]+)\"").matcher(form);
+        assertTrue(token.find(), form);
+        mockMvc.perform(multipart("/compare").file(file).param("_csrf", token.group(1)).session(session).header("Host",
+                "localhost")).andExpect(status().isOk())
+                .andExpect(content().string(Matchers.containsString("Choose two snapshot files")));
     }
 
     @Test

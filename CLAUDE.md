@@ -21,9 +21,11 @@ merged (PR #30); P2 — queue behavior: effective settings, findings with explan
 merged (PR #34); P5 — connectivity and HA (`/connectivity`: replica sync, topology, cluster
 connections, bridges, broker connections, all as this broker reports them) — merged (PR #35); P6 —
 transactions and permissions (`/transactions`: prepared and hand-resolved XA branches; roles per
-address and per client) — merged (PR #36). Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 475 unit tests,
-69 integration, run once per supported broker version (plus the opt-in
+address and per client) — merged (PR #36). Phase 14 (incident investigation) P1 — snapshot
+comparison: `/compare` reads two saved JSON snapshots offline, no broker, and refuses a different
+broker or schema — on branch `phase14-p1-snapshot-comparison`. Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 511 unit tests,
+72 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

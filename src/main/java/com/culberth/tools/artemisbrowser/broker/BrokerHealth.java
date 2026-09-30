@@ -20,12 +20,25 @@ import java.util.Locale;
  * @param memoryUsedPercent that memory as a percentage of the configured limit, in whole percent — so a broker with a
  *                          large limit reads 0 until it is using a good deal
  * @param globalMaxBytes    that configured limit, {@code global-max-size}, in bytes
+ * @param uptimeMillis      how long the broker has been up — what tells a restart between two readings; the
+ *                          {@code uptime} text is for people
  */
 public record BrokerHealth(Reading<String> version, Reading<String> uptime, Reading<String> state,
         Reading<String> nodeId, Reading<Long> connectionCount, Reading<Long> sessionCount, Reading<Long> consumerCount,
         Reading<Long> memoryUsedBytes, Reading<Long> memoryUsedPercent, Reading<Double> diskUsedPercent,
-        Reading<Long> maxDiskPercent, Instant collectedAt, Reading<Long> globalMaxBytes)
+        Reading<Long> maxDiskPercent, Instant collectedAt, Reading<Long> globalMaxBytes, Reading<Long> uptimeMillis)
 {
+
+    /** Without the uptime in milliseconds — as built before an incident snapshot needed it. */
+    public BrokerHealth(Reading<String> version, Reading<String> uptime, Reading<String> state, Reading<String> nodeId,
+            Reading<Long> connectionCount, Reading<Long> sessionCount, Reading<Long> consumerCount,
+            Reading<Long> memoryUsedBytes, Reading<Long> memoryUsedPercent, Reading<Double> diskUsedPercent,
+            Reading<Long> maxDiskPercent, Instant collectedAt, Reading<Long> globalMaxBytes)
+    {
+        this(version, uptime, state, nodeId, connectionCount, sessionCount, consumerCount, memoryUsedBytes,
+                memoryUsedPercent, diskUsedPercent, maxDiskPercent, collectedAt, globalMaxBytes,
+                Reading.notCollected("not asked for"));
+    }
 
     /** Without the global limit — as built before it was read. */
     public BrokerHealth(Reading<String> version, Reading<String> uptime, Reading<String> state, Reading<String> nodeId,
@@ -45,7 +58,7 @@ public record BrokerHealth(Reading<String> version, Reading<String> uptime, Read
         return new BrokerHealth(Reading.of(version), Reading.of(uptime), Reading.of(state), Reading.of(nodeId),
                 Reading.of(connectionCount), Reading.of(sessionCount), Reading.of(consumerCount),
                 Reading.of(memoryUsedBytes), Reading.of(memoryUsedPercent), Reading.of(diskUsedPercent),
-                Reading.of(maxDiskPercent), Instant.now(), Reading.of(1L << 30));
+                Reading.of(maxDiskPercent), Instant.now(), Reading.of(1L << 30), Reading.of(3_600_000L));
     }
 
     /**

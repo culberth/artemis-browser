@@ -539,6 +539,20 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **A multi-line Python heredoc in the Bash tool can fail** with "unexpected EOF while looking for
   matching `''" when the script holds many quotes (2026-09-29). Write the script to the scratchpad
   and run it instead.
+- **Jackson 3 `readTree(JsonParser)` fails on "trailing tokens"** (2026-09-30): reading one value
+  out of a larger document (streaming past `sections.trends`) threw `FAIL_ON_TRAILING_TOKENS`, which
+  3.x enables by default. Disable it on that mapper and check for trailing content yourself.
+- **Thymeleaf: `th:replace` outranks `th:if` on the same element** (2026-09-30) — the fragment is
+  inserted whatever the condition. Put the condition on a wrapping `th:block`. And a `Map` iterates as
+  `LinkedHashMap$Entry`, on which `e.key()` fails (EL1004E); use `e.key`.
+- **`@WebMvcTest` here enforces no CSRF** (2026-09-30): a multipart POST without a token got 200. CSRF
+  checks belong in `LocalWithoutLoginTest` (full context), which is where `/compare`'s is.
+- **Tomcat 11.0.24 answers an oversized multipart upload with 413 itself** (2026-09-30), before
+  Spring: a `@ControllerAdvice` for `MaxUploadSizeExceededException` never ran, and putting the CSRF
+  token in the URL made no difference (413 either way, not 403). `templates/error/413.html` is what
+  shows. `MockMvc` enforces no multipart limit, so only the running app shows this.
+- **`docs/PRD.md` was LF in the working copy again at the start of 2026-09-30's P1 session**, before
+  anything here touched it; `git checkout -- docs/PRD.md` restored CRLF. Check `git diff --stat` first.
 - **`@WithMockUser` does not authenticate in these MockMvc tests** (2026-09-27, Boot 4.1.1): in the
   full-context `SecurityConfigTest` a request under it was redirected to `/login`, and in
   `PageRenderingTest` the page rendered with no `Principal`. A CSRF test "passed" on that redirect

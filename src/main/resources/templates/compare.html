@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; compare snapshots</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <th:block th:if="${connection != null}"><div th:replace="~{fragments/layout :: nav('compare')}"></div></th:block>
+    <div th:if="${connection == null}" class="panel topbar">
+        <div><h1 style="margin:0">artemis-browser</h1>
+            <span class="conn">not connected &mdash; comparing needs no broker</span></div>
+        <div class="field-row nav"><a class="tab" th:href="@{/}">Connect</a></div>
+    </div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel" method="post" enctype="multipart/form-data"
+          th:action="@{/compare}">
+        <h2>Compare two incident snapshots</h2>
+        <p class="note" style="margin-top:0">
+            Two JSON snapshots of the same broker, downloaded from any page&rsquo;s <em>Incident snapshot</em> link.
+            They are read here and nowhere else: no broker is contacted, and the files are not kept.
+            The text summary cannot be compared.
+        </p>
+        <div class="grid">
+            <div>
+                <label for="earlier">One snapshot</label>
+                <input id="earlier" name="earlier" type="file" accept=".json,application/json" required>
+            </div>
+            <div>
+                <label for="later">The other</label>
+                <input id="later" name="later" type="file" accept=".json,application/json" required>
+            </div>
+        </div>
+        <div class="field-row" style="margin-top:1rem">
+            <button type="submit">Compare</button>
+            <span class="muted" th:text="'Either order: the earlier collection is taken as before. Up to '
+                  + ${maxBytes / 1048576} + ' MB and ' + ${maxRows} + ' rows per section each.'">limits</span>
+        </div>
+    </form>
+
+    <th:block th:if="${result != null}" th:with="r=${result}">
+
+        <!-- ============================================================ what was compared -->
+        <div class="panel">
+            <h2>What was compared
+                <span class="muted" th:text="${r.elapsedText()} + ' apart'">40m apart</span>
+                <span class="badge" th:if="${r.reordered()}"
+                      title="The files were given latest first and have been put in time order">put in order</span>
+            </h2>
+            <div class="table-scroll">
+                <table>
+                    <tr><th></th><th>Before</th><th>After</th></tr>
+                    <tr><td class="muted">File</td>
+                        <td th:text="${r.before().label()}">a.json</td><td th:text="${r.after().label()}">b.json</td></tr>
+                    <tr><td class="muted">Collected (UTC)</td>
+                        <td th:text="${r.before().startedAt()} + ' to ' + ${r.before().finishedAt()}">window</td>
+                        <td th:text="${r.after().startedAt()} + ' to ' + ${r.after().finishedAt()}">window</td></tr>
+                    <tr><td class="muted">Broker address</td>
+                        <td th:text="${r.before().address()}">h:p</td><td th:text="${r.after().address()}">h:p</td></tr>
+                    <tr><td class="muted">Node id</td>
+                        <td th:text="${r.before().nodeId().display()}">n</td>
+                        <td th:text="${r.after().nodeId().display()}">n</td></tr>
+                    <tr><td class="muted">Snapshot schema</td>
+                        <td th:text="${r.before().schemaVersion()}">1</td><td th:text="${r.after().schemaVersion()}">1</td></tr>
+                </table>
+            </div>
+            <p class="note">
+                <strong th:text="${r.identity().confirmed()} ? 'Same broker.' : 'Same broker, unconfirmed.'">Same broker.</strong>
+                <span th:text="${r.identity().basis()}">basis</span>
+                <span th:each="n : ${r.identity().notes()}" th:text="' ' + ${n}">note</span>
+            </p>
+            <p class="note">
+                <span class="badge" th:classappend="${!r.continuity().continuous()} ? 'warn' : ''"
+                      th:text="${r.continuity().continuous()} ? 'no restart' : (${r.continuity().restarted()} ? 'restarted' : 'continuity unknown')">no restart</span>
+                <span th:text="${r.continuity().explanation()}">explanation</span>
+                <span th:if="${!r.continuity().continuous()}">Queue counters (added, acknowledged, expired, killed)
+                    are shown as two readings, not as traffic.</span>
+            </p>
+            <p class="note">Each snapshot is a sequence of reads, not one instant; every difference below says which
+                section it came from and when that section was read on each side. A value either side could not read is
+                shown with its reason and is never counted as a change.</p>
+        </div>
+
+        <!-- ============================================================ findings -->
+        <div class="panel" th:with="p=${r.findings()}">
+            <h2>Diagnose findings
+                <span class="muted" th:if="${p.compared()}"
+                      th:text="${p.rows().size()} + ' changed, ' + ${p.unchanged()} + ' the same'">2 changed</span></h2>
+            <p class="note" style="margin-top:0" th:text="${p.evidence()}">evidence</p>
+            <p class="unavailable" th:if="${!p.compared()}" th:text="${p.why()}">not compared</p>
+            <p class="note" th:each="n : ${p.notes()}" th:text="${n}">note</p>
+            <div class="table-scroll" th:if="${p.compared() and !p.rows().isEmpty()}">
+                <table>
+                    <tr><th>Change</th><th>Finding</th><th>Severity</th><th>Where</th></tr>
+                    <tr th:each="f : ${p.rows()}" th:classappend="${f.presence().name() == 'NEW'} ? 'row-warn' : ''">
+                        <td><span class="badge" th:classappend="${f.presence().name() == 'NEW'} ? 'warn' : ''"
+                                  th:text="${f.presence().name() == 'NEW'} ? 'new' : (${f.presence().name() == 'RESOLVED'} ? 'no longer reported' : 'changed')">new</span></td>
+                        <td>
+                            <div th:text="${f.current().title()}">title</div>
+                            <div class="muted" th:if="${f.presence().name() == 'CHANGED'}"
+                                 th:text="'Before: ' + ${f.before().title()}">before</div>
+                            <div class="muted" th:text="${f.current().detail()}">detail</div>
+                            <span class="badge" th:if="${f.current().basis() == 'inferred'}">inferred</span>
+                        </td>
+                        <td class="nowrap" th:text="${f.presence().name() == 'CHANGED'} ? (${f.before().severity()} + ' → ' + ${f.after().severity()}) : ${f.current().severity()}">stuck</td>
+                        <td class="nowrap">
+                            <span th:if="${f.current().queue() != null}" th:text="'queue ' + ${f.current().queue()}">q</span>
+                            <span th:if="${f.current().address() != null}" th:text="'address ' + ${f.current().address()}">a</span>
+                            <span th:if="${f.current().clientId() != null}" th:text="'client ' + ${f.current().clientId()}">c</span>
+                            <span th:if="${f.current().connectionId() != null}" th:text="'connection ' + ${f.current().connectionId()}">c</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <p class="note">A finding is the same one on both sides when it names the same queue, address or client and
+                the same title apart from its counts. &ldquo;No longer reported&rdquo; means diagnose did not report it
+                the second time, not that anything was fixed.</p>
+        </div>
+
+        <!-- ============================================================ queues -->
+        <div class="panel" th:with="p=${r.queues()}">
+            <h2>Queues
+                <span class="muted" th:if="${p.compared()}"
+                      th:text="${p.rows().size()} + ' differ, ' + ${p.unchanged()} + ' unchanged'">3 differ</span></h2>
+            <p class="note" style="margin-top:0" th:text="${p.evidence()}">evidence</p>
+            <p class="unavailable" th:if="${!p.compared()}" th:text="${p.why()}">not compared</p>
+            <div class="table-scroll" th:if="${p.compared() and !p.rows().isEmpty()}">
+                <table>
+                    <tr><th>Queue</th><th>Change</th><th>Held (levels)</th><th>Running totals</th><th>Settings</th></tr>
+                    <tr th:each="q : ${p.rows()}">
+                        <td>
+                            <span th:text="${q.name()}">orders</span>
+                            <span class="badge" th:if="${q.internal()}">internal</span>
+                            <div class="muted" th:if="${q.address() != q.name()}" th:text="'on ' + ${q.address()}">on a</div>
+                        </td>
+                        <td><span class="badge" th:classappend="${q.presence().name() != 'CHANGED'} ? 'warn' : ''"
+                                  th:text="${q.presence().name().toLowerCase()}">changed</span></td>
+                        <td>
+                            <div th:each="l : ${q.levels()}"
+                                 th:if="${l.changed() or l.oneSided() or q.presence().name() == 'ADDED' or q.presence().name() == 'REMOVED'}"
+                                 th:classappend="${l.oneSided()} ? 'unavailable' : ''">
+                                <span class="muted" th:text="${l.name()}">messageCount</span>
+                                <span th:text="${l.text()}">7 → 12</span>
+                            </div>
+                        </td>
+                        <td>
+                            <th:block th:if="${q.counterStatus() != null}">
+                                <span class="badge" th:classappend="${!q.counterStatus().traffic()} ? 'warn' : ''"
+                                      th:title="${q.counterStatus().meaning()}"
+                                      th:text="${q.counterStatus().name().toLowerCase()}">counted</span>
+                                <div th:each="c : ${q.counters()}" th:if="${c.changed() or c.oneSided()}"
+                                     th:classappend="${c.oneSided()} ? 'unavailable' : ''">
+                                    <span class="muted" th:text="${c.name()}">messagesAdded</span>
+                                    <span th:text="${c.counterText(q.counterStatus())}">1 → 9</span>
+                                </div>
+                                <div class="muted" th:if="${!q.counterNote().isEmpty()}" th:text="${q.counterNote()}">note</div>
+                            </th:block>
+                        </td>
+                        <td>
+                            <div th:each="s : ${q.configuration()}" th:classappend="${!s.comparable()} ? 'unavailable' : ''">
+                                <span class="muted" th:text="${s.key()}">ringSize</span>
+                                <span th:text="${s.before().display()} + ' → ' + ${s.after().display()}">-1 → 3</span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <p class="note">Levels &mdash; messages held, in flight, scheduled, consumers &mdash; compare across any gap.
+                Running totals subtract only across one unbroken run: <em>restart</em>, <em>recreated</em> and
+                <em>reset</em> show two readings and no difference, and <em>uncertain</em> shows the difference only
+                &ldquo;if unbroken&rdquo;. Hover a status for what it means.</p>
+        </div>
+
+        <!-- ============================================================ addresses -->
+        <div class="panel" th:with="p=${r.addresses()}">
+            <h2>Addresses
+                <span class="muted" th:if="${p.compared()}"
+                      th:text="${p.rows().size()} + ' differ, ' + ${p.unchanged()} + ' unchanged'">1 differ</span></h2>
+            <p class="note" style="margin-top:0" th:text="${p.evidence()}">evidence</p>
+            <p class="unavailable" th:if="${!p.compared()}" th:text="${p.why()}">not compared</p>
+            <div class="table-scroll" th:if="${p.compared() and !p.rows().isEmpty()}">
+                <table>
+                    <tr><th>Address</th><th>Change</th><th>Held</th></tr>
+                    <tr th:each="a : ${p.rows()}">
+                        <td><span th:text="${a.name()}">orders</span> <span class="badge" th:if="${a.internal()}">internal</span></td>
+                        <td><span class="badge" th:classappend="${a.presence().name() != 'CHANGED'} ? 'warn' : ''"
+                                  th:text="${a.presence().name().toLowerCase()}">changed</span></td>
+                        <td>
+                            <div th:each="l : ${a.levels()}"
+                                 th:if="${l.changed() or l.oneSided() or a.presence().name() != 'CHANGED'}"
+                                 th:classappend="${l.oneSided()} ? 'unavailable' : ''">
+                                <span class="muted" th:text="${l.name()}">addressSizeBytes</span>
+                                <span th:text="${l.text()}">1 → 2</span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================ settings -->
+        <div class="panel" th:with="p=${r.settings()}">
+            <h2>Address settings
+                <span class="muted" th:text="${p.rows().size()} + ' differ, ' + ${p.unchanged()} + ' the same'">0 differ</span></h2>
+            <p class="note" style="margin-top:0" th:text="${p.evidence()}">evidence</p>
+            <p class="note" th:each="n : ${p.notes()}" th:text="${n}">note</p>
+            <div class="table-scroll" th:if="${!p.rows().isEmpty()}">
+                <table>
+                    <tr><th>Address</th><th>Setting</th><th>Before</th><th>After</th></tr>
+                    <th:block th:each="s : ${p.rows()}">
+                        <tr th:if="${!s.note().isEmpty()}">
+                            <td th:text="${s.address()}">a</td><td colspan="3" class="unavailable" th:text="${s.note()}">note</td>
+                        </tr>
+                        <tr th:each="c : ${s.changes()}" th:classappend="${!c.comparable()} ? 'unavailable' : ''">
+                            <td th:text="${s.address()}">a</td>
+                            <td th:text="${c.key()}">maxSizeBytes</td>
+                            <td th:text="${c.before().display()}">-1</td>
+                            <td th:text="${c.after().display()}">10485760</td>
+                        </tr>
+                    </th:block>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================ clients -->
+        <div class="panel" th:each="p, it : ${ {r.consumers(), r.connections()} }">
+            <h2 th:with="what=${it.index == 0} ? 'Consumers' : 'Connections'">
+                <span th:text="${what}">Consumers</span>
+                <span class="muted" th:if="${p.compared()}"
+                      th:text="${p.rows().size()} + ' came, went or changed; ' + ${p.unchanged()} + ' the same'">n</span></h2>
+            <p class="note" style="margin-top:0" th:text="${p.evidence()} + '. This tool&rsquo;s own are left out.'">evidence</p>
+            <p class="unavailable" th:if="${!p.compared()}" th:text="${p.why()}">not compared</p>
+            <p class="note" th:each="n : ${p.notes()}" th:text="${n}">note</p>
+            <div class="table-scroll" th:if="${p.compared() and !p.rows().isEmpty()}">
+                <table>
+                    <tr><th>Change</th><th>Id</th><th></th><th>Level</th></tr>
+                    <tr th:each="c : ${p.rows()}">
+                        <td><span class="badge" th:classappend="${c.presence().name() == 'NOT_IN_KEPT_ROWS'} ? '' : 'warn'"
+                                  th:title="${c.note()}"
+                                  th:text="${c.presence().name() == 'NOT_IN_KEPT_ROWS'} ? 'unknown' : ${c.presence().name().toLowerCase()}">gone</span></td>
+                        <td><code th:text="${c.id()}">id</code></td>
+                        <td class="muted" th:text="${c.description()}">on orders</td>
+                        <td><span class="muted" th:text="${c.level().name()}">deliveringCount</span>
+                            <span th:text="${c.level().text()}">0 → 3</span>
+                            <div class="muted" th:if="${!c.note().isEmpty()}" th:text="${c.note()}">note</div></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================ broker -->
+        <div class="panel">
+            <h2>Broker attributes</h2>
+            <p class="note" style="margin-top:0"
+               th:text="'health attributes, read ' + ${r.before().healthTime()} + ' → ' + ${r.after().healthTime()}">evidence</p>
+            <div class="table-scroll">
+                <table>
+                    <tr><th>Attribute</th><th>Before</th><th>After</th><th class="num">Change</th></tr>
+                    <tr th:each="h : ${r.health()}" th:classappend="${h.changed()} ? 'strong' : ''">
+                        <td th:text="${h.name()}">version</td>
+                        <td th:classappend="${!h.before().known()} ? 'unavailable' : ''"
+                            th:text="${h.before().display()} + (${h.unit().isEmpty() or !h.before().known()} ? '' : ' ' + ${h.unit()})">2.55.0</td>
+                        <td th:classappend="${!h.after().known()} ? 'unavailable' : ''"
+                            th:text="${h.after().display()} + (${h.unit().isEmpty() or !h.after().known()} ? '' : ' ' + ${h.unit()})">2.57.0</td>
+                        <td class="num" th:text="${h.changed()} ? (${h.delta() != null} ? ${h.delta()} : 'changed') : ''">+1</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================================ coverage -->
+        <div class="panel">
+            <h2>What each snapshot could not collect or left out</h2>
+            <p class="note" style="margin-top:0">As each file recorded it. Anything listed here on either side is not
+                compared as a change. Trends are not compared: each covers only its own session.</p>
+            <div class="grid">
+                <div th:each="f, it : ${ {r.before(), r.after()} }">
+                    <h3 th:text="${it.index == 0} ? 'Before' : 'After'">Before</h3>
+                    <p class="muted" th:if="${f.unavailable().isEmpty() and f.omitted().isEmpty()}">Nothing.</p>
+                    <ul th:if="${!f.unavailable().isEmpty()}">
+                        <li th:each="u : ${f.unavailable()}" th:text="'Not collected: ' + ${u}">health.x: denied</li>
+                    </ul>
+                    <ul th:if="${!f.omitted().isEmpty()}">
+                        <li th:each="o : ${f.omitted()}" th:text="'Left out: ' + ${o}">connections: 3 rows</li>
+                    </ul>
+                    <details th:if="${!f.limits().isEmpty()}">
+                        <summary>Limits it was collected under</summary>
+                        <ul><li th:each="l : ${f.limits()}" th:text="${l.key} + ': ' + ${l.value.display()}">maxRows: 1000</li></ul>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </th:block>
+</div>
+</body>
+</html>
