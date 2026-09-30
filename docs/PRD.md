@@ -970,7 +970,7 @@ Done means an exact-ID investigation provides a state-labelled result and an und
 report. Verify scheduled-message ID shapes on supported brokers before implementation, and test
 matches in every supported state, partial failures, budget limits and movement between reads.
 
-**P2 done (2026-09-30):** an exact `ID:…` on `/search` is looked up in every state: scheduled, waiting,
+**P2 done (2026-09-30, PR #41):** an exact `ID:…` on `/search` is looked up in every state: scheduled, waiting,
 in flight, and received or sent in a prepared XA branch (the fourth list a message can be in). Scheduled
 IDs were verified first on 2.55.0 and 2.57.0: `listScheduledMessagesAsJSON`'s `userID` is the sender's
 `JMSMessageID`. Each queue is read in the order a message moves, every sighting carries its read time,
