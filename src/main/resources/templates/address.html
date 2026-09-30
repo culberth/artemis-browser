@@ -177,6 +177,7 @@
                     <td>
                         <span class="badge" th:text="${s.kind().label()}">durable subscription</span>
                         <span class="badge" th:if="${s.exclusive()}">exclusive</span>
+                        <th:block th:replace="~{fragments/layout :: behaviorBadges(${s.behavior()}, true)}"></th:block>
                         <span class="badge warn" th:if="${s.stalled()}">no consumer</span>
                     </td>
                     <td>

@@ -72,6 +72,7 @@
                 <tr th:each="queue : ${queues}" th:classappend="${queue.stalled()} ? 'row-warn' : ''">
                     <td>
                         <a th:href="@{/queues(name=${queue.name()})}" th:text="${queue.name()}">queue</a>
+                        <th:block th:replace="~{fragments/layout :: behaviorBadges(${queue.behavior()}, false)}"></th:block>
                     </td>
                     <td><a class="muted" th:href="@{/address(name=${queue.address()})}" th:text="${queue.address()}">address</a></td>
                     <td class="num strong" th:text="${queue.messageCount()}">0</td>

@@ -43,11 +43,13 @@ Shipped so far:
 ## Next: Phase 13 (planned)
 
 Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
-first feature area (P1, address pressure) are done, and the rest are not yet built:
+first two feature areas (P1 address pressure, P2 queue behavior) are done, and the rest are not yet
+built:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
 2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
+   **Done.**
 3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
 4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
@@ -63,8 +65,14 @@ pages against their limits beside the full policy and what it does to a sender, 
 blocked it, and its share of `global-max-size`. The address index marks an address that is full or
 near its limit, and does not mark one that is merely paging. Diagnose names blocked addresses
 (observed), and addresses at or near a limit that blocks, rejects or drops (inferred). The global
-memory finding names the largest holders without blaming them. Queue behavior comes next, and all
-six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
+memory finding names the largest holders without blaming them.
+
+Done in P2: each queue page has a *Configuration and behavior* panel with the queue's own settings
+and what each one looks like from outside, plus the address's defaults for new queues. The overview
+and subscription rows badge last-value, ring, exclusive, purging and dispatch-gated queues. Diagnose
+findings now keep what was observed apart from configuration that may explain it. It no longer
+reports an exclusive queue's single busy consumer as hoarding, nor a purge as a failed delivery.
+Trends come next, and all six areas remain in scope. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -325,6 +333,10 @@ what a producer is going through; only a management `block()` is reported as obs
 written. The pages show "paging" only when pages exist. Whether an address is blocked by an operator
 is one read per address, capped at 500 per diagnose run.
 
+Queue settings are the queue's effective values from the queue listing. Non-destructive is the
+exception: the broker does not report it per queue, so the page says it cannot tell and shows only
+the address default. Messages a last-value queue replaces or a ring evicts appear in no counter.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -379,6 +391,8 @@ com.culberth.tools.artemisbrowser
 │   ├── MessageExporter            CSV/JSON export, per queue or across a search, with formula-injection defusing
 │   ├── BrokerInfoService          Broker health, acceptors, connections, consumers, producers
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
+│   ├── QueueBehavior              A queue's effective settings from its listing row, and what each looks like from outside
+│   ├── ListingFields              One listing field as a Reading: absent is unsupported, malformed is failed
 │   ├── QueueStats / QueueOverview / MessagePage / MessageSummary / MessageDetail / ScheduledMessage
 │   │   / InFlight / InFlightConsumer / InFlightMessage / InFlightLookup
 │   │                              Queue and message view models, including FQQN browse-name handling

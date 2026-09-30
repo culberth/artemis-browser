@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.culberth.tools.artemisbrowser.broker.AddressDetail;
 import com.culberth.tools.artemisbrowser.broker.AddressDetailService;
+import com.culberth.tools.artemisbrowser.broker.QueueBehavior;
 import com.culberth.tools.artemisbrowser.broker.AddressPressure;
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.AddressOverview;
@@ -593,6 +594,57 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a ring, last-value, exclusive queue explains each setting, with the address default beside it")
+    void rendersQueueConfiguration() throws Exception
+    {
+        QueueBehavior special = behavior("ringSize", "3", "lastValueKey", "k", "exclusive", "true");
+        QueueStats base = stats(QUEUE, 3, 0);
+        given(queueDirectory.stats(QUEUE)).willReturn(new QueueStats(base.name(), base.address(), base.routingType(), 3,
+                0, 0, 0, 10, 0, true, false, 0, 0, special));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        given(addressDirectory.settings(QUEUE))
+                .willReturn(AddressSettings.of(Map.of("defaultNonDestructive", "true", "defaultRingSize", "10")));
+        given(queueDirectory.groupCount(QUEUE)).willReturn(Reading.of(2L));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("Configuration and behavior")))
+                .andExpect(content().string(containsString("ring 3")))
+                .andExpect(content().string(containsString("each new message removes the oldest")))
+                .andExpect(content().string(containsString("same k value")))
+                .andExpect(content().string(containsString("wait as standbys")))
+                .andExpect(content().string(containsString("non-destructive by default: true")))
+                .andExpect(content().string(containsString("defaultRingSize")))
+                .andExpect(content().string(containsString("2 message group(s)")));
+    }
+
+    @Test
+    @DisplayName("a plain queue says so, and address settings that could not be read say why")
+    void rendersAPlainQueue() throws Exception
+    {
+        QueueStats base = stats(QUEUE, 1, 0);
+        given(queueDirectory.stats(QUEUE)).willReturn(new QueueStats(base.name(), base.address(), base.routingType(), 1,
+                0, 0, 0, 1, 0, true, false, 0, 0, behavior()));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        given(addressDirectory.settings(QUEUE)).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032"));
+        given(queueDirectory.groupCount(QUEUE)).willReturn(Reading.of(0L));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("A plain first-in, first-out queue")))
+                .andExpect(content().string(containsString("not reported per queue")))
+                .andExpect(content().string(containsString("not permitted for this user")));
+    }
+
+    @Test
+    @DisplayName("the overview badges a queue's configuration from the listing")
+    void rendersBehaviorBadgesOnTheOverview() throws Exception
+    {
+        given(queueDirectory.overview())
+                .willReturn(List.of(queue(QUEUE, 2, 0).withBehavior(behavior("consumersBeforeDispatch", "2"))));
+
+        page("/overview").andExpect(content().string(containsString("waits for 2 consumers")));
+    }
+
+    @Test
     @DisplayName("a filtered page renders with no total: no 'of N', no Last, and Next only when a next page exists")
     void rendersAFilteredPageWithoutATotal() throws Exception
     {
@@ -852,6 +904,23 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a finding's explanation is shown apart from what was observed")
+    void rendersAnExplainedFinding() throws Exception
+    {
+        given(diagnosis.run(anyBoolean()))
+                .willReturn(
+                        new Diagnosis(
+                                List.of(Finding
+                                        .watch("'gated' is waiting for 2 consumers before it dispatches",
+                                                "3 message(s) waiting", "gated")
+                                        .explainedBy("The queue is configured with consumers-before-dispatch 2")),
+                                0, 0));
+
+        page("/diagnose").andExpect(content().string(containsString("May be intended:")))
+                .andExpect(content().string(containsString("consumers-before-dispatch 2")));
+    }
+
+    @Test
     @DisplayName("the diagnose page renders when it finds nothing")
     void rendersTheDiagnosePageWithNoFindings() throws Exception
     {
@@ -893,6 +962,21 @@ class PageRenderingTest
     private org.springframework.test.web.servlet.ResultActions page(String path) throws Exception
     {
         return mockMvc.perform(get(path).header("Host", "localhost")).andExpect(status().isOk());
+    }
+
+    /** A queue's configuration as its listing row gives it, every setting at its default unless overridden. */
+    private static QueueBehavior behavior(String... overrides)
+    {
+        Map<String, String> fields = new java.util.LinkedHashMap<>(Map.of("exclusive", "false", "lastValueKey", "",
+                "ringSize", "-1", "groupBuckets", "-1", "groupFirstKey", "", "consumersBeforeDispatch", "0",
+                "delayBeforeDispatch", "-1", "purgeOnNoConsumers", "false", "maxConsumers", "-1", "enabled", "true"));
+        for (int i = 0; i < overrides.length; i += 2)
+        {
+            fields.put(overrides[i], overrides[i + 1]);
+        }
+        tools.jackson.databind.node.ObjectNode node = new tools.jackson.databind.ObjectMapper().createObjectNode();
+        fields.forEach(node::put);
+        return QueueBehavior.from(node);
     }
 
     private static QueueOverview queue(String name, long messages, long scheduled)

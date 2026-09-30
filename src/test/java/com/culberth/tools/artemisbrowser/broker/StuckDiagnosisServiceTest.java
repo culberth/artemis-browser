@@ -52,6 +52,8 @@ class StuckDiagnosisServiceTest
         given(queues.overview()).willReturn(List.of());
         given(addresses.overview()).willReturn(List.of());
         given(addresses.blockedViaManagement(anyString())).willReturn(Reading.of(false));
+        given(addresses.settings(anyString())).willReturn(AddressSettings.of(Map.of()));
+        given(queues.groupCount(anyString())).willReturn(Reading.of(0L));
         given(brokerInfo.consumers()).willReturn(List.of());
         // 10% used against a 90% limit: comfortably clear of diskPressure(), which trips at 80% of
         // the limit rather than at it.
@@ -154,6 +156,21 @@ class StuckDiagnosisServiceTest
         assertTrue(finding.isStuck());
         assertTrue(finding.title().contains("dropped 4"), finding.title());
         assertEquals("events", finding.address());
+        assertFalse(finding.hasExplanation());
+    }
+
+    @Test
+    @DisplayName("unrouted messages on an address whose queue purges are explained by the purge")
+    void explainsUnroutedMessagesOnAPurgingQueue()
+    {
+        given(addresses.overview()).willReturn(List.of(new AddressOverview("it-q-purge", "ANYCAST", 0, 0, 3, 2, false,
+                false, false,
+                List.of(queue("it-q-purge", 0, 0, 0, 0).withBehavior(behavior("purgeOnNoConsumers", "true"))))));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.title().contains("dropped 2"), finding.title());
+        assertTrue(finding.explanation().contains("purges when it has no consumer"), finding.explanation());
     }
 
     @Test
@@ -630,6 +647,97 @@ class StuckDiagnosisServiceTest
         assertEquals("big", finding.address());
         assertTrue(finding.detail().contains("'big' 762.9 MB"), finding.detail());
         assertTrue(finding.detail().contains("not necessarily why it filled"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("one consumer holding everything on an exclusive queue is the configuration, not a finding")
+    void noHoardingOnAnExclusiveQueue()
+    {
+        given(queues.overview())
+                .willReturn(List.of(queue("work", 20, 20, 2, 0).withBehavior(behavior("exclusive", "true"))));
+        given(brokerInfo.consumers()).willReturn(List.of(holding("work", "c-1", 20), holding("work", "c-2", 0)));
+
+        assertTrue(service().diagnose(false).stream().noneMatch(f -> f.title().contains("holds everything")));
+    }
+
+    @Test
+    @DisplayName("on a queue with message groups, hoarding stays a finding with group affinity as the explanation")
+    void explainsHoardingByGroups()
+    {
+        given(queues.overview()).willReturn(List.of(queue("work", 20, 20, 2, 5).withBehavior(behavior())));
+        given(brokerInfo.consumers()).willReturn(List.of(holding("work", "c-1", 20), holding("work", "c-2", 0)));
+        given(queues.groupCount("work")).willReturn(Reading.of(2L));
+
+        Finding finding = service().diagnose(false).stream().filter(f -> f.title().contains("holds everything"))
+                .findFirst().orElseThrow();
+        assertTrue(finding.hasExplanation());
+        assertTrue(finding.explanation().contains("group affinity"), finding.explanation());
+        assertFalse(finding.detail().contains("group"), "the detail stays what was observed");
+    }
+
+    @Test
+    @DisplayName("a queue waiting for more consumers says so, as observed counts plus the setting")
+    void explainsADispatchGate()
+    {
+        given(queues.overview())
+                .willReturn(List.of(queue("gated", 3, 0, 1, 0).withBehavior(behavior("consumersBeforeDispatch", "2"))));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertFalse(finding.isStuck());
+        assertTrue(finding.title().contains("waiting for 2 consumers"), finding.title());
+        assertTrue(finding.detail().contains("1 of the 2"), finding.detail());
+        assertTrue(finding.explanation().contains("consumers-before-dispatch 2"), finding.explanation());
+    }
+
+    @Test
+    @DisplayName("nothing acknowledged on an address that makes queues non-destructive is explained, not excused")
+    void explainsNothingAcknowledgedWhenNonDestructiveByDefault()
+    {
+        given(queues.overview()).willReturn(List.of(queue("browse-me", 3, 3, 1, 0).withBehavior(behavior())));
+        given(addresses.settings("browse-me")).willReturn(AddressSettings.of(Map.of("defaultNonDestructive", "true")));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.title().contains("delivered nothing"), finding.title());
+        assertTrue(finding.explanation().contains("non-destructive"), finding.explanation());
+    }
+
+    @Test
+    @DisplayName("killed messages on a purging queue with nowhere to go are explained as possible purges")
+    void explainsKilledMessagesOnAPurgingQueue()
+    {
+        given(queues.overview()).willReturn(
+                List.of(killedAndExpired("purging", 3, 0).withBehavior(behavior("purgeOnNoConsumers", "true"))));
+        given(addresses.overview()).willReturn(List.of(new AddressOverview("purging", "ANYCAST", 0, 0, 3, 0, false,
+                false, false, List.of(queue("purging", 0, 0, 0, 0)))));
+        given(addresses.settings("purging")).willReturn(AddressSettings.of(Map.of("deadLetterAddress", "")));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertFalse(finding.isStuck());
+        assertFalse(finding.title().contains("delivery attempts"), "a purge is not a failed delivery");
+        assertTrue(finding.explanation().contains("purges when its last consumer leaves"), finding.explanation());
+    }
+
+    private static QueueBehavior behavior(String... overrides)
+    {
+        java.util.Map<String, String> fields = new java.util.LinkedHashMap<>(
+                java.util.Map.of("exclusive", "false", "lastValueKey", "", "ringSize", "-1", "groupBuckets", "-1",
+                        "groupFirstKey", "", "consumersBeforeDispatch", "0", "delayBeforeDispatch", "-1",
+                        "purgeOnNoConsumers", "false", "maxConsumers", "-1", "enabled", "true"));
+        for (int i = 0; i < overrides.length; i += 2)
+        {
+            fields.put(overrides[i], overrides[i + 1]);
+        }
+        tools.jackson.databind.node.ObjectNode node = new tools.jackson.databind.ObjectMapper().createObjectNode();
+        fields.forEach(node::put);
+        return QueueBehavior.from(node);
+    }
+
+    private BrokerConsumer holding(String queueName, String id, long delivering)
+    {
+        return new BrokerConsumer(id, queueName, "conn-" + id, "sess-" + id, id, false, delivering, 0, 0, "OK", false);
     }
 
     private String titleFor(List<Finding> findings, String address)

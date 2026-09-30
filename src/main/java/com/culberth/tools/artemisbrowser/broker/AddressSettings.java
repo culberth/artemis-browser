@@ -77,6 +77,34 @@ public record AddressSettings(Map<String, String> all)
         return Boolean.parseBoolean(get(key));
     }
 
+    /**
+     * The {@code default*} settings the address gives queues created on it — present only when configured, verified on
+     * 2.55.0 and 2.57.0. A default is what a new queue starts with, never what an existing one has: the queue listing
+     * reports that.
+     */
+    public Map<String, String> queueDefaults()
+    {
+        Map<String, String> defaults = new java.util.LinkedHashMap<>();
+        all.forEach((key, value) ->
+        {
+            if (key.startsWith("default") && value != null && !value.isBlank())
+            {
+                defaults.put(key, value);
+            }
+        });
+        return defaults;
+    }
+
+    /**
+     * {@code defaultNonDestructive}: the only place non-destructive can be read, and only as what new queues on this
+     * address start with. Null when not set.
+     */
+    public Boolean nonDestructiveDefault()
+    {
+        String value = get("defaultNonDestructive");
+        return value == null ? null : Boolean.parseBoolean(value);
+    }
+
     /** The address's own byte limit — what the broker's {@code addressLimitPercent} is measured against. */
     public Limit maxSizeBytesLimit()
     {

@@ -90,6 +90,16 @@
           title="Near its byte limit. What happens there depends on its policy, on the address page.">85% of limit</span>
 </th:block>
 
+<!--
+  A queue's configuration in a few words, from the listing row it came with: "last-value", "ring 3",
+  "exclusive", "waits for 2 consumers". The queue page says what each one means. skipExclusive for
+  places that already badge exclusivity themselves.
+-->
+<th:block th:fragment="behaviorBadges(b, skipExclusive)">
+    <span class="badge" th:each="label : ${b.badges()}" th:unless="${skipExclusive and label == 'exclusive'}"
+          th:text="${label}" title="Configured behavior; the queue page explains it">ring 3</span>
+</th:block>
+
 <!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->
 <span th:fragment="collected(reading)" class="muted collected"
       th:text="'read ' + ${reading.collectedText()}">read 12:00:00</span>

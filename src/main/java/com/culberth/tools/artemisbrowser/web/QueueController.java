@@ -1,5 +1,8 @@
 package com.culberth.tools.artemisbrowser.web;
 
+import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
+import com.culberth.tools.artemisbrowser.broker.AddressSettings;
+import com.culberth.tools.artemisbrowser.broker.Reading;
 import com.culberth.tools.artemisbrowser.broker.BrokerException;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.InFlightService;
@@ -48,10 +51,12 @@ public class QueueController
     private final QueueBrowseService browseService;
     private final InFlightService inFlightService;
     private final RateService rateService;
+    private final AddressDirectory addressDirectory;
 
     public QueueController(BrokerSession brokerSession, QueueDirectory queueDirectory, QueueBrowseService browseService,
-            InFlightService inFlightService, RateService rateService)
+            InFlightService inFlightService, RateService rateService, AddressDirectory addressDirectory)
     {
+        this.addressDirectory = addressDirectory;
         this.brokerSession = brokerSession;
         this.queueDirectory = queueDirectory;
         this.browseService = browseService;
@@ -183,6 +188,17 @@ public class QueueController
         {
             model.addAttribute("error", filterHint(e.getMessage(), filter));
             return "queues";
+        }
+        // The configuration panel: the queue's own values come with stats, from the listing. The
+        // address's defaults and the group count are two more reads, each allowed to fail alone.
+        if (stats != null)
+        {
+            String address = stats.address();
+            Reading<AddressSettings> settings = Reading.attempt(() -> addressDirectory.settings(address));
+            model.addAttribute("addressSettings",
+                    settings.available() && settings.value() == null ? Reading.failed("the broker returned no settings")
+                            : settings);
+            model.addAttribute("groups", queueDirectory.groupCount(name));
         }
         // Scheduled messages are counted by the queue but not returned by browse, so without this
         // the page can report messages and show an empty table. Its own try, like in-flight below:
