@@ -145,6 +145,11 @@ dead-letter or expiry queue, usually — by the address and queue each message c
 many of each the broker expired, what each origin's settings say now, and example messages to open.
 See **Triaging a dead-letter or expiry queue** below.
 
+Done in optional P5: **Compare two messages** (`/message/compare`) — tick two rows on a queue page, or
+name another message from a message's page — shows header and property differences, and a line diff
+of two text bodies or a value-by-value diff of two JSON ones, with each message's read time and a
+link back to it. See **Comparing two messages** below.
+
 The phase acceptance checks are done too. `PagesIT` fetches the Phase 14 routes with the rest —
 exact-ID lookups of real messages, built filters, every saved-search scope, `/compare` — against a
 real broker on both supported versions and asserts nothing changed; it also asserts that comparing
@@ -372,6 +377,10 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.triage.default-sample` / `max-sample` | `500` / `2000` | Messages a triage reads from the head of a queue by default, and at most |
 | `artemis.triage.max-groups` | `50` | Origins (and values of a grouped property) a triage lists, largest first; the rest are counted |
 | `artemis.triage.max-settings-reads` | `20` | Origin addresses whose current settings a triage reads, one call each, largest groups first |
+| `artemis.message-compare.max-body-chars` | `100000` | Characters of each text body a message comparison compares; the rest is not compared, and the page says so |
+| `artemis.message-compare.max-align-cells` | `1000000` | Largest changed region (left lines × right lines) aligned line by line; a larger one is shown as removed, then added |
+| `artemis.message-compare.max-shown-lines` | `2000` | Diff lines, or differing JSON values, a comparison draws |
+| `artemis.message-compare.max-json-values` | `5000` | Values per JSON body compared by path; past it both bodies are compared as text |
 
 ## Security posture
 
@@ -517,6 +526,34 @@ not in it (their counts are shown). An optional core filter narrows it, evaluate
 queue's count is read before and after; if it moved, or a message came back on two pages, the page
 says so. It reads on request only, costs one `browse` per 200 messages plus the queue listing twice
 and the settings reads, and consumes, retries, moves and deletes nothing.
+
+## Comparing two messages
+
+Tick two rows on a queue page and choose *Compare the two picked*, or use *Compare with another
+message* on a message's page to name one on any queue. `/message/compare?name=…&id=…&id=…` (or
+`&name2=…&id2=…` for another queue) is the same thing as a link.
+
+Each message is read on its own, one after the other, through the same JMS browser as the message
+page, so nothing is consumed — and each side shows **when it was read**: two moments, not one.
+
+- **Headers and properties**, row by row: *same*, *differs*, *only on the left*, *only on the right*.
+  A property the message does not carry is *not set*, which is not the same as an *empty* value;
+  properties carry their Java type, so the text `5` and the number `5` differ, as they do to a filter.
+- **Bodies**: two text messages are compared line by line (long unchanged runs collapse to a count);
+  if both are whole JSON objects or arrays, value by value by path (`$.items[1]`), where a missing
+  path, `null` and `""` are three different things, and a difference only in layout or key order is
+  called that. A bytes, map, object or stream body is **not compared**, and the page says which types
+  they were.
+- **Limits**, each labelled where it applies: at most `artemis.message-compare.max-body-chars` of each
+  body, a changed region too large to align shown as removed then added, and at most
+  `max-shown-lines` rows drawn. Matching text in a cut body says nothing about the rest.
+- **A message that is gone is unavailable, not empty.** If it was consumed, expired or moved since it
+  was picked — or is in flight to a consumer, which a browse never returns — that side says so, with
+  the queue's in-flight and scheduled counts, and nothing is compared. In-flight bodies are never read.
+- Message content is untrusted: besides HTML escaping, control, bidirectional and zero-width characters
+  are shown as `\uXXXX` (and a carriage return as `\r`), so two values that differ never look alike.
+
+It reads on request only, and costs the queue listing plus one browser read per message.
 
 ## Rates and diagnostic evidence
 
@@ -677,6 +714,9 @@ com.culberth.tools.artemisbrowser
 │   ├── MessageInvestigationService One message ID looked up in every state, under per-request budgets
 │   ├── DeadLetterTriageService    A bounded sample of one queue grouped by recorded origin; origin settings now
 │   ├── DeadLetterTriage           The grouping: origins, recorded expiry, property values, and the sample's limits
+│   ├── MessageComparisonService   Reads two messages through the JMS browser, each with its read time
+│   ├── MessageComparer            Header, property, text-line and JSON-path differences, bounded; visible escapes
+│   ├── MessageComparison          The result: each side (or why it is unavailable), differences, limitations
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts, pressure; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
@@ -730,6 +770,7 @@ com.culberth.tools.artemisbrowser
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── SavedSearchController      /saved: list, save, rename, delete; /saved/{id} shows before it runs
 │   ├── TriageController           /triage: a queue's sample grouped by where its messages came from
+│   ├── MessageCompareController   /message/compare: two messages read and compared, on request
 │   ├── GuidedFilterForm           The filter builder's fields, bound from a GET
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── CompareController          /compare: two uploaded snapshots compared, no broker contacted

@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
 Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
-complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 merged (PR #46), P5 optional. Phase 15 specified
+complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 merged (PR #46), optional P5 done. Phase 15 specified
 2026-09-29: interactive regression lab, not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
@@ -917,7 +917,7 @@ selected under P0 before implementing their fields.
 ## Phase 14 — Incident investigation: what changed, and where is my message?
 
 Planned 2026-09-29 following the Phase 13 PRD review. **Phase 14 is complete**: P1–P3 and the
-phase acceptance checks, as of 2026-09-30; P4–P5 remain optional. Phase 13 expands the evidence available about
+phase acceptance checks, as of 2026-09-30; optional P4 and P5 are done too. Phase 13 expands the evidence available about
 the broker; Phase 14 helps use that evidence to investigate an incident: identify what changed,
 locate a message, and repeat a useful search without rebuilding it each time.
 
@@ -1043,15 +1043,30 @@ unchanged counters on both versions; `PagesIT` visits `/triage` for every queue.
 
 ### P5 — Message comparison (optional)
 
-- [ ] **Compare two browsable messages.** Show header and property differences, and differences in
+- [x] **Compare two browsable messages.** Show header and property differences, and differences in
       supported text or JSON bodies. Link back to each source and identify when it was read.
-- [ ] **Represent limitations.** Bound body and comparison sizes, label truncation and unsupported
+- [x] **Represent limitations.** Bound body and comparison sizes, label truncation and unsupported
       body types, and distinguish absent fields from empty values. A message that disappears between
       selection and reading is unavailable, not an empty message. Never fetch in-flight bodies.
 
 Done means a user can inspect observable differences between two messages without changing either.
 Cover structured and plain text, missing fields, truncation, unavailable messages and safe rendering
 of untrusted content.
+
+**P5 done (2026-09-30):** `/message/compare`, reached by ticking two rows on a queue page or naming
+another message from a message's page. Each side is read through the message page's JMS browser read,
+one after the other, with its read time and a link back; one queue listing, no management operation
+added. Headers and properties are compared as same / differs / only one side, with *not set* kept
+apart from *empty* and each property's Java type recorded (`MessageDetail.propertyTypes`), so text
+`5` and number `5` differ. Two text bodies get a line diff (LCS over the changed region, context
+collapsed); two whole JSON bodies a value-by-value diff by path, where missing, `null` and `""`
+differ and layout or key order alone is called that; any other body type is not compared, and says
+which. Bounded by `artemis.message-compare.*` (100,000 characters per body, 1,000,000 alignment
+cells, 2,000 rows, 5,000 JSON values), every cut labelled. A message gone since it was picked, or in
+flight (never read), is unavailable with the reason, and nothing is compared. Control, bidi and
+zero-width characters are shown as escapes. `MessageComparisonIT` covers text, JSON across queues,
+typed and empty properties, bytes, truncation, an in-flight and a consumed message, and unchanged
+counters on both versions; `PagesIT` visits it for every queue and holds it to one management call.
 
 ### Phase acceptance and documentation
 
@@ -1093,7 +1108,7 @@ of untrusted content.
 
 Phase 14 is complete when P1–P3 and their supporting acceptance checks are complete. P4–P5 remain
 optional unless explicitly promoted into the committed scope. **Phase 14 is complete**: P1–P3 and
-the acceptance checks, as of 2026-09-30.
+the acceptance checks, as of 2026-09-30; the optional P4 and P5 are done as well.
 
 ## Phase 15 — Interactive regression lab and regression procedure
 

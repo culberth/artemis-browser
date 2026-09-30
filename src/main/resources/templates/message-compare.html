@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; compare messages</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('browse')}"></div>
+
+    <div class="error" th:if="${error}" th:text="${error}">error</div>
+
+    <form class="panel" method="get" th:action="@{/message/compare}">
+        <h2>Compare two messages</h2>
+        <p class="note" style="margin-top:0">
+            Each message is read on its own, one after the other, the way the message page reads it: nothing is
+            consumed or changed. A message delivered to a consumer and not yet acknowledged cannot be browsed, so an
+            in-flight message is never read here. Tick two rows on a queue page to fill this in.
+        </p>
+        <div class="grid">
+            <div>
+                <label for="name">Left: queue</label>
+                <input id="name" name="name" th:value="${name}" required>
+            </div>
+            <div>
+                <label for="id">Left: message ID</label>
+                <input id="id" name="id" th:value="${id}" placeholder="ID:…" required>
+            </div>
+            <div>
+                <label for="name2">Right: queue</label>
+                <input id="name2" name="name2" th:value="${name2}" required>
+            </div>
+            <div>
+                <label for="id2">Right: message ID</label>
+                <input id="id2" name="id2" th:value="${id2}" placeholder="ID:…" required>
+            </div>
+        </div>
+        <div class="field-row" style="margin-top:1rem">
+            <button type="submit">Compare</button>
+            <span class="muted" th:text="'Headers, properties, and text or JSON bodies; up to ' + ${maxBodyChars}
+                  + ' characters of each body.'">limits</span>
+        </div>
+    </form>
+
+    <th:block th:if="${comparison != null}" th:with="c=${comparison}">
+
+        <!-- ============================================================ the two sides -->
+        <div class="panel">
+            <h2>What was read
+                <span class="badge" th:if="${c.sameMessage()}"
+                      title="Both sides name one message on one queue, read twice">same message twice</span>
+            </h2>
+            <div class="table-scroll">
+                <table>
+                    <tr><th></th><th>Left</th><th>Right</th></tr>
+                    <tr><td class="muted">Queue</td>
+                        <td><a th:href="@{/queues(name=${c.left().queueName()})}"
+                               th:text="${c.left().queueName()}">q</a></td>
+                        <td><a th:href="@{/queues(name=${c.right().queueName()})}"
+                               th:text="${c.right().queueName()}">q</a></td></tr>
+                    <tr><td class="muted">Message</td>
+                        <td><a th:href="@{/message(name=${c.left().queueName()},id=${c.left().messageId()})}"
+                               class="cmp-value" th:text="${c.left().messageId()}">ID</a></td>
+                        <td><a th:href="@{/message(name=${c.right().queueName()},id=${c.right().messageId()})}"
+                               class="cmp-value" th:text="${c.right().messageId()}">ID</a></td></tr>
+                    <tr><td class="muted">Read at</td>
+                        <td th:text="${#strings.isEmpty(c.left().readAtText())} ? 'not read' : ${c.left().readAtText()}">t</td>
+                        <td th:text="${#strings.isEmpty(c.right().readAtText())} ? 'not read' : ${c.right().readAtText()}">t</td></tr>
+                    <tr><td class="muted">Result</td>
+                        <td th:classappend="${!c.left().available()} ? 'unavailable' : ''"
+                            th:text="${c.left().available()} ? 'read' : ${c.left().unavailable()}">read</td>
+                        <td th:classappend="${!c.right().available()} ? 'unavailable' : ''"
+                            th:text="${c.right().available()} ? 'read' : ${c.right().unavailable()}">read</td></tr>
+                </table>
+            </div>
+            <p class="note">
+                The two reads are moments apart, not one instant, and each shows the message as it was then. A
+                difference here is between those two observations; it does not say what happened to either message
+                before or after.
+            </p>
+            <p class="unavailable" th:if="${!c.compared()}">
+                Nothing was compared: a message that could not be read is unavailable, not empty.
+            </p>
+        </div>
+
+        <th:block th:if="${c.compared()}">
+            <!-- ============================================================ headers -->
+            <div class="panel">
+                <h2>Headers
+                    <span class="muted" th:text="${c.headerDifferences()} == 0 ? '(all the same)'
+                          : '(' + ${c.headerDifferences()} + ' differ)'">(n differ)</span></h2>
+                <div class="table-scroll">
+                    <table>
+                        <thead><tr><th>Header</th><th>Left</th><th>Right</th><th></th></tr></thead>
+                        <tbody>
+                        <tr th:each="f : ${c.headers()}"
+                            th:classappend="${f.change().name() == 'SAME'} ? '' : (${f.change().name() == 'DIFFERENT'} ? 'cmp-differs' : 'cmp-only')">
+                            <td th:text="${f.name()}">Priority</td>
+                            <td><span th:replace="~{fragments/value :: value(${f.left()}, ${f.leftShown()}, null)}"></span></td>
+                            <td><span th:replace="~{fragments/value :: value(${f.right()}, ${f.rightShown()}, null)}"></span></td>
+                            <td class="muted nowrap" th:text="${f.change().label()}">same</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ============================================================ properties -->
+            <div class="panel">
+                <h2>Properties
+                    <span class="muted" th:text="${c.properties().isEmpty()} ? '(neither has any)' : (${c.propertyDifferences()} == 0 ? '(all the same)'
+                          : '(' + ${c.propertyDifferences()} + ' of ' + ${c.properties().size()} + ' differ)')">(n differ)</span></h2>
+                <p class="note" style="margin-top:0" th:unless="${c.properties().isEmpty()}">
+                    <em>not set</em> means the message does not carry the property; <em>empty</em> means it carries an
+                    empty value. A value of another type &mdash; the text <code>5</code> and the number <code>5</code>
+                    &mdash; differs, because a core filter treats them differently.
+                </p>
+                <div class="table-scroll" th:unless="${c.properties().isEmpty()}">
+                    <table>
+                        <thead><tr><th>Property</th><th>Left</th><th>Right</th><th></th></tr></thead>
+                        <tbody>
+                        <tr th:each="f : ${c.properties()}"
+                            th:classappend="${f.change().name() == 'SAME'} ? '' : (${f.change().name() == 'DIFFERENT'} ? 'cmp-differs' : 'cmp-only')">
+                            <td><code class="cmp-value" th:text="${f.nameShown()}">key</code></td>
+                            <td><span th:replace="~{fragments/value :: value(${f.left()}, ${f.leftShown()}, ${f.leftType()})}"></span></td>
+                            <td><span th:replace="~{fragments/value :: value(${f.right()}, ${f.rightShown()}, ${f.rightType()})}"></span></td>
+                            <td class="muted nowrap" th:text="${f.change().label()}">same</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ============================================================ body -->
+            <div class="panel" th:with="b=${c.body()}">
+                <h2>Body
+                    <span class="badge" th:text="${b.mode().name() == 'JSON'} ? 'JSON' : (${b.mode().name() == 'TEXT'} ? 'text' : 'not compared')">text</span>
+                    <span class="muted" th:if="${b.mode().name() != 'NOT_COMPARED'}"
+                          th:text="${b.identical()} ? '(no difference found)' : '(differs)'">(differs)</span>
+                </h2>
+                <p class="note" style="margin-top:0" th:text="${b.explanation()}">explanation</p>
+                <p class="unavailable" th:each="l : ${b.limitations()}" th:text="${l}">limitation</p>
+
+                <div class="table-scroll" th:if="${!b.lines().isEmpty()}">
+                    <table class="diff">
+                        <tbody>
+                        <tr th:each="l : ${b.lines()}" th:class="${l.op()}">
+                            <th:block th:if="${l.op() == 'skip'}">
+                                <td colspan="4" th:text="'… ' + ${l.skipped()} + ' unchanged line(s)'">… 12 unchanged lines</td>
+                            </th:block>
+                            <th:block th:unless="${l.op() == 'skip'}">
+                                <td class="ln" th:text="${l.leftNumber() > 0} ? ${l.leftNumber()} : ''">1</td>
+                                <td class="ln" th:text="${l.rightNumber() > 0} ? ${l.rightNumber()} : ''">1</td>
+                                <td class="op" th:text="${l.op() == 'removed'} ? '−' : (${l.op() == 'added'} ? '+' : '')"
+                                    th:title="${l.op() == 'removed'} ? 'only on the left' : (${l.op() == 'added'} ? 'only on the right' : 'on both')"></td>
+                                <td class="txt" th:text="${l.textShown()}">line</td>
+                            </th:block>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <p class="note">Left line numbers first, then right. <strong>−</strong> is only on the left,
+                        <strong>+</strong> only on the right.</p>
+                </div>
+
+                <th:block th:if="${b.mode().name() == 'JSON'}">
+                    <p class="muted" th:text="${b.unchangedPaths()} + ' value(s) the same on both sides.'">n the same</p>
+                    <div class="table-scroll" th:if="${!b.paths().isEmpty()}">
+                        <table>
+                            <thead><tr><th>Path</th><th>Left</th><th>Right</th><th></th></tr></thead>
+                            <tbody>
+                            <tr th:each="f : ${b.paths()}"
+                                th:classappend="${f.change().name() == 'DIFFERENT'} ? 'cmp-differs' : 'cmp-only'">
+                                <td><code class="cmp-value" th:text="${f.nameShown()}">$.a</code></td>
+                                <td><span th:replace="~{fragments/value :: value(${f.left()}, ${f.leftShown()}, ${f.leftType()})}"></span></td>
+                                <td><span th:replace="~{fragments/value :: value(${f.right()}, ${f.rightShown()}, ${f.rightType()})}"></span></td>
+                                <td class="muted nowrap" th:text="${f.change().label()}">differs</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </th:block>
+            </div>
+        </th:block>
+    </th:block>
+</div>
+
+</body>
+</html>

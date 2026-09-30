@@ -54,7 +54,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  * built filters on the search and queue pages, the saved-search pages for every scope, and {@code /compare}. Two of
  * them are held to what they promise: comparing two snapshots this broker just produced reads nothing from it, and
  * opening a saved search reads only the listing that says whether its scope is still there. Dead-letter triage
- * ({@code /triage}) is visited for every queue, plain and grouped by a property.
+ * ({@code /triage}) is visited for every queue, plain and grouped by a property, and message comparison
+ * ({@code /message/compare}) for two messages of every queue that has them, and for one message against itself.
  */
 @SpringBootTest(properties =
 { "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash=",
@@ -167,6 +168,25 @@ class PagesIT
         assertTrue(visited.stream().anyMatch(path -> path.startsWith("/saved/")), visited.toString());
         assertTrue(visited.contains("/compare"), visited.toString());
         assertTrue(visited.stream().anyMatch(path -> path.startsWith("/triage?name=")), visited.toString());
+        assertTrue(visited.stream().anyMatch(path -> path.startsWith("/message/compare?name=")), visited.toString());
+    }
+
+    @Test
+    @DisplayName("comparing two messages costs the queue listing and nothing else from management")
+    void comparingMessagesReadsOnlyTheListing() throws Exception
+    {
+        QueueBrowseService browse = new QueueBrowseService(probe, 200, 200000, 20000, 20_000_000L);
+        List<MessageSummary> messages = browse.page(ArtemisBrokerSupport.TEXT_QUEUE, null, 1, 2).messages();
+        assertEquals(2, messages.size(), "the shared fixture has fewer than two text messages");
+        String path = "/message/compare?name=" + ArtemisBrokerSupport.TEXT_QUEUE + "&id=" + messages.get(0).messageId()
+                + "&id=" + messages.get(1).messageId();
+
+        calls(path); // the first reading of a session can differ
+        long cost = calls(path);
+        String body = page(path);
+
+        assertTrue(cost <= 1, path + " made " + cost + " management calls");
+        assertTrue(body.contains("<h2>Headers"), "the two messages were not compared");
     }
 
     @Test
@@ -250,7 +270,7 @@ class PagesIT
     void listPagesDoNotScanPerResource() throws Exception
     {
         List<String> lists = List.of("/overview", "/addresses", "/broker", "/connectivity", "/transactions", "/saved",
-                "/compare");
+                "/compare", "/message/compare");
         Map<String, Long> small = new LinkedHashMap<>();
         for (String path : lists)
         {
@@ -290,8 +310,9 @@ class PagesIT
         List<String> paths = new ArrayList<>(List.of("/", "/overview", "/broker", "/connectivity", "/transactions",
                 "/addresses", "/search?filter=" + FILTER, "/search?filter=" + FILTER + "&internal=true",
                 "/export?filter=" + FILTER + "&format=csv", "/export?filter=" + FILTER + "&format=json", "/diagnose",
-                "/diagnose?internal=true", "/snapshot?format=json", "/snapshot?format=text", "/compare", "/saved",
-                "/search?filter=" + NOBODY, "/search?filter=AMQUserID = '" + NOBODY + "'&internal=true",
+                "/diagnose?internal=true", "/snapshot?format=json", "/snapshot?format=text", "/compare",
+                "/message/compare", "/saved", "/search?filter=" + NOBODY,
+                "/search?filter=AMQUserID = '" + NOBODY + "'&internal=true",
                 "/search?build=run&priorityMin=0&priorityMax=9&durability=DURABLE",
                 "/search?build=show&conditions[0].name=orderId&conditions[0].type=STRING"
                         + "&conditions[0].operator=EQUALS&conditions[0].value=O'Brien",
@@ -317,7 +338,18 @@ class PagesIT
             paths.add("/export?name=" + queue.name() + "&format=json");
             paths.add("/triage?name=" + queue.name());
             paths.add("/triage?name=" + queue.name() + "&sample=3&by=_AMQ_ORIG_QUEUE");
-            for (MessageSummary message : browse.page(queue.name(), null, 1, 5).messages())
+            List<MessageSummary> firstFew = browse.page(queue.name(), null, 1, 5).messages();
+            if (firstFew.size() >= 2)
+            {
+                paths.add("/message/compare?name=" + queue.name() + "&id=" + firstFew.get(0).messageId() + "&id="
+                        + firstFew.get(1).messageId());
+            }
+            if (!firstFew.isEmpty())
+            {
+                paths.add("/message/compare?name=" + queue.name() + "&id=" + firstFew.get(0).messageId() + "&id2="
+                        + firstFew.get(0).messageId());
+            }
+            for (MessageSummary message : firstFew)
             {
                 // Each exact-ID lookup reads every queue, so a few real messages are enough to exercise it.
                 if (lookups < 5 && message.messageId() != null && message.messageId().startsWith("ID:"))

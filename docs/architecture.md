@@ -439,6 +439,32 @@ app over at most `artemis.triage.max-sample` rows; nothing streams the queue. Sh
 sample. The queue's count is read before and after, and a row seen on two pages is counted once and
 reported, because a dead-letter queue that is being drained or filled moves under the pages.
 
+### Comparing two messages: two observations, never a guess
+
+Message comparison (Phase 14 P5) reads each message with the message page's own read — a JMS
+`QueueBrowser` with a `JMSMessageID` selector, on a queue the listing names (by FQQN where address and
+queue differ) — so it adds no management operation and consumes nothing. Decisions:
+
+- **Two reads, two times.** The sides are read one after the other and each carries its read time;
+  the page says a difference is between two observations, not a history of either message.
+- **Unavailable is not empty.** A browse that returns nothing is reported with why it might not be
+  there — consumed, expired, moved, or in flight (a browser never sees a delivering message, so an
+  in-flight body is never read) — and then nothing is compared at all, rather than diffing against a
+  blank.
+- **Absent, empty and typed.** Headers and properties are compared with null meaning *not carried*;
+  `MessageDetail` now records each property's Java type, because a core filter treats `'5'` and `5`
+  differently and so must the comparison.
+- **JSON only when both bodies are whole.** A truncated body is not parsed (a cut document is not the
+  document), decimals are read as `BigDecimal` so values past a double's precision do not compare
+  equal, and a body over `max-json-values` falls back to text. Text is split at `\n` only, so a CRLF
+  body visibly differs from an LF one.
+- **Bounded.** Each body is cut at `max-body-chars`, the line alignment is an LCS over the changed
+  region only (common prefix and suffix are stripped first) and is skipped past `max-align-cells`,
+  and at most `max-shown-lines` rows are drawn. Every cut is written on the page.
+- **Visible, not just escaped.** Thymeleaf escapes HTML; `MessageComparer.visible` additionally writes
+  control, bidirectional-override and zero-width characters as escapes, since a comparison's job is
+  to make a difference visible and those characters hide or reorder one.
+
 ### A filtered count is a sample, not a count
 
 Artemis examines only the first `management-browse-page-size` messages (200 by default) when
@@ -670,12 +696,14 @@ queue listing, or the address listing that joins it) — a search would add a br
 allowlist is pinned exactly in `ManagementChannelTest`, so adding a read is a visible change that
 should arrive with its recorded reply shape; Phase 14 added none. Triage (P4) is visited for every
 queue, plain and grouped by a property; it adds no operation either, reading `browse`, the queue
-listing and `getAddressSettingsAsJSON`.
+listing and `getAddressSettingsAsJSON`. Message comparison (P5) is visited for two messages of every
+queue that has them and for one message against itself, and one comparison is held to at most one
+management call — the queue listing — since both messages are read over JMS.
 
 A rendering test is only worth what it fails on. Each Phase 13 page and panel was broken in turn —
 an expression that cannot evaluate, inserted inside the panel's own condition — and
 `PageRenderingTest` failed every time, between 1 and 17 tests per break. Phase 14's templates got the
 same treatment — `compare`, `saved`, `saved-search`, `search`, and both fragments in `filter.html` —
 and each break failed between 4 and 41 tests across the rendering and controller tests. P4's
-`triage.html` got it too. Repeat that
+`triage.html` got it too, and so did P5's `message-compare.html` (4 tests per break). Repeat that
 when adding a panel rather than trusting that a `containsString` is looking at it.

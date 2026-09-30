@@ -478,6 +478,15 @@ Killed after `maxDeliveryAttempts=2` (anycast, and a durable subscription), expi
 - A core filter `_AMQ_ORIG_ADDRESS = 'x'` works on a filtered browse. `moveMessages` needs an existing target queue
   (`AMQ229049` otherwise); a dead-letter address with no queue drops the message.
 
+### Message comparison (2026-09-30, 2.55.0 and 2.57.0 identical, Phase 14 P5)
+
+- **The JMS `QueueBrowser` does not return an in-flight message either**, selector or not: a message received by a
+  CLIENT_ACKNOWLEDGE consumer and not acked is invisible to the detail read, like management `browse`. So the detail
+  and compare paths can never read an in-flight body, by construction (`MessageComparisonIT`).
+- **The JMS read path reports property types**: `getObjectProperty` gives `String`/`Integer`/`Long`…, and
+  `getPropertyNames` includes `JMSXDeliveryCount` (Integer, 0 on a browse). The CLI's `producer --message` adds
+  `ThreadSent` (String) and `count` (Long) to every message — expect them in any CLI-seeded comparison.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

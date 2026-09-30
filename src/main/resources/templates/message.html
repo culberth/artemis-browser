@@ -50,6 +50,23 @@
             </p>
         </div>
 
+        <form class="panel" method="get" th:action="@{/message/compare}">
+            <h2>Compare with another message</h2>
+            <input type="hidden" name="name" th:value="${queueName}">
+            <input type="hidden" name="id" th:value="${message.messageId()}">
+            <div class="field-row">
+                <div style="min-width:12rem">
+                    <label for="name2">Queue</label>
+                    <input id="name2" name="name2" th:value="${queueName}" required>
+                </div>
+                <div style="flex:1;min-width:16rem">
+                    <label for="id2">Message ID</label>
+                    <input id="id2" name="id2" placeholder="ID:…" required style="width:100%">
+                </div>
+                <div><button type="submit">Compare</button></div>
+            </div>
+        </form>
+
         <div class="panel">
             <h2>Properties
                 <span class="muted" th:text="'(' + ${message.properties().size()} + ')'">(0)</span>
