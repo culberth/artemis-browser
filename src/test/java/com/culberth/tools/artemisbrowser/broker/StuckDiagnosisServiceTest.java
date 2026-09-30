@@ -31,6 +31,7 @@ class StuckDiagnosisServiceTest
     private DivertDirectory diverts;
     private InFlightService inFlight;
     private RateService rates;
+    private ConnectivityService connectivity;
 
     @BeforeEach
     void mocks()
@@ -43,6 +44,8 @@ class StuckDiagnosisServiceTest
         given(diverts.all()).willReturn(List.of());
         inFlight = mock(InFlightService.class);
         rates = mock(RateService.class);
+        connectivity = mock(ConnectivityService.class);
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
         given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList()))
                 .willReturn(new Diagnosis.Measured(Rates.none("not measured in this test"), false));
         given(inFlight.limit()).willReturn(5000);
@@ -766,7 +769,7 @@ class StuckDiagnosisServiceTest
 
     private StuckDiagnosisService service()
     {
-        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates);
+        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates, connectivity);
     }
 
     private Finding only(List<Finding> findings)

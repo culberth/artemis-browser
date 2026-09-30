@@ -193,6 +193,36 @@ Three rules make it usable offline:
 `schemaVersion` is bumped whenever a field changes meaning, so two saved snapshots can be compared
 knowingly.
 
+## Connectivity: this broker's view, and the backlog behind it
+
+`/connectivity`, diagnose's connectivity findings and the snapshot's connectivity section come from
+one `ConnectivityService.collect`, given a queue listing the caller already has. It reads the HA
+attributes, `listNetworkTopology` and `listBrokerConnections` (the two operations P5 added to the
+allowlist), `connectorsAsJSON`, and each bridge and cluster connection by name. None of it opens a
+connection to another broker; Phase 13 keeps one broker per session, and a peer's health is that
+peer's to report. So every panel and finding says *this broker reports*, and *connected* is never
+presented as an end-to-end path.
+
+The evidence that matters is usually a queue, not a flag. A bridge that cannot connect holds its
+messages on its source queue; a peer that has gone leaves messages in the store-and-forward queue
+named after it; a mirror's backlog is its internal queue. Findings are made from those depths: a
+path down with messages behind it is *not moving*, one with nothing waiting is *worth a look*.
+
+Three things read wrong if taken at face value, all measured on 2.55.0 and 2.57.0:
+
+- **A bridge's `messagesPendingAcknowledgement` is cumulative sent.** Ten bridged and acknowledged
+  read 10 and 10. It is written as `messagesSentTotal`, and *outstanding* is the difference.
+- **The topology keeps a stopped backup.** It was still announced 70 seconds after the backup
+  stopped, while `replicaSync` went false within eight. The replica finding comes from
+  `replicaSync`, and says the topology entry is no evidence either way.
+- **`connectorsAsJSON` returns connector credentials in clear.** Only name, host and port are
+  read from it. Broker-connection URIs are returned as configured, so a password in one is masked
+  (`Redaction.uri`). Bridge credentials are not management attributes at all.
+
+A replication backup accepts no client connections, so the page is seen from the primary in
+practice; the backup's view is recorded but not something a user can reach. Shared-store policies
+are recognised by name only — no shared-store pair was available to measure.
+
 ## Trends: bounded, session-only, and broken where they must be
 
 Trends extend the one-interval rate tracker rather than add a collector. A reading is taken only

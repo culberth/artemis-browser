@@ -2,6 +2,7 @@ package com.culberth.tools.artemisbrowser.broker;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -42,5 +43,38 @@ public final class Redaction
     public static int count(Map<String, String> values)
     {
         return (int) values.keySet().stream().filter(Redaction::secret).count();
+    }
+
+    /** {@code //user:password@} in a URI. */
+    private static final Pattern USER_INFO = Pattern.compile("(//[^/:@?#]+):[^@/?#]*@");
+
+    /** One {@code key=value} parameter, after {@code ?}, {@code &} or {@code ;}. */
+    private static final Pattern PARAMETER = Pattern.compile("([?&;])([^=&;?#]+)=([^&;#]*)");
+
+    /**
+     * A URI with any password in its user info, and the value of any secret-looking parameter, masked.
+     *
+     * <p>
+     * A broker connection's {@code uri} is returned exactly as it was configured, and Artemis accepts credentials and
+     * key-store passwords as URI parameters — {@code tcp://host:61616?password=...}. Nothing in the management reply
+     * marks them, so they are found by the same key rule as settings.
+     */
+    public static String uri(String uri)
+    {
+        if (uri == null)
+        {
+            return null;
+        }
+        String masked = USER_INFO.matcher(uri).replaceAll("$1:" + Matcher.quoteReplacement(MASK) + "@");
+        Matcher parameters = PARAMETER.matcher(masked);
+        StringBuilder out = new StringBuilder();
+        while (parameters.find())
+        {
+            String replacement = secret(parameters.group(2)) ? parameters.group(1) + parameters.group(2) + "=" + MASK
+                    : parameters.group();
+            parameters.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        parameters.appendTail(out);
+        return out.toString();
     }
 }

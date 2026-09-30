@@ -165,8 +165,8 @@ class ReadOnlyGuaranteeIT
                 Map<String, String> before = counters();
                 List<Finding> findings = new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
                         new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
-                        new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)))
-                        .diagnose(false);
+                        new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
+                        new ConnectivityService(brokerSession)).diagnose(false);
                 assertEquals(before, counters(), "diagnosing moved a counter");
 
                 Finding hoarding = findings.stream()
@@ -292,7 +292,8 @@ class ReadOnlyGuaranteeIT
         }
         new StuckDiagnosisService(queues, new AddressDirectory(brokerSession, queues),
                 new BrokerInfoService(brokerSession), browse, new DivertDirectory(brokerSession), inFlight,
-                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(true);
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
+                new ConnectivityService(brokerSession)).diagnose(true);
     }
 
     /**

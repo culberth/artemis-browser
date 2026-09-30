@@ -111,6 +111,7 @@ public final class SnapshotWriter
             node.put("bytesSent", p.bytesSent());
             node.put("thisTool", p.self());
         });
+        connectivity(sections.putObject("connectivity"), snapshot.connectivity(), unavailable, omitted);
         trends(sections.putObject("trends"), snapshot.trends());
         diagnosis(sections.putObject("diagnosis"), snapshot.diagnosis(), unavailable);
 
@@ -259,6 +260,167 @@ public final class SnapshotWriter
         {
             omitted(omitted, name, listing.total() - listing.rows().value().size(),
                     "rows past artemis.snapshot.max-rows");
+        }
+    }
+
+    /**
+     * HA state, topology and outbound paths. Every part is this broker's view; nothing connected to the others. URIs
+     * are already masked, connectors carry only name, host and port, and a bridge's cumulative "pending" counter is
+     * written under its honest name, {@code messagesSentTotal}.
+     */
+    private static void connectivity(ObjectNode node, Reading<Connectivity> reading, ArrayNode unavailable,
+            ArrayNode omitted)
+    {
+        if (!section(node, reading, "connectivity", unavailable))
+        {
+            return;
+        }
+        Connectivity connectivity = reading.value();
+        node.put("note", "As this broker reports it. No other broker was connected to: a peer, backup or target is"
+                + " described from this side only, and connected does not mean the far side is healthy.");
+
+        HaState ha = connectivity.ha();
+        ObjectNode haNode = node.putObject("ha");
+        haNode.put("collectedAt", ha.collectedAt().toString());
+        ObjectNode haData = haNode.putObject("data");
+        String where = "connectivity.ha";
+        reading(haData, "policy", ha.policy(), where, unavailable);
+        haData.put("role", ha.role());
+        reading(haData, "nodeId", ha.nodeId(), where, unavailable);
+        reading(haData, "active", ha.active(), where, unavailable);
+        reading(haData, "backup", ha.backup(), where, unavailable);
+        if (ha.replicaSyncNotApplicable() != null)
+        {
+            haData.put("replicaSync", ha.replicaSyncNotApplicable());
+        }
+        else
+        {
+            reading(haData, "replicaSync", ha.replicaSync(), where, unavailable);
+        }
+        reading(haData, "sharedStore", ha.sharedStore(), where, unavailable);
+        reading(haData, "clustered", ha.clustered(), where, unavailable);
+        reading(haData, "pendingMirrorAcks", ha.pendingMirrorAcks(), where, unavailable);
+
+        ObjectNode topology = node.putObject("topology");
+        if (section(topology, connectivity.topology(), "connectivity.topology", unavailable))
+        {
+            ArrayNode data = topology.putArray("data");
+            for (TopologyMember member : connectivity.topology().value())
+            {
+                ObjectNode row = data.addObject();
+                row.put("nodeId", member.nodeId());
+                row.put("primary", member.primary());
+                row.put("backup", member.backup());
+                row.put("thisBroker", member.self());
+            }
+        }
+
+        ObjectNode clusters = node.putObject("clusterConnections");
+        if (section(clusters, connectivity.clusters(), "connectivity.clusterConnections", unavailable))
+        {
+            ArrayNode data = clusters.putArray("data");
+            for (ClusterLink cluster : connectivity.clusters().value())
+            {
+                ObjectNode row = data.addObject();
+                row.put("name", cluster.name());
+                row.put("started", cluster.started());
+                ObjectNode peers = row.putObject("connectedPeers");
+                cluster.peers().forEach(peers::put);
+                row.put("maxHops", cluster.maxHops());
+                row.put("messageLoadBalancing", cluster.loadBalancing());
+                ArrayNode connectors = row.putArray("staticConnectors");
+                cluster.staticConnectors().forEach(connectors::add);
+                row.put("discoveryGroup", cluster.discoveryGroup());
+                row.put("messagesAcknowledged", cluster.acknowledged());
+                row.put("messagesSentTotal", cluster.sent());
+                ArrayNode forward = row.putArray("forwardQueues");
+                for (QueueOverview queue : connectivity.forwardQueues(cluster))
+                {
+                    ObjectNode q = forward.addObject();
+                    String peer = Connectivity.peerOf(cluster, queue);
+                    q.put("queue", queue.name());
+                    q.put("peerNodeId", peer);
+                    q.put("peerConnected", cluster.peers().containsKey(peer));
+                    q.put("messageCount", queue.messageCount());
+                }
+            }
+            if (connectivity.clustersNotRead() > 0)
+            {
+                omitted(omitted, "connectivity.clusterConnections", connectivity.clustersNotRead(),
+                        "cluster connections past the first " + ConnectivityService.ITEM_LIMIT);
+            }
+        }
+
+        ObjectNode bridges = node.putObject("bridges");
+        if (section(bridges, connectivity.bridges(), "connectivity.bridges", unavailable))
+        {
+            ArrayNode data = bridges.putArray("data");
+            for (Bridge bridge : connectivity.bridges().value())
+            {
+                ObjectNode row = data.addObject();
+                row.put("name", bridge.name());
+                row.put("queue", bridge.queueName());
+                QueueOverview source = connectivity.queue(bridge.queueName());
+                if (source == null)
+                {
+                    row.putNull("queueMessageCount");
+                }
+                else
+                {
+                    row.put("queueMessageCount", source.messageCount());
+                }
+                row.put("forwardingAddress", bridge.forwardingAddress());
+                row.put("filter", bridge.filter());
+                row.put("targets", bridge.discovery() ? "discovery group " + bridge.discoveryGroup()
+                        : connectivity.targets(bridge.connectors()));
+                row.put("started", bridge.started());
+                row.put("connected", bridge.connected());
+                row.put("ha", bridge.ha());
+                row.put("messagesAcknowledged", bridge.acknowledged());
+                row.put("messagesSentTotal", bridge.sent());
+                row.put("messagesOutstanding", bridge.outstanding());
+                row.put("transformerClassName", bridge.transformerClassName());
+            }
+            if (connectivity.bridgesNotRead() > 0)
+            {
+                omitted(omitted, "connectivity.bridges", connectivity.bridgesNotRead(),
+                        "bridges past the first " + ConnectivityService.ITEM_LIMIT);
+            }
+        }
+
+        ObjectNode links = node.putObject("brokerConnections");
+        if (section(links, connectivity.brokerLinks(), "connectivity.brokerConnections", unavailable))
+        {
+            ArrayNode data = links.putArray("data");
+            for (BrokerLink link : connectivity.brokerLinks().value())
+            {
+                ObjectNode row = data.addObject();
+                row.put("name", link.name());
+                row.put("protocol", link.protocol());
+                row.put("uri", link.uri());
+                row.put("started", link.started());
+                row.put("connected", link.connected());
+                QueueOverview mirror = connectivity.queue(link.mirrorQueue());
+                row.put("mirror", mirror != null);
+                if (mirror != null)
+                {
+                    row.put("mirrorQueue", mirror.name());
+                    row.put("mirrorQueueMessageCount", mirror.messageCount());
+                }
+            }
+        }
+
+        ObjectNode connectors = node.putObject("connectors");
+        if (section(connectors, connectivity.connectors(), "connectivity.connectors", unavailable))
+        {
+            ArrayNode data = connectors.putArray("data");
+            for (Connector connector : connectivity.connectors().value())
+            {
+                ObjectNode row = data.addObject();
+                row.put("name", connector.name());
+                row.put("host", connector.host());
+                row.put("port", connector.port());
+            }
         }
     }
 
@@ -543,6 +705,8 @@ public final class SnapshotWriter
         }
         line(out, "");
 
+        connectivityText(out, snapshot.connectivity());
+
         line(out, "CLIENTS");
         line(out, "  " + listingText("connections", snapshot.connections()));
         line(out, "  " + listingText("consumers", snapshot.consumers()));
@@ -560,6 +724,92 @@ public final class SnapshotWriter
         line(out, "OMITTED (" + json.get("omitted").size() + ")");
         json.get("omitted").forEach(row -> line(out,
                 "  " + row.get("section").asText() + ": " + row.get("count").asInt() + " " + row.get("why").asText()));
+    }
+
+    private static void connectivityText(PrintWriter out, Reading<Connectivity> reading)
+    {
+        if (!reading.available())
+        {
+            line(out, "CONNECTIVITY: not read - " + reading.explained());
+            line(out, "");
+            return;
+        }
+        Connectivity connectivity = reading.value();
+        HaState ha = connectivity.ha();
+        line(out, "CONNECTIVITY (as this broker reports it; no other broker was inspected)");
+        line(out, "  HA: " + ha.role() + " (policy " + text(ha.policy()) + "), active " + text(ha.active())
+                + ", replica sync "
+                + (ha.replicaSyncNotApplicable() != null ? ha.replicaSyncNotApplicable() : text(ha.replicaSync()))
+                + ", clustered " + text(ha.clustered()));
+        if (connectivity.topology().available())
+        {
+            line(out, "  Topology: " + connectivity.topology().value().size() + " node(s)");
+            connectivity.topology().value()
+                    .forEach(member -> line(out,
+                            "    " + member.nodeId() + " primary " + member.primary()
+                                    + (member.hasBackup() ? ", backup " + member.backup() : "")
+                                    + (member.self() ? " (this broker)" : "")));
+        }
+        else
+        {
+            line(out, "  Topology: not read - " + connectivity.topology().explained());
+        }
+        if (connectivity.clusters().available())
+        {
+            for (ClusterLink cluster : connectivity.clusters().value())
+            {
+                StringBuilder waiting = new StringBuilder();
+                for (QueueOverview queue : connectivity.forwardQueues(cluster))
+                {
+                    if (queue.messageCount() > 0)
+                    {
+                        waiting.append(", ").append(queue.messageCount()).append(" waiting for ")
+                                .append(Connectivity.peerOf(cluster, queue));
+                    }
+                }
+                line(out, "  Cluster connection " + cluster.name() + ": " + (cluster.started() ? "started" : "STOPPED")
+                        + ", " + cluster.peers().size() + " peer(s) connected" + waiting);
+            }
+        }
+        else
+        {
+            line(out, "  Cluster connections: not read - " + connectivity.clusters().explained());
+        }
+        if (connectivity.bridges().available())
+        {
+            for (Bridge bridge : connectivity.bridges().value())
+            {
+                QueueOverview source = connectivity.queue(bridge.queueName());
+                line(out,
+                        "  Bridge " + bridge.name() + ": " + bridge.queueName() + " -> "
+                                + (bridge.discovery() ? "discovery group " + bridge.discoveryGroup()
+                                        : connectivity.targets(bridge.connectors()))
+                                + ", "
+                                + (bridge.started() ? (bridge.connected() ? "connected" : "NOT CONNECTED") : "STOPPED")
+                                + (source == null ? "" : ", " + source.messageCount() + " waiting"));
+            }
+        }
+        else
+        {
+            line(out, "  Bridges: not read - " + connectivity.bridges().explained());
+        }
+        if (connectivity.brokerLinks().available())
+        {
+            for (BrokerLink link : connectivity.brokerLinks().value())
+            {
+                QueueOverview mirror = connectivity.queue(link.mirrorQueue());
+                line(out,
+                        "  Broker connection " + link.name() + " (" + link.protocol()
+                                + (mirror == null ? "" : ", mirror") + ") to " + link.uri() + ": "
+                                + (link.started() ? (link.connected() ? "connected" : "NOT CONNECTED") : "STOPPED")
+                                + (mirror == null ? "" : ", " + mirror.messageCount() + " waiting"));
+            }
+        }
+        else
+        {
+            line(out, "  Broker connections: not read - " + connectivity.brokerLinks().explained());
+        }
+        line(out, "");
     }
 
     private static String listingText(String name, IncidentSnapshot.Listing<?> listing)

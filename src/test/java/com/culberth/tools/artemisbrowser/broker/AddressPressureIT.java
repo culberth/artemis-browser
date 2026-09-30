@@ -148,7 +148,8 @@ class AddressPressureIT
                 new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
                 new DivertDirectory(brokerSession),
                 new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000),
-                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession))).diagnose(false);
+                new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
+                new ConnectivityService(brokerSession)).diagnose(false);
 
         Finding held = about(findings, HELD);
         assertTrue(held.isStuck());

@@ -37,8 +37,10 @@ class SnapshotIT
         RateService rates = new RateService(brokerSession, new RateTracker(), queues);
         StuckDiagnosisService diagnosis = new StuckDiagnosisService(queues, addresses, info,
                 new QueueBrowseService(brokerSession, 200, 200000, 20000, 20_000_000L),
-                new DivertDirectory(brokerSession), new InFlightService(brokerSession, info, 5000), rates);
-        service = new SnapshotService(brokerSession, info, queues, addresses, rates, diagnosis, 1000, 200);
+                new DivertDirectory(brokerSession), new InFlightService(brokerSession, info, 5000), rates,
+                new ConnectivityService(brokerSession));
+        service = new SnapshotService(brokerSession, info, queues, addresses, rates, diagnosis,
+                new ConnectivityService(brokerSession), 1000, 200);
     }
 
     @AfterAll

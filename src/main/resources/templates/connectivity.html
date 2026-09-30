@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; connectivity</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+    <meta th:if="${refresh > 0}" http-equiv="refresh" th:content="${refresh}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('connectivity')}"></div>
+
+    <div th:replace="~{fragments/layout :: refresh('/connectivity', 'connectivity', ${viewParams})}"></div>
+
+    <div class="panel">
+        <p class="note" style="margin-top:0">
+            Everything on this page is this broker&rsquo;s own report. Nothing here connects to a peer, a backup or a
+            bridge target: <em>connected</em> means this broker holds a connection, not that the other side accepted,
+            routed or kept anything. To know how the far side is doing, connect this tool to it.
+        </p>
+        <p class="note" th:if="${net.standalone()}">
+            This broker reports no HA policy, cluster connection, bridge or broker connection, so no configured path
+            takes messages off it. Diverts, which move messages between its own addresses, are on each address page.
+        </p>
+    </div>
+
+    <!-- HA -->
+    <div class="panel" th:with="ha=${net.ha()}">
+        <h2>
+            High availability
+            <span class="badge" th:classappend="${ha.replicaOutOfSync()} ? 'warn' : ''" th:text="${ha.role()}">standalone</span>
+            <span class="muted collected" th:text="'read ' + ${#temporals.format(ha.collectedAt(), 'HH:mm:ss')}">read 12:00:00</span>
+        </h2>
+        <div class="stats">
+            <div class="stat"><span class="k">HA policy</span>
+                <span class="v small" th:if="${ha.policy().available()}" th:text="${ha.policy().value()}">Primary Only</span>
+                <span class="v" th:unless="${ha.policy().available()}"><span th:replace="~{fragments/layout :: missing(${ha.policy()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Active</span>
+                <span class="v" th:if="${ha.active().available()}" th:text="${ha.active().value()} ? 'yes' : 'no'">yes</span>
+                <span class="v" th:unless="${ha.active().available()}"><span th:replace="~{fragments/layout :: missing(${ha.active()})}"></span></span>
+            </div>
+            <div class="stat" th:classappend="${ha.replicaOutOfSync()} ? 'stat-warn' : ''">
+                <span class="k">Replica synchronized</span>
+                <span class="v small muted" th:if="${ha.replicaSyncNotApplicable() != null}" th:text="${ha.replicaSyncNotApplicable()}">not applicable</span>
+                <th:block th:if="${ha.replicaSyncNotApplicable() == null}">
+                    <span class="v" th:if="${ha.replicaSync().available()}" th:text="${ha.replicaSync().value()} ? 'yes' : 'no'">yes</span>
+                    <span class="v" th:unless="${ha.replicaSync().available()}"><span th:replace="~{fragments/layout :: missing(${ha.replicaSync()})}"></span></span>
+                </th:block>
+            </div>
+            <div class="stat"><span class="k">Shared store</span>
+                <span class="v" th:if="${ha.sharedStore().available()}" th:text="${ha.sharedStore().value()} ? 'yes' : 'no'">no</span>
+                <span class="v" th:unless="${ha.sharedStore().available()}"><span th:replace="~{fragments/layout :: missing(${ha.sharedStore()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Clustered</span>
+                <span class="v" th:if="${ha.clustered().available()}" th:text="${ha.clustered().value()} ? 'yes' : 'no'">no</span>
+                <span class="v" th:unless="${ha.clustered().available()}"><span th:replace="~{fragments/layout :: missing(${ha.clustered()})}"></span></span>
+            </div>
+        </div>
+        <p class="note">
+            <th:block th:if="${ha.nodeId().available()}">Node <code th:text="${ha.nodeId().value()}">id</code>.</th:block>
+            A replication primary reports its replica synchronized once a backup has copied its journal and keeps up;
+            it went back to <em>no</em> within seconds of the backup stopping. A backup accepts no client connections
+            until it takes over, so this page is normally seen from the primary.
+        </p>
+        <p class="error" th:if="${ha.replicaOutOfSync()}">
+            No synchronized backup: if this broker is lost there is no replica to fail over to. The topology below may
+            still name a backup &mdash; that entry outlasts a stopped backup, so it does not show one is running.
+        </p>
+    </div>
+
+    <!-- Topology -->
+    <div class="panel">
+        <h2>Cluster topology
+            <span class="muted" th:if="${net.topology().available()}" th:text="'(' + ${net.topology().value().size()} + ' node(s))'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${net.topology()})}"></span></h2>
+        <th:block th:unless="${net.topology().available()}"><p th:replace="~{fragments/layout :: panelMissing(${net.topology()})}"></p></th:block>
+        <p class="muted" th:if="${net.topology().available() and net.topology().value().isEmpty()}">
+            This broker reports no cluster topology.
+        </p>
+        <div class="table-scroll" th:if="${net.topology().available() and !net.topology().value().isEmpty()}">
+            <table>
+                <thead><tr><th>Node</th><th>Primary</th><th>Backup announced</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="m : ${net.topology().value()}">
+                    <td><code th:text="${m.nodeId()}">node</code></td>
+                    <td th:text="${m.primary()}">host:61616</td>
+                    <td th:text="${m.hasBackup()} ? ${m.backup()} : '—'">—</td>
+                    <td><span class="badge" th:if="${m.self()}">this broker</span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            The nodes this broker knows of, as it last heard. A backup here was announced, and stays listed for a while
+            after it stops; replica synchronization above is the live signal.
+        </p>
+    </div>
+
+    <!-- Cluster connections -->
+    <div class="panel">
+        <h2>Cluster connections
+            <span class="muted" th:if="${net.clusters().available()}" th:text="'(' + ${net.clusters().value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${net.clusters()})}"></span></h2>
+        <th:block th:unless="${net.clusters().available()}"><p th:replace="~{fragments/layout :: panelMissing(${net.clusters()})}"></p></th:block>
+        <p class="muted" th:if="${net.clusters().available() and net.clusters().value().isEmpty()}">None configured.</p>
+        <div class="table-scroll" th:if="${net.clusters().available() and !net.clusters().value().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Name</th><th>State</th><th>Connected peers</th><th>Configured with</th><th>Load balancing</th>
+                    <th class="num">Max hops</th><th>Waiting for peers</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${net.clusters().value()}">
+                    <td th:text="${c.name()}">c1</td>
+                    <td>
+                        <span class="badge" th:if="${c.started()}">started</span>
+                        <span class="badge warn" th:unless="${c.started()}">stopped</span>
+                    </td>
+                    <td>
+                        <span class="badge warn" th:if="${c.started() and c.peers().isEmpty()}">none</span>
+                        <div th:each="p : ${c.peers()}"><code th:text="${p.key}">node</code> <span class="muted" th:text="${p.value}">host</span></div>
+                    </td>
+                    <td class="muted" th:text="${c.discovery()} ? ('discovery group ' + ${c.discoveryGroup()}) : ${net.targets(c.staticConnectors())}">toB</td>
+                    <td th:text="${c.loadBalancing()}">ON_DEMAND</td>
+                    <td class="num" th:text="${c.maxHops()}">1</td>
+                    <td>
+                        <div th:each="q : ${net.forwardQueues(c)}">
+                            <a th:href="@{/queues(name=${q.name()})}" th:text="${q.messageCount()} + ' for ' + ${T(com.culberth.tools.artemisbrowser.broker.Connectivity).peerOf(c, q)}">0 for node</a>
+                            <span class="badge warn" th:if="${!c.peers().containsKey(T(com.culberth.tools.artemisbrowser.broker.Connectivity).peerOf(c, q))}">peer not connected</span>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Messages for a peer wait in this broker&rsquo;s store-and-forward queue for it until they are sent; that
+            queue&rsquo;s depth is the backlog to that peer. Connected peers are the nodes this broker holds a
+            connection to now &mdash; never itself, never a backup.
+        </p>
+    </div>
+
+    <!-- Bridges -->
+    <div class="panel">
+        <h2>Core bridges
+            <span class="muted" th:if="${net.bridges().available()}" th:text="'(' + ${net.bridges().value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${net.bridges()})}"></span></h2>
+        <th:block th:unless="${net.bridges().available()}"><p th:replace="~{fragments/layout :: panelMissing(${net.bridges()})}"></p></th:block>
+        <p class="muted" th:if="${net.bridges().available() and net.bridges().value().isEmpty()}">None configured.</p>
+        <div class="table-scroll" th:if="${net.bridges().available() and !net.bridges().value().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Name</th><th>From queue</th><th class="num">Waiting</th><th>To</th><th>State</th>
+                    <th class="num">Acknowledged</th><th class="num">Outstanding</th><th></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="b : ${net.bridges().value()}" th:with="src=${net.queue(b.queueName())}">
+                    <td th:text="${b.name()}">to-b</td>
+                    <td><a th:href="@{/queues(name=${b.queueName()})}" th:text="${b.queueName()}">bridge.src</a></td>
+                    <td class="num">
+                        <span th:if="${src != null}" th:text="${src.messageCount()}">0</span>
+                        <span class="muted" th:if="${src == null}" title="Not in the queue listing">—</span>
+                    </td>
+                    <td>
+                        <span th:text="${b.discovery()} ? ('discovery group ' + ${b.discoveryGroup()}) : ${net.targets(b.connectors())}">toB (host:61616)</span>
+                        <div class="muted" th:if="${b.forwardsElsewhere()}" th:text="'address ' + ${b.forwardingAddress()} + ' there'">address bridge.dst there</div>
+                        <div class="muted" th:unless="${b.forwardsElsewhere()}">each message keeps its address</div>
+                    </td>
+                    <td>
+                        <span class="badge" th:if="${b.started() and b.connected()}">connected</span>
+                        <span class="badge warn" th:if="${b.started() and !b.connected()}">not connected</span>
+                        <span class="badge warn" th:unless="${b.started()}">stopped</span>
+                    </td>
+                    <td class="num muted" th:text="${b.acknowledged()}">0</td>
+                    <td class="num" th:text="${b.outstanding()}">0</td>
+                    <td>
+                        <span class="badge" th:if="${b.filtered()}" th:title="${b.filter()}">filtered</span>
+                        <span class="badge" th:if="${b.transformed()}" th:title="${b.transformerClassName()}">transformed</span>
+                        <span class="badge" th:if="${b.ha()}">HA</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${net.bridgesNotRead() > 0}" th:text="${net.bridgesNotRead()} + ' more bridge(s) past the first 100 were not read.'">more</p>
+        <p class="note">
+            A bridge consumes its queue here and sends to the target; while it cannot, messages simply stay on that
+            queue. <em>Outstanding</em> is sent and not yet acknowledged, worked out from two running totals: the
+            broker&rsquo;s own &ldquo;pending acknowledgement&rdquo; figure counts everything ever sent and never goes
+            down. Its user and password are not readable through management and are never shown.
+        </p>
+    </div>
+
+    <!-- Broker connections -->
+    <div class="panel">
+        <h2>Broker connections
+            <span class="muted" th:if="${net.brokerLinks().available()}" th:text="'(' + ${net.brokerLinks().value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${net.brokerLinks()})}"></span></h2>
+        <th:block th:unless="${net.brokerLinks().available()}"><p th:replace="~{fragments/layout :: panelMissing(${net.brokerLinks()})}"></p></th:block>
+        <p class="muted" th:if="${net.brokerLinks().available() and net.brokerLinks().value().isEmpty()}">None configured.</p>
+        <div class="table-scroll" th:if="${net.brokerLinks().available() and !net.brokerLinks().value().isEmpty()}">
+            <table>
+                <thead><tr><th>Name</th><th>Protocol</th><th>URI</th><th>State</th><th>Mirror backlog</th></tr></thead>
+                <tbody>
+                <tr th:each="l : ${net.brokerLinks().value()}" th:with="mq=${net.queue(l.mirrorQueue())}">
+                    <td>
+                        <span th:text="${l.name()}">mirror-b</span>
+                        <span class="badge" th:if="${mq != null}">mirror</span>
+                    </td>
+                    <td th:text="${l.protocol()}">AMQP</td>
+                    <td><code th:text="${l.uri()}">tcp://host:61616</code></td>
+                    <td>
+                        <span class="badge" th:if="${l.started() and l.connected()}">connected</span>
+                        <span class="badge warn" th:if="${l.started() and !l.connected()}">not connected</span>
+                        <span class="badge warn" th:unless="${l.started()}">stopped</span>
+                    </td>
+                    <td>
+                        <a th:if="${mq != null}" th:href="@{/queues(name=${mq.name()})}" th:text="${mq.messageCount()} + ' waiting'">0 waiting</a>
+                        <span class="muted" th:if="${mq == null}">—</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Outbound AMQP links this broker opens: mirrors, federation, senders and receivers. The listing carries no
+            traffic counters and does not say what each is for; a mirror is recognised by its internal queue, whose
+            depth is what it has yet to send. A password in a URI is masked.
+            <th:block th:if="${net.ha().pendingMirrorAcks().available() and net.ha().pendingMirrorAcks().value() > 0}">
+                This broker is waiting on <span th:text="${net.ha().pendingMirrorAcks().value()}">0</span> mirror
+                acknowledgement(s).
+            </th:block>
+        </p>
+    </div>
+
+    <!-- Connectors -->
+    <div class="panel">
+        <h2>Connectors
+            <span class="muted" th:if="${net.connectors().available()}" th:text="'(' + ${net.connectors().value().size()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${net.connectors()})}"></span></h2>
+        <th:block th:unless="${net.connectors().available()}"><p th:replace="~{fragments/layout :: panelMissing(${net.connectors()})}"></p></th:block>
+        <p class="muted" th:if="${net.connectors().available() and net.connectors().value().isEmpty()}">None configured.</p>
+        <div class="table-scroll" th:if="${net.connectors().available() and !net.connectors().value().isEmpty()}">
+            <table>
+                <thead><tr><th>Name</th><th>Host</th><th class="num">Port</th></tr></thead>
+                <tbody>
+                <tr th:each="c : ${net.connectors().value()}">
+                    <td th:text="${c.name()}">toB</td>
+                    <td th:text="${c.host()}">host</td>
+                    <td class="num" th:text="${c.port()}">61616</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            Where bridges and cluster connections try to connect. Only name, host and port are read: the broker
+            returns a connector&rsquo;s credentials in clear alongside them.
+        </p>
+    </div>
+</div>
+</body>
+</html>

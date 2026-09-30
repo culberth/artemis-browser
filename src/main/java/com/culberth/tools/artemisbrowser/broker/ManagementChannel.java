@@ -80,7 +80,7 @@ public class ManagementChannel implements AutoCloseable
             // broker.*
             "listQueues", "listAddresses", "getAcceptorsAsJSON", "listConnectionsAsJSON", "listAllConsumersAsJSON",
             "listProducersInfoAsJSON", "listConsumers", "getAddressSettingsAsJSON", "getDivertNames", "listConnections",
-            "listSessions", "listProducers",
+            "listSessions", "listProducers", "listNetworkTopology", "listBrokerConnections",
             // queue.*
             "browse", "countMessages", "listScheduledMessagesAsJSON", "listDeliveringMessagesAsJSON");
 

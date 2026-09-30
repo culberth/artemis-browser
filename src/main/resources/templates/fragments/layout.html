@@ -14,6 +14,8 @@
     <div class="field-row nav">
         <a class="tab" th:classappend="${active == 'broker'} ? 'current' : ''"
            th:href="@{/broker}">Broker</a>
+        <a class="tab" th:classappend="${active == 'connectivity'} ? 'current' : ''"
+           th:href="@{/connectivity}">Connectivity</a>
         <a class="tab" th:classappend="${active == 'overview'} ? 'current' : ''"
            th:href="@{/overview}">Queues</a>
         <a class="tab" th:classappend="${active == 'addresses'} ? 'current' : ''"

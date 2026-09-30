@@ -30,6 +30,8 @@ import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
 import com.culberth.tools.artemisbrowser.broker.ClientView;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
+import com.culberth.tools.artemisbrowser.broker.ConnectivityFixtures;
+import com.culberth.tools.artemisbrowser.broker.ConnectivityService;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
 import com.culberth.tools.artemisbrowser.broker.Diagnosis;
 import com.culberth.tools.artemisbrowser.broker.Divert;
@@ -149,6 +151,9 @@ class PageRenderingTest
     @MockitoBean
     private MessageExporter exporter;
 
+    @MockitoBean
+    private ConnectivityService connectivity;
+
     @BeforeEach
     void connected()
     {
@@ -165,6 +170,52 @@ class PageRenderingTest
         given(addressDirectory.overview()).willReturn(List.of());
         given(queueDirectory.overview()).willReturn(List.of(queue(QUEUE, 2, 0)));
         given(connectionStore.all()).willReturn(List.of());
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
+    }
+
+    // ---------------------------------------------------------------- connectivity
+
+    @Test
+    @DisplayName("the connectivity page renders a standalone broker as having no path off it")
+    void rendersAStandaloneBroker() throws Exception
+    {
+        page("/connectivity").andExpect(content().string(containsString("standalone")))
+                .andExpect(content().string(containsString("no configured path")))
+                .andExpect(content().string(containsString("not applicable: no HA policy is configured")))
+                .andExpect(content().string(containsString("href=\"/connectivity\"")));
+    }
+
+    @Test
+    @DisplayName("the connectivity page shows a stopped replica, a missing peer and an unconnected bridge with backlogs")
+    void rendersTroubledConnectivity() throws Exception
+    {
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.troubled());
+
+        page("/connectivity").andExpect(content().string(containsString("No synchronized backup")))
+                .andExpect(content().string(containsString("a-backup:61616")))
+                .andExpect(content().string(containsString("this broker")))
+                .andExpect(content().string(containsString("3 for node-b")))
+                .andExpect(content().string(containsString("peer not connected")))
+                .andExpect(content().string(containsString("href=\"/queues?name=bridge.lost\"")))
+                .andExpect(content().string(containsString("not connected")))
+                .andExpect(content().string(containsString("toNowhere (nowhere:61616)")))
+                .andExpect(content().string(containsString("address bridge.dst there")))
+                .andExpect(content().string(containsString("each message keeps its address")))
+                .andExpect(content().string(containsString("password=[redacted]")))
+                .andExpect(content().string(containsString("2 waiting")))
+                .andExpect(content().string(containsString("waiting on <span>3</span> mirror")));
+    }
+
+    @Test
+    @DisplayName("the connectivity page stands with every part refused, and says why for each")
+    void rendersRefusedConnectivity() throws Exception
+    {
+        given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.refused());
+
+        page("/connectivity").andExpect(content().string(containsString("role unknown")))
+                .andExpect(content().string(containsString("Not shown: not permitted for this user.")))
+                .andExpect(content().string(containsString("Not shown: not supported by this broker.")))
+                .andExpect(content().string(containsString("unknown: the HA policy could not be read")));
     }
 
     // ---------------------------------------------------------------- broker
