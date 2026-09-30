@@ -1,6 +1,7 @@
 # Phase 15 — Interactive regression lab
 
-Status: draft specification, 2026-09-29. No lab services are implemented by this document.
+Status: specified 2026-09-29; **P0 implemented 2026-09-30** on branch `phase15-p0-regression-lab` as the
+standalone Maven project `test-lab/`. P1–P3 are not started.
 
 ## Purpose
 
@@ -10,9 +11,12 @@ guided demonstrations and recorded test runs. The first procedure is in
 [Phase 15 regression procedure.md](Phase%2015%20regression%20procedure.md); keep its case IDs stable
 as the servers, controls and broker fixtures are refined.
 
-The baseline is the current code: Phases 1–12 and Phase 13 P0–P2. Phase 13 P3–P6 and Phase 14
-remain separate, pending coverage targets. A test for an unimplemented Browser feature is deferred,
-not a pass or a regression. Reconcile this baseline with the commit under test on every release.
+The baseline is the current code: Phases 1–14, including Phase 13 P3–P6 and Phase 14's optional P4
+and P5, all merged by 2026-09-30. When this plan was drafted (2026-09-29) only Phases 1–12 and
+Phase 13 P0–P2 had shipped, so cases F01–F08 were written as deferred; they now cover shipped
+features and are **Blocked** (no lab recipe yet, planned for P3), never Deferred or passed. A test
+for an unimplemented Browser feature is deferred, not a pass or a regression. Reconcile this
+baseline with the commit under test on every release.
 
 ## Architecture and boundaries
 
@@ -93,14 +97,39 @@ generated JMS/core IDs where available, readiness evidence, actual outcomes and 
 Downloads must identify partial data and redact credentials. Human evidence may include screenshots
 and downloaded Browser exports. Body fixtures are synthetic, never copied production payloads.
 
+## Implemented (P0, 2026-09-30)
+
+Selected values for the open decisions this plan listed:
+
+| Decision | Selected |
+|---|---|
+| Location and packaging | `test-lab/`, its own Maven project (`artemis-regression-lab`), not a module of the root pom; `LabIsolationTest` in Browser pins that |
+| Lab UI | `http://localhost:8082`, bound to 127.0.0.1; `LoopbackOnlyGuard` refuses any other bind; Host check and CSRF on; session cookie `ARTEMISLAB_SESSION` |
+| Brokers | Testcontainers, one at a time, pinned images from `lab.broker.images` (default the pom matrix), labelled `artemis-lab.broker=<id>`, 61616 published on **127.0.0.1:62616** (`lab.broker.port`); a taken port is refused, never moved |
+| Identity | node id recorded after two concurrent connections agree; every later connection checked by `TargetGuard` before use; `useTopologyForLoadBalancing=false` and `callTimeout` on the factory URL |
+| Run records | one JSON manifest per run under `lab.data-dir` (default `~/.artemis-lab/runs`), at most `lab.limits.max-runs` (50); oldest finished runs pruned; no password field |
+| Worker limits | `lab.limits.*`: 1,000 messages per action, 64KB bodies, 2 workers, 50MB per run, 10s operations, 30s readiness — each under a hard ceiling in `LabLimits` |
+| Restart | STARTED actions without an outcome become INTERRUPTED; open runs become BROKER_GONE; labelled containers the process did not start are listed as leftovers (removable only if still labelled); nothing resumes |
+
+Start it with `mvn -f test-lab/pom.xml spring-boot:run` (Docker required). The one runnable
+scenario is `LAB-SMOKE`: an owned anycast queue `lab.<runId>.smoke`, recorded PLANNED only after
+the broker is seen not to have it, then a bounded deterministic send and a `messageCount`
+assertion with a deadline. Every other catalog card is listed but refuses to run.
+
+Verified 2026-09-30: `LabBrokerIT` on 2.55.0 and 2.57.0 (provision and identity, wrong target
+refused with nothing created, smoke count asserted independently, cleanup proven, taken port
+refused, container removed); live, a double-submitted smoke form produced one job and 40
+messages, and Artemis Browser connected to the lab broker showed the lab's node id on `/broker`
+and the smoke queue with 40 on `/overview`.
+
 ## Delivery increments
 
 ### P0 — Catalog, isolation and repeatable startup
 
-- [ ] Scaffold the independent lab executable, disposable broker launcher and web shell.
-- [ ] Implement target verification, ownership, job bounds, CSRF/Host defenses and safe teardown.
-- [ ] Define versioned scenario/run manifests and preserve the procedure's case IDs.
-- [ ] Start each supported broker version, verify all worker connections reach that broker and
+- [x] Scaffold the independent lab executable, disposable broker launcher and web shell.
+- [x] Implement target verification, ownership, job bounds, CSRF/Host defenses and safe teardown.
+- [x] Define versioned scenario/run manifests and preserve the procedure's case IDs.
+- [x] Start each supported broker version, verify all worker connections reach that broker and
       prove that a refused target produces no mutation.
 
 ### P1 — Message and client fixtures
@@ -126,8 +155,9 @@ and downloaded Browser exports. Body fixtures are synthetic, never copied produc
 ### P3 — Complete current-feature regression and extend as features land
 
 - [ ] Execute all applicable cases in the draft procedure on both supported broker versions.
-- [ ] Implement future-feature fixtures as Phase 13/14 features land: trends, snapshots/comparison,
-      topology/HA, bridges/federation, prepared XA/permissions and expanded message investigations.
+- [ ] Implement fixtures for the Phase 13 P3–P6 and Phase 14 features, all now shipped (F01–F08):
+      trends, snapshots/comparison, topology/HA, bridges, prepared XA/permissions, message
+      investigation, guided/saved searches, triage and message comparison.
 - [ ] Promote verified instructions from draft to tested procedure; retain case IDs, evidence,
       version-specific expectations and a revision history.
 
@@ -143,7 +173,7 @@ input bounds, cancellation under blocked sends, cleanup after partial failure, i
 restart recovery, and isolation from the Browser artifact. Existing Browser unit and integration
 suites remain release checks; manual regression supplements them.
 
-Open implementation decisions: final UI port/packaging, local Docker versus later cluster profiles,
-run-record retention, precise worker limits, restricted-user provisioning, and how to inject
-otherwise unreachable optional-panel failures. These do not block drafting the catalog/procedure;
+Open implementation decisions: local Docker versus later cluster profiles, restricted-user
+provisioning, and how to inject otherwise unreachable optional-panel failures. UI port,
+packaging, run-record retention and worker limits were settled in P0 (above). These do not block drafting the catalog/procedure;
 record the selected values and verified setup commands before calling a recipe runnable.

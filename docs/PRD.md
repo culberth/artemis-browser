@@ -1112,7 +1112,8 @@ the acceptance checks, as of 2026-09-30; the optional P4 and P5 are merged as we
 
 ## Phase 15 — Interactive regression lab and regression procedure
 
-Specified 2026-09-29. **Specification and procedure first; implementation has not started.**
+Specified 2026-09-29. **P0 implemented 2026-09-30** (`test-lab/`, branch
+`phase15-p0-regression-lab`); P1–P3 not started.
 Create separate test services with a web interface that prepares repeatable conditions on a test
 broker, so every implemented Artemis Browser feature can be demonstrated and regression tested.
 The lab may produce, consume, acknowledge and configure its owned disposable brokers; Artemis
@@ -1126,7 +1127,7 @@ as the test servers and their controls are refined.
 
 ### Scope and delivery
 
-- [ ] **P0 — Independent lab and disposable brokers.** Provision pinned supported broker versions;
+- [x] **P0 — Independent lab and disposable brokers.** Provision pinned supported broker versions;
       verify identity, ownership and bounded lifecycle operations; provide a scenario catalog and
       run records through a separate web application.
 - [ ] **P1 — Message and client services.** Deterministic producers and controlled consumers create
@@ -1139,8 +1140,8 @@ as the test servers and their controls are refined.
       matrix, retain results/evidence, and refine the first-draft procedure into verified instructions.
       Extend fixtures and cases as the remaining Phase 13 and Phase 14 features land.
 
-The initial baseline is Phases 1–12 and Phase 13 P0–P2. Unimplemented Phase 13/14 features are
-reserved future cases, not claimed current coverage. A successfully created broker condition is
+The baseline is now Phases 1–14: the Phase 13 P3–P6 and Phase 14 features the draft reserved as
+future cases (F01–F08) have all shipped and await lab recipes — Blocked, not claimed coverage. A successfully created broker condition is
 not a passed Browser test: both setup evidence and Browser observations must be recorded. Existing
 unit and integration tests remain required; the interactive procedure supplements them.
 

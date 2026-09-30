@@ -647,6 +647,21 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **A local run needs no login** since 2026-09-27 — before that the default `mvn spring-boot:run`
   opened on a sign-in form nobody could pass, despite the README. See `SecurityConfig.openLocally`.
 
+- **Two apps on `localhost` share cookies across ports** (2026-09-30, Phase 15 lab): with both on the
+  default `JSESSIONID`, connecting Artemis Browser (:8080) replaced the lab's (:8082) session and every
+  lab form then failed CSRF with a bare 403 and nothing in any log. The lab names its cookie
+  `ARTEMISLAB_SESSION`. Any further local app beside Browser needs its own cookie name too.
+- **The Bash tool's heredoc collapses a doubled backslash to one** (2026-09-30): `split("\\.")` written
+  through `cat <<'EOF'` reached the Java file as `split("\.")` — "illegal escape character" (and this
+  very entry lost its backslashes the same way). Write Java
+  through the Write tool, not heredocs, whenever it holds a backslash.
+- **Testcontainers' reaper took ~40s, not ~10s,** to remove the lab's broker after the lab JVM was killed
+  (2026-09-30, Ryuk 0.14.0, Docker Desktop npipe). A lab restarted inside that window finds 62616 still
+  held — and lists the container as a leftover, which is what that list is for.
+- **A container is not "launched here" until `start()` returns** (2026-09-30): the lab first recorded
+  ownership by container id after start, so while provisioning, its own starting broker was listed as
+  a removable leftover. Ownership is now the broker-id label, recorded before the container exists.
+
 ## Testing
 
 - **`JMSManagementHelper` refuses a foreign message**: "Cannot send a foreign message as a

@@ -4,8 +4,20 @@
     {
       "name": "artemis-browser",
       "runtimeExecutable": "mvn",
-      "runtimeArgs": ["spring-boot:run"],
+      "runtimeArgs": [
+        "spring-boot:run"
+      ],
       "port": 8080
+    },
+    {
+      "name": "artemis-regression-lab",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "-f",
+        "test-lab/pom.xml",
+        "spring-boot:run"
+      ],
+      "port": 8082
     }
   ]
 }

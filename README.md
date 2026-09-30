@@ -18,8 +18,8 @@ login and TLS, and refuses to start in the half-configured arrangement between t
 - Export CSV/JSON, triage dead-letter queues by origin, and compare two messages.
 - Capture incident snapshots and compare them offline, with collection limits and missing evidence shown.
 
-**Status:** Features through Phase 14 are implemented. The Phase 15 regression lab is a
-[specification](docs/Phase%2015%20plan.md), not an implemented service. The app supports one broker
+**Status:** Features through Phase 14 are implemented. The Phase 15 regression lab's first
+increment (P0) is in [`test-lab/`](#regression-lab-phase-15); its fixtures are still to come. The app supports one broker
 connection per HTTP session and one configured app account. See the
 [supported broker versions](#supported-broker-versions) for the integration-test matrix.
 
@@ -223,13 +223,30 @@ rendering the login page creates a session, one per probe, and a loopback Host b
 Rebuilding on the same tag does not restart anything: `./scripts/build-image.ps1 -Restart`, or
 `kubectl rollout restart deploy/artemis-browser -n artemis-browser`.
 
-## Regression lab (Phase 15 — specification)
+## Regression lab (Phase 15)
 
-Phase 15 plans a separate web-controlled lab for creating repeatable test-broker conditions and
-observing them in Artemis Browser. The lab services are not implemented yet. See the
-[service specification](docs/Phase%2015%20plan.md) and
-[first-draft regression procedure](docs/Phase%2015%20regression%20procedure.md) for scope, proposed
-controls, current-feature test cases, expected results and future coverage. Browser stays read-only.
+A separate web application in `test-lab/` that provisions a disposable Artemis broker and prepares
+repeatable conditions on it, so Artemis Browser's features can be demonstrated and regression
+tested. Unlike Browser it writes — to the broker it started, and nothing else — so it is its own
+Maven project and never part of Browser's build or jar. Docker is required.
+
+```bash
+mvn -f test-lab/pom.xml spring-boot:run
+```
+
+Open http://localhost:8082, provision a broker from a pinned image, start a run and run
+`LAB-SMOKE`. Then connect Artemis Browser to `127.0.0.1:62616` (user `artemis`, the password in
+`lab.broker.password`) and check its Broker page shows the node id the lab reports. Record each
+case's fixture and Browser results on the run page; download the run manifest as evidence.
+
+```bash
+mvn -f test-lab/pom.xml clean verify -Pintegration
+```
+
+checks the lab itself against both supported broker versions. Only `LAB-SMOKE` runs today (P0);
+the [catalog](docs/Phase%2015%20plan.md) lists the recipes to come and the
+[regression procedure](docs/Phase%2015%20regression%20procedure.md) the cases they serve. Port
+62616 must be free: the lab refuses a taken port rather than moving the broker.
 
 ## Configuration
 

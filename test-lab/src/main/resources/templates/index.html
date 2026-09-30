@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="3" th:if="${busy}">
+    <title>Regression lab</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('lab')}"></div>
+    <div th:replace="~{fragments/layout :: messages}"></div>
+
+    <div class="panel">
+        <h2>Lab broker</h2>
+        <th:block th:if="${broker != null}">
+            <table>
+                <tr><th>Broker</th><td class="mono" th:text="${broker.brokerId()}">b1</td></tr>
+                <tr><th>Image</th><td class="mono" th:text="${broker.image()}">apache/artemis:2.55.0-alpine</td></tr>
+                <tr><th>Reported version</th><td class="mono" th:text="${broker.reportedVersion()}">2.55.0</td></tr>
+                <tr><th>Node id</th><td class="mono" id="node-id" th:text="${broker.nodeId()}">node</td></tr>
+                <tr><th>Endpoint</th><td class="mono" id="endpoint" th:text="${broker.endpoint()}">127.0.0.1:62616</td></tr>
+                <tr><th>Container</th><td class="mono" th:text="${#strings.abbreviate(broker.containerId(), 15)}">abc</td></tr>
+                <tr><th>Started</th><td th:text="${broker.startedAt()}">now</td></tr>
+            </table>
+            <p class="note">
+                Connect Artemis Browser to host <code th:text="${broker.host()}">127.0.0.1</code>, port
+                <code th:text="${broker.port()}">62616</code>, user <code th:text="${broker.user()}">artemis</code>,
+                with the password configured as <code>lab.broker.password</code>. Then check that its Broker page
+                reports the node id above: a queue name starting with <code>lab.</code> alone does not prove you are
+                looking at this broker.
+            </p>
+            <form method="post" th:action="@{/broker/stop}" class="field-row">
+                <input type="hidden" name="token" th:value="${token}">
+                <div th:if="${!affected.isEmpty()}">
+                    <p class="note">Stopping removes the broker and everything on it, including the resources of
+                        <span th:text="${affected.size()}">2</span> run(s):
+                        <span th:each="r, s : ${affected}"><a th:href="@{/runs/{id}(id=${r.runId()})}" th:text="${r.runId()}">r1</a><span th:unless="${s.last}">, </span></span>.
+                    </p>
+                </div>
+                <input type="checkbox" id="confirm" name="confirm" value="true">
+                <label class="inline" for="confirm">Remove the broker and everything on it</label>
+                <button class="secondary" type="submit" th:disabled="${busy}">Stop broker</button>
+            </form>
+        </th:block>
+        <th:block th:if="${broker == null}">
+            <p th:if="${!busy}">No lab broker is running. Start one from a supported, pinned image; it is published on
+                127.0.0.1:<span th:text="${brokerPort}">62616</span>, and refused if that port is taken.</p>
+            <form method="post" th:action="@{/broker/provision}" class="field-row" th:if="${!busy}">
+                <input type="hidden" name="token" th:value="${token}">
+                <div>
+                    <label for="image">Image</label>
+                    <select id="image" name="image">
+                        <option th:each="i : ${images}" th:value="${i}" th:text="${i}">image</option>
+                    </select>
+                </div>
+                <div><button type="submit">Provision broker</button></div>
+            </form>
+        </th:block>
+        <table th:if="${!brokerJobs.isEmpty()}" class="jobs">
+            <thead><tr><th>Broker job</th><th>State</th><th>Outcome</th></tr></thead>
+            <tbody>
+            <tr th:each="j : ${brokerJobs}">
+                <td th:text="${j.description()}">provision</td>
+                <td th:text="${j.state()}" th:classappend="${j.state().name() == 'FAILED'} ? 'bad' : ''">RUNNING</td>
+                <td th:text="${j.active()} ? 'running since ' + ${j.submittedAt()} : ${j.detail()}">ok</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel" th:if="${!leftovers.isEmpty()}">
+        <h2>Leftover lab containers</h2>
+        <p class="note">Containers carrying the lab label that this lab process did not start &mdash; usually the
+            previous process's broker, before Testcontainers' reaper removes it. They are not reused.</p>
+        <table>
+            <thead><tr><th>Broker</th><th>Image</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="l : ${leftovers}">
+                <td class="mono" th:text="${l.brokerId()}">b1</td>
+                <td class="mono" th:text="${l.image()}">image</td>
+                <td th:text="${l.status()}">Up</td>
+                <td>
+                    <form method="post" th:action="@{/leftovers/remove}">
+                        <input type="hidden" name="containerId" th:value="${l.containerId()}">
+                        <button class="secondary" type="submit">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel">
+        <h2>Runs</h2>
+        <form method="post" th:action="@{/runs}" class="field-row" th:if="${broker != null}">
+            <div>
+                <label for="browserCommit">Artemis Browser revision under test</label>
+                <input id="browserCommit" name="browserCommit" maxlength="80" placeholder="commit or version">
+            </div>
+            <div><button type="submit">Start a run</button></div>
+        </form>
+        <p th:if="${runs.isEmpty()}" class="muted">No runs yet.</p>
+        <table th:if="${!runs.isEmpty()}">
+            <thead><tr><th>Run</th><th>Created</th><th>Broker</th><th>State</th><th>Resources</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${runs}">
+                <td class="mono"><a th:href="@{/runs/{id}(id=${r.runId()})}" th:text="${r.runId()}">r1</a></td>
+                <td th:text="${r.createdAt()}">now</td>
+                <td class="mono" th:text="${r.broker().brokerId()} + ' ' + ${r.broker().version()}">b1</td>
+                <td th:text="${r.state()}">OPEN</td>
+                <td th:text="${r.resources().size()}">0</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

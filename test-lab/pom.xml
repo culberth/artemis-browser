@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      The Phase 15 regression lab: a separate, write-capable application that prepares conditions on
+      disposable brokers it provisions itself. Deliberately NOT a module of the root pom — the root is
+      Artemis Browser, a read-only product, and nothing here may end up on its classpath or in its jar.
+      Build it from this directory.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.culberth.tools</groupId>
+    <artifactId>artemis-regression-lab</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>${project.artifactId}</name>
+    <description>Regression lab for Artemis Browser: disposable test brokers and repeatable fixtures</description>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <jacoco.version>0.8.15</jacoco.version>
+        <java-formatter-maven-plugin.version>1.0.1</java-formatter-maven-plugin.version>
+        <!-- The same supported matrix as Artemis Browser's pom. Keep the two in step. -->
+        <artemis.image.deployed>apache/artemis:2.55.0-alpine</artemis.image.deployed>
+        <artemis.image.newest>apache/artemis:2.57.0-alpine</artemis.image.newest>
+        <it.deployed.skip>false</it.deployed.skip>
+        <it.newest.skip>false</it.newest.skip>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <!-- CSRF and security headers only: the lab is loopback-bound and has no login (it refuses any other bind). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- No version and no artemis.version property: see the root pom — the Boot BOM manages it by that name. -->
+        <dependency>
+            <groupId>org.apache.artemis</groupId>
+            <artifactId>artemis-jakarta-client</artifactId>
+        </dependency>
+        <!--
+          Compile scope here, unlike the root pom: provisioning disposable brokers is what the lab does.
+          Testcontainers' reaper removes them if the lab process dies.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>io.github.culberth</groupId>
+                <artifactId>java-formatter-maven-plugin</artifactId>
+                <version>${java-formatter-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>format-sources</id>
+                        <goals>
+                            <goal>format</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>default</id>
+                                <phase>none</phase>
+                            </execution>
+                            <execution>
+                                <id>broker-deployed</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${it.deployed.skip}</skip>
+                                    <reportsDirectory>${project.build.directory}/failsafe-reports/deployed</reportsDirectory>
+                                    <summaryFile>${project.build.directory}/failsafe-reports/deployed/failsafe-summary.xml</summaryFile>
+                                    <systemPropertyVariables>
+                                        <artemis.image>${artemis.image.deployed}</artemis.image>
+                                    </systemPropertyVariables>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>broker-newest</id>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${it.newest.skip}</skip>
+                                    <reportsDirectory>${project.build.directory}/failsafe-reports/newest</reportsDirectory>
+                                    <summaryFile>${project.build.directory}/failsafe-reports/newest/failsafe-summary.xml</summaryFile>
+                                    <systemPropertyVariables>
+                                        <artemis.image>${artemis.image.newest}</artemis.image>
+                                    </systemPropertyVariables>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

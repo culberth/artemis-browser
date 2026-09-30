@@ -32,8 +32,10 @@ searches (`/saved`, a bounded JSON file, never run on opening) — merged
 and expiry triage (`/triage`: a queue's head sample grouped by recorded origin, never a reason) —
 merged (PR #46). Optional P5 — message comparison (`/message/compare`: two messages read over JMS,
 headers, typed properties, text or JSON bodies, bounded; gone or in flight is unavailable, never empty) —
-merged (PR #48). Every Phase 14 item, P1–P5, is done. Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 638 unit tests,
+merged (PR #48). Every Phase 14 item, P1–P5, is done. Phase 15 (regression lab) P0 — a separate,
+write-capable app in `test-lab/` that provisions disposable brokers and prepares fixtures for them —
+is on branch `phase15-p0-regression-lab`; see *The regression lab* below. Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 639 unit tests,
 108 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
@@ -137,6 +139,16 @@ mvn clean verify -Pintegration        # + integration tests, once per supported 
    pod that never goes Ready and a log that only shows access denials.
 5. **Rebuilding on the same tag restarts nothing** — `kubectl rollout restart` is part of the loop,
    and there is no registry, so `imagePullPolicy` stays `IfNotPresent`.
+
+## The regression lab (`test-lab/`)
+
+Phase 15's lab **writes** — creates queues, sends, removes what it made — so it is a separate Maven
+project, never a module of the root pom and never on Browser's classpath (`LabIsolationTest`).
+Build it from its own pom: `mvn -f test-lab/pom.xml clean install`, `... clean verify -Pintegration`
+(Docker, both images), `... spring-boot:run` (http://localhost:8082). It writes only to the one
+broker it provisioned, on 127.0.0.1:62616, and checks every connection's node id first
+(`TargetGuard`). Resources are owned by exact name in a run manifest, never by the `lab.<runId>.`
+prefix. Don't move any of that into Browser, and don't give Browser's management allowlist a write.
 
 ## Not JavaFX
 
