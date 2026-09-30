@@ -1,4 +1,4 @@
-# artemis-browser
+# Artemis Browser
 
 A read-only web browser for ActiveMQ Artemis queues: connect to a broker, list its queues and
 addresses, inspect a queue's counters and messages, search across queues, export results, check
@@ -8,158 +8,54 @@ frontend build step.
 
 It runs on localhost with no login by default. It can also run on a shared host, behind its own
 login and TLS, and refuses to start in the half-configured arrangement between the two — see
-**Run** below.
+[Run](#run) below.
 
-Shipped so far:
+## Features
 
-- **Phase 1** — connect (host/port/username/password), list queues, inspect one queue's counters and
-  messages.
-- **Phase 2** — all-queues overview with optional auto-refresh, server-side pagination, filtering, a
-  per-message detail view, and remembered broker locations.
-- **Phase 3** — cross-queue search, CSV/JSON export, a broker health and connections view, and an
-  address view showing multicast fan-out.
-- **Phase 4** — a producers panel on the broker health page, and exports that read supported
-  message bodies through JMS rather than relying on the broker's truncated preview.
-- **Phase 5** — a bounded export that says which rows it cut, large-message flags, integration tests
-  against a real broker in Docker (including one that proves reading consumes nothing), exporting a
-  whole cross-queue search, and a sortable, filterable overview.
-- **Phase 6** — scheduled messages, which a browse does not return at all and which therefore made a
-  queue report messages above an empty table; message properties in the list, read from the typed
-  property tables; downloading a single message as `.txt` or `.json`; and a dropped connection that
-  says so instead of looking like a session timeout.
-- **Phase 7** — a login of the tool's own, so it can run somewhere other than localhost; a
-  *Diagnose* page answering "why is this stuck"; and a measured answer to how large a broker this
-  stays usable on — which turned up a correctness bug in cross-queue search rather than a
-  performance ceiling (see **Searching** below).
-- **Phase 8** — Docker packaging and a Helm chart for a single-user local Kubernetes deployment.
-- **Phase 9** — rendered-page tests to catch template failures as well as service/controller errors.
-- **Phase 10** — address drilldowns with subscription kinds and filters, consumers, oldest-waiting
-  message age, per-subscription search, address settings and diverts.
-- **Phase 11** — bounded in-flight message inspection, exact message-ID lookup for in-flight
-  messages, and diagnostic findings for consumer imbalance and old messages still in flight.
-- **Phase 12** — corrected filtered paging and search exports, expired/killed counters, measured
-  ingress and acknowledgment rates, client drilldowns, and scale measurements for the newer views.
-- **Phase 13** — broker visibility: address pressure, queue behavior, session trends, incident
-  snapshots, connectivity and HA, transactions and permissions (below).
-- **Phase 14** — incident investigation: snapshot comparison, message-ID lookup in every state,
-  guided filters and saved searches (below).
+- Browse waiting, scheduled, and in-flight messages with headers, properties, and supported bodies.
+- Find an exact message ID across states, or build and save property filters.
+- Investigate backlog, address pressure, consumers, clients, HA, and prepared transactions.
+- Export CSV/JSON, triage dead-letter queues by origin, and compare two messages.
+- Capture incident snapshots and compare them offline, with collection limits and missing evidence shown.
 
-## Phase 13: broker visibility
+**Status:** Features through Phase 14 are implemented. The Phase 15 regression lab is a
+[specification](docs/Phase%2015%20plan.md), not an implemented service. The app supports one broker
+connection per HTTP session and one configured app account. See the
+[supported broker versions](#supported-broker-versions) for the integration-test matrix.
 
-Phase 13 expands broker visibility and explains operational behavior. P0 and all six feature areas
-(P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots, P5 connectivity and HA,
-P6 transactions and permissions) are done, and so are the phase acceptance checks: every page
-fetched against a real broker with nothing changed (`PagesIT`), partial states rendered, and costs
-measured at 1,000 queues:
+## Contents
 
-1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
-   **Done.**
-2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
-   **Done.**
-3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
-   **Done.**
-4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
-   **Done.**
-5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
-   **Done.**
-6. Read-only prepared-transaction and address-permission inspection.
-   **Done.**
+- [Quick start](#quick-start)
+- [Requirements](#requirements), [build and test](#build), and [run](#run)
+- [Kubernetes deployment](#run-it-in-kubernetes)
+- [Configuration](#configuration) and [security](#security-posture)
+- [Searching](#searching-and-why-the-counts-are-a-floor), [message lookup](#looking-up-one-message), and [saved filters](#building-and-saving-filters)
+- [Incident snapshots](#incident-snapshots) and [snapshot comparison](#comparing-snapshots)
+- [Exports and message bodies](#exports-and-message-bodies)
+- [Source layout](#layout) and [documentation](#documentation)
+- [Troubleshooting](#troubleshooting), [contributing](#contributing), and [license](#license)
+- [Development history](#development-history)
 
-Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
-and subscription age says why it is missing — unsupported, not permitted, unavailable, could not be
-read — instead of showing zero or failing the page, and a user without the `manage` permission is
-told so rather than being sent back to the connect form.
+## Quick start
 
-Done in P1: each address page has a *Storage and limits* panel showing address memory, messages and
-pages against their limits beside the full policy and what it does to a sender, whether an operator
-blocked it, and its share of `global-max-size`. The address index marks an address that is full or
-near its limit, and does not mark one that is merely paging. Diagnose names blocked addresses
-(observed), and addresses at or near a limit that blocks, rejects or drops (inferred). The global
-memory finding names the largest holders without blaming them.
+Install JDK 21 and Maven, then clone or download this repository and open a terminal in its root
+(the directory containing `pom.xml`). Check that Maven uses the intended JDK, then start the app:
 
-Done in P2: each queue page has a *Configuration and behavior* panel with the queue's own settings
-and what each one looks like from outside, plus the address's defaults for new queues. The overview
-and subscription rows badge last-value, ring, exclusive, purging and dispatch-gated queues. Diagnose
-findings now keep what was observed apart from configuration that may explain it. It no longer
-reports an exclusive queue's single busy consumer as hoarding, nor a purge as a failed delivery.
+```bash
+java -version
+mvn -version
+mvn spring-boot:run
+```
 
-Done in P3: the overview has a *Trend* column, and each queue page a *Recent trend* panel. Both are
-built from readings this session takes while pages are open, so there is no background polling. They show
-the depth over time, whether the backlog is growing, when acknowledgments stopped or resumed,
-expired and killed messages now, and consumer changes. A restart, a recreated queue or a counter
-reset breaks the line instead of joining two different things.
+1. Open [http://localhost:8080](http://localhost:8080). The connect form should appear.
+2. Enter your Artemis broker's host, port, username, and password. These are broker credentials;
+   the optional app login is separate. Broker passwords are never persisted.
+3. Open the queue overview, select a queue, and inspect its messages.
+4. Use **Search** to locate messages across queues, or **Diagnose** to investigate a backlog.
 
-Done in P4: `/snapshot` downloads an incident snapshot, as JSON or as a text summary. It is linked
-from the broker and diagnose pages. It holds the broker's identity and health, queues, addresses,
-settings, clients, this session's trends and a diagnose run. Everything the broker would not give,
-and everything the limits left out, is listed. There are no message bodies or credentials.
-
-Done in P5: `/connectivity` shows the broker's HA role and replica synchronization, the cluster
-topology it reports, its cluster connections with the backlog waiting for each peer, its core bridges
-with their source queue's depth, and its broker connections (AMQP mirrors, federation, senders) with
-a mirror's backlog. It is all this broker's view: nothing connects to a peer, backup or target.
-Diagnose names an unconnected bridge, mirror or cluster peer with what is waiting behind it, and a
-replication primary with no synchronized backup. The snapshot has a connectivity section. Connector
-credentials, which the broker returns in clear, are never read, and a password in a URI is masked.
-
-Done in P6: `/transactions` lists the XA branches the broker holds prepared — Xid, creation time and
-age, and every message each will send or has received — and the ones an operator resolved by hand.
-A message received inside a prepared branch stays on its queue as *delivering* with no consumer, and
-neither browse nor the in-flight list shows it; the queue page and Diagnose now say so, and name the
-transaction. Each address page has a *Permissions* panel with the roles the broker reports, and each
-client page shows which roles may send and consume where that client does. The snapshot gains
-transactions (headers only, no properties) and permissions sections. Nothing commits, rolls back or
-changes a role. The single-user, one-broker-per-session, read-only design remains.
-See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
-for delivery order and acceptance criteria.
-
-## Phase 14: incident investigation
-
-Phase 14 helps use that evidence during an incident. P1–P3 are its core scope.
-
-Done in P1: `/compare` compares two saved JSON snapshots of one broker, in either order, and needs
-no broker connection. It shows what observably changed: queue depths and running totals, queue and
-address settings, consumers and connections that came or went, and diagnose findings that are new,
-no longer reported or changed, each beside the section and times it came from. Snapshots of different
-brokers or schemas are refused with the reason. A section either side could not read is not
-compared, so nothing in it is called removed. Counters are subtracted only across one unbroken run:
-a restart (from the snapshot's new `uptimeMillis`), a recreated queue (a changed id) or a counter
-that went down shows two readings, not traffic.
-
-Done in P2: a `/search` for an exact message ID (`ID:…`, or `AMQUserID = 'ID:…'`) looks for that one
-message in every state a queue can hold it in — scheduled, waiting, in flight to a consumer, and
-received or sent inside a prepared XA branch — and reports each sighting with its state, queue,
-address, the consumer or branch holding it, and when it was seen. Beside it is the coverage: for
-each state, how many queues were checked, had nothing in that state, or were skipped, refused or
-unreadable, and why. See **Looking up one message** below.
-
-Done in P3: a *Build a filter* panel on the search and queue pages writes the core filter for a
-property condition, a priority range, a sent-time range in a named time zone, or durability, and
-shows it — each part beside the text it became — in the filter box, where it runs like a typed one.
-Searches can be saved, with where they run, from search results, a filtered queue page or an address
-lookup, and are listed, renamed and deleted under **Saved**. See **Building and saving filters**
-below.
-
-Done in optional P4: **Triage by origin**, on every queue page, groups a sample of that queue — a
-dead-letter or expiry queue, usually — by the address and queue each message came from, with how
-many of each the broker expired, what each origin's settings say now, and example messages to open.
-See **Triaging a dead-letter or expiry queue** below.
-
-Done in optional P5: **Compare two messages** (`/message/compare`) — tick two rows on a queue page, or
-name another message from a message's page — shows header and property differences, and a line diff
-of two text bodies or a value-by-value diff of two JSON ones, with each message's read time and a
-link back to it. See **Comparing two messages** below.
-
-The phase acceptance checks are done too. `PagesIT` fetches the Phase 14 routes with the rest —
-exact-ID lookups of real messages, built filters, every saved-search scope, `/compare` — against a
-real broker on both supported versions and asserts nothing changed; it also asserts that comparing
-two snapshots makes no management call and that opening a saved search reads only the listing its
-scope needs. No management operation was added in this phase (the allowlist is pinned in
-`ManagementChannelTest`). Costs at 1,000 queues are in the PRD and `.claude/memory.md`.
-
-For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
-what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
-and environment quirks are logged in `.claude/memory.md`.
+A reachable broker is needed for live inspection. No broker is needed to build, run unit tests,
+or compare saved snapshots. Stop the local app with `Ctrl+C`.
+For deployment beyond localhost, follow [Run](#run) and [Security posture](#security-posture).
 
 ## Requirements
 
@@ -800,3 +696,199 @@ com.culberth.tools.artemisbrowser
 See [docs/architecture.md](docs/architecture.md) for the deeper rationale behind these boundaries
 (why there are two read paths, why addresses and queues are modeled separately, etc.) and `.claude/memory.md` for verified broker
 response shapes, environment-specific gotchas, and what's already been fixed.
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| Maven cannot resolve dependencies | Check network access and the mirrors in Maven's `settings.xml`. A local Nexus is environment-specific, not a project requirement. |
+| Startup refuses a non-loopback address | Configure the app username, bcrypt password hash, and TLS; see [Run](#run). |
+| Requests using a hostname are rejected | Add the hostname to `artemis.allowed-hosts`; see [Security posture](#security-posture). |
+| A queue has messages but the waiting table is empty | Check scheduled, in-flight, and prepared-transaction panels; see [management visibility](#what-management-shows-and-what-it-does-not). |
+| A filter unexpectedly matches nothing | Use Artemis core fields such as `AMQPriority`, not JMS fields such as `JMSPriority`. |
+| An integration run fails on an old result | Run `mvn clean verify -Pintegration` with Docker available; Failsafe can merge stale summaries. |
+| Kubernetes login keeps returning to the login form | Check the ingress scheme and `server.forward-headers-strategy`; see [Kubernetes deployment](#run-it-in-kubernetes). |
+
+## Contributing
+
+Read the [architecture](docs/architecture.md) and [product requirements](docs/PRD.md) before changing
+broker read paths. Preserve the read-only guarantee and distinguish missing evidence from zero values.
+
+Run `mvn test` for unit and web changes. For broker-facing changes, also run
+`mvn clean verify -Pintegration` with Docker available to check both supported broker versions.
+The Maven formatter runs during builds; review its changes before submitting a patch.
+
+When reporting a problem, include the app revision, broker version, deployment method, reproduction
+steps, expected and actual behavior, and relevant sanitized logs. Exclude credentials and sensitive
+message contents. Include the checks you ran with proposed changes.
+
+## License
+
+See [LICENSE](LICENSE) for the GNU General Public License, version 3.
+
+## Documentation
+
+- [Product requirements and roadmap](docs/PRD.md)
+- [Architecture and design decisions](docs/architecture.md)
+- [Phase 15 lab specification](docs/Phase%2015%20plan.md)
+- [Phase 15 regression procedure](docs/Phase%2015%20regression%20procedure.md)
+- [Application defaults](src/main/resources/application.properties)
+- [Build and integration-test configuration](pom.xml)
+
+## Development history
+
+<details>
+<summary>Expand delivery history and Phase 13–14 acceptance notes</summary>
+
+Shipped so far:
+
+- **Phase 1** — connect (host/port/username/password), list queues, inspect one queue's counters and
+  messages.
+- **Phase 2** — all-queues overview with optional auto-refresh, server-side pagination, filtering, a
+  per-message detail view, and remembered broker locations.
+- **Phase 3** — cross-queue search, CSV/JSON export, a broker health and connections view, and an
+  address view showing multicast fan-out.
+- **Phase 4** — a producers panel on the broker health page, and exports that read supported
+  message bodies through JMS rather than relying on the broker's truncated preview.
+- **Phase 5** — a bounded export that says which rows it cut, large-message flags, integration tests
+  against a real broker in Docker (including one that proves reading consumes nothing), exporting a
+  whole cross-queue search, and a sortable, filterable overview.
+- **Phase 6** — scheduled messages, which a browse does not return at all and which therefore made a
+  queue report messages above an empty table; message properties in the list, read from the typed
+  property tables; downloading a single message as `.txt` or `.json`; and a dropped connection that
+  says so instead of looking like a session timeout.
+- **Phase 7** — a login of the tool's own, so it can run somewhere other than localhost; a
+  *Diagnose* page answering "why is this stuck"; and a measured answer to how large a broker this
+  stays usable on — which turned up a correctness bug in cross-queue search rather than a
+  performance ceiling (see **Searching** below).
+- **Phase 8** — Docker packaging and a Helm chart for a single-user local Kubernetes deployment.
+- **Phase 9** — rendered-page tests to catch template failures as well as service/controller errors.
+- **Phase 10** — address drilldowns with subscription kinds and filters, consumers, oldest-waiting
+  message age, per-subscription search, address settings and diverts.
+- **Phase 11** — bounded in-flight message inspection, exact message-ID lookup for in-flight
+  messages, and diagnostic findings for consumer imbalance and old messages still in flight.
+- **Phase 12** — corrected filtered paging and search exports, expired/killed counters, measured
+  ingress and acknowledgment rates, client drilldowns, and scale measurements for the newer views.
+- **Phase 13** — broker visibility: address pressure, queue behavior, session trends, incident
+  snapshots, connectivity and HA, transactions and permissions (below).
+- **Phase 14** — incident investigation: snapshot comparison, message-ID lookup in every state,
+  guided filters and saved searches (below).
+
+## Phase 13: broker visibility
+
+Phase 13 expands broker visibility and explains operational behavior. P0 and all six feature areas
+(P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots, P5 connectivity and HA,
+P6 transactions and permissions) are done, and so are the phase acceptance checks: every page
+fetched against a real broker with nothing changed (`PagesIT`), partial states rendered, and costs
+measured at 1,000 queues:
+
+1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
+   **Done.**
+2. Queue configuration explanations: last-value, ring, non-destructive, grouping and dispatch behavior.
+   **Done.**
+3. Bounded session trends for backlog, throughput, expired/killed messages and consumer counts.
+   **Done.**
+4. Incident snapshots combining counters, settings, diagnostics and collection/completeness metadata.
+   **Done.**
+5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
+   **Done.**
+6. Read-only prepared-transaction and address-permission inspection.
+   **Done.**
+
+Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
+and subscription age says why it is missing — unsupported, not permitted, unavailable, could not be
+read — instead of showing zero or failing the page, and a user without the `manage` permission is
+told so rather than being sent back to the connect form.
+
+Done in P1: each address page has a *Storage and limits* panel showing address memory, messages and
+pages against their limits beside the full policy and what it does to a sender, whether an operator
+blocked it, and its share of `global-max-size`. The address index marks an address that is full or
+near its limit, and does not mark one that is merely paging. Diagnose names blocked addresses
+(observed), and addresses at or near a limit that blocks, rejects or drops (inferred). The global
+memory finding names the largest holders without blaming them.
+
+Done in P2: each queue page has a *Configuration and behavior* panel with the queue's own settings
+and what each one looks like from outside, plus the address's defaults for new queues. The overview
+and subscription rows badge last-value, ring, exclusive, purging and dispatch-gated queues. Diagnose
+findings now keep what was observed apart from configuration that may explain it. It no longer
+reports an exclusive queue's single busy consumer as hoarding, nor a purge as a failed delivery.
+
+Done in P3: the overview has a *Trend* column, and each queue page a *Recent trend* panel. Both are
+built from readings this session takes while pages are open, so there is no background polling. They show
+the depth over time, whether the backlog is growing, when acknowledgments stopped or resumed,
+expired and killed messages now, and consumer changes. A restart, a recreated queue or a counter
+reset breaks the line instead of joining two different things.
+
+Done in P4: `/snapshot` downloads an incident snapshot, as JSON or as a text summary. It is linked
+from the broker and diagnose pages. It holds the broker's identity and health, queues, addresses,
+settings, clients, this session's trends and a diagnose run. Everything the broker would not give,
+and everything the limits left out, is listed. There are no message bodies or credentials.
+
+Done in P5: `/connectivity` shows the broker's HA role and replica synchronization, the cluster
+topology it reports, its cluster connections with the backlog waiting for each peer, its core bridges
+with their source queue's depth, and its broker connections (AMQP mirrors, federation, senders) with
+a mirror's backlog. It is all this broker's view: nothing connects to a peer, backup or target.
+Diagnose names an unconnected bridge, mirror or cluster peer with what is waiting behind it, and a
+replication primary with no synchronized backup. The snapshot has a connectivity section. Connector
+credentials, which the broker returns in clear, are never read, and a password in a URI is masked.
+
+Done in P6: `/transactions` lists the XA branches the broker holds prepared — Xid, creation time and
+age, and every message each will send or has received — and the ones an operator resolved by hand.
+A message received inside a prepared branch stays on its queue as *delivering* with no consumer, and
+neither browse nor the in-flight list shows it; the queue page and Diagnose now say so, and name the
+transaction. Each address page has a *Permissions* panel with the roles the broker reports, and each
+client page shows which roles may send and consume where that client does. The snapshot gains
+transactions (headers only, no properties) and permissions sections. Nothing commits, rolls back or
+changes a role. The single-user, one-broker-per-session, read-only design remains.
+See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
+for delivery order and acceptance criteria.
+
+## Phase 14: incident investigation
+
+Phase 14 helps use that evidence during an incident. P1–P3 are its core scope.
+
+Done in P1: `/compare` compares two saved JSON snapshots of one broker, in either order, and needs
+no broker connection. It shows what observably changed: queue depths and running totals, queue and
+address settings, consumers and connections that came or went, and diagnose findings that are new,
+no longer reported or changed, each beside the section and times it came from. Snapshots of different
+brokers or schemas are refused with the reason. A section either side could not read is not
+compared, so nothing in it is called removed. Counters are subtracted only across one unbroken run:
+a restart (from the snapshot's new `uptimeMillis`), a recreated queue (a changed id) or a counter
+that went down shows two readings, not traffic.
+
+Done in P2: a `/search` for an exact message ID (`ID:…`, or `AMQUserID = 'ID:…'`) looks for that one
+message in every state a queue can hold it in — scheduled, waiting, in flight to a consumer, and
+received or sent inside a prepared XA branch — and reports each sighting with its state, queue,
+address, the consumer or branch holding it, and when it was seen. Beside it is the coverage: for
+each state, how many queues were checked, had nothing in that state, or were skipped, refused or
+unreadable, and why. See **Looking up one message** below.
+
+Done in P3: a *Build a filter* panel on the search and queue pages writes the core filter for a
+property condition, a priority range, a sent-time range in a named time zone, or durability, and
+shows it — each part beside the text it became — in the filter box, where it runs like a typed one.
+Searches can be saved, with where they run, from search results, a filtered queue page or an address
+lookup, and are listed, renamed and deleted under **Saved**. See **Building and saving filters**
+below.
+
+Done in optional P4: **Triage by origin**, on every queue page, groups a sample of that queue — a
+dead-letter or expiry queue, usually — by the address and queue each message came from, with how
+many of each the broker expired, what each origin's settings say now, and example messages to open.
+See **Triaging a dead-letter or expiry queue** below.
+
+Done in optional P5: **Compare two messages** (`/message/compare`) — tick two rows on a queue page, or
+name another message from a message's page — shows header and property differences, and a line diff
+of two text bodies or a value-by-value diff of two JSON ones, with each message's read time and a
+link back to it. See **Comparing two messages** below.
+
+The phase acceptance checks are done too. `PagesIT` fetches the Phase 14 routes with the rest —
+exact-ID lookups of real messages, built filters, every saved-search scope, `/compare` — against a
+real broker on both supported versions and asserts nothing changed; it also asserts that comparing
+two snapshots makes no management call and that opening a saved search reads only the listing its
+scope needs. No management operation was added in this phase (the allowlist is pinned in
+`ManagementChannelTest`). Costs at 1,000 queues are in the PRD and `.claude/memory.md`.
+
+For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
+what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
+and environment quirks are logged in `.claude/memory.md`.
+
+</details>
