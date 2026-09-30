@@ -631,7 +631,19 @@ large broker. Pages that do read per resource are bounded instead: diagnose's op
 (500 addresses), the snapshot's settings and roles (200 each), connectivity's bridges and cluster
 connections (100 each), prepared-transaction details (100 branches, 50 messages each).
 
+Phase 14's paths are in the same visit: exact message-ID lookups of real messages (including the one
+the prepared branch holds, which must be found *held*), built filters on the search and queue pages,
+every saved-search scope and `/compare`. Two promises are asserted as call counts, since a count
+cannot be satisfied by accident: comparing two snapshots the broker just produced makes **zero**
+management calls, and opening a saved search reads only the listing its scope needs (none, the
+queue listing, or the address listing that joins it) — a search would add a browse per queue.
+`/saved` and `/compare` join the list pages whose cost must not grow with the broker. The
+allowlist is pinned exactly in `ManagementChannelTest`, so adding a read is a visible change that
+should arrive with its recorded reply shape; Phase 14 added none.
+
 A rendering test is only worth what it fails on. Each Phase 13 page and panel was broken in turn —
 an expression that cannot evaluate, inserted inside the panel's own condition — and
-`PageRenderingTest` failed every time, between 1 and 17 tests per break. Repeat that when adding a
-panel rather than trusting that a `containsString` is looking at it.
+`PageRenderingTest` failed every time, between 1 and 17 tests per break. Phase 14's templates got the
+same treatment — `compare`, `saved`, `saved-search`, `search`, and both fragments in `filter.html` —
+and each break failed between 4 and 41 tests across the rendering and controller tests. Repeat that
+when adding a panel rather than trusting that a `containsString` is looking at it.

@@ -136,6 +136,13 @@ Searches can be saved, with where they run, from search results, a filtered queu
 lookup, and are listed, renamed and deleted under **Saved**. See **Building and saving filters**
 below.
 
+The phase acceptance checks are done too. `PagesIT` fetches the Phase 14 routes with the rest —
+exact-ID lookups of real messages, built filters, every saved-search scope, `/compare` — against a
+real broker on both supported versions and asserts nothing changed; it also asserts that comparing
+two snapshots makes no management call and that opening a saved search reads only the listing its
+scope needs. No management operation was added in this phase (the allowlist is pinned in
+`ManagementChannelTest`). Costs at 1,000 queues are in the PRD and `.claude/memory.md`.
+
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
 and environment quirks are logged in `.claude/memory.md`.
@@ -460,6 +467,11 @@ listed under **Saved**, where each can be renamed or deleted, in one file,
 shows the broker you are connected to (and warns if it is not the one the search was saved from) and
 whether the queue or address still exists, then runs it only when you press **Run**. A missing queue
 or address is explained instead of searched. Nothing runs saved searches in the background.
+
+Deleting one rewrites the file without it — written beside the file and moved over it, so a failed
+write leaves the previous file whole — and nothing else keeps a copy. The file is plain JSON, so it
+can be read, edited or removed by hand; removing it removes every saved search. A file that cannot be
+read is reported on **Saved** and never overwritten.
 
 ## Rates and diagnostic evidence
 

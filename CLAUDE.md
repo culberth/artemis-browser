@@ -28,9 +28,9 @@ broker or schema — merged (PR #39). P2 — unified message-ID investigation: a
 with per-queue, per-state coverage and preflight budgets (`artemis.investigate.*`) — merged
 (PR #41). P3 — guided filters (a builder writing core syntax; the broker still evaluates) and saved
 searches (`/saved`, a bounded JSON file, never run on opening) — merged
-(PR #43); the phase acceptance checks are what remains. Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 584 unit tests,
-92 integration, run once per supported broker version (plus the opt-in
+(PR #43); Phase 14 is complete, acceptance checks included (2026-09-30). Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 585 unit tests,
+95 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or
