@@ -507,3 +507,24 @@ attributes — those populate perfectly right up until the view fails. That gap 
 500 from Phase 5 until the cluster work in Phase 8 walked every page. `PageRenderingTest` asserts on
 rendered HTML to catch that class of break, and a new page is not covered until it has a case
 there.
+
+`ReadOnlyGuaranteeIT` drives the read *services*, so a read a controller composes on its own — the
+queue page's transaction check, the client page's roles — was covered only if someone remembered to
+add it there. `PagesIT` closes that: it starts the whole application, connects through the connect
+form, and fetches every route three times — every queue, message, address and client on the shared
+broker, both snapshots, with a prepared XA branch present — then asserts that no counter moved and
+the prepared set is unchanged. Covered by construction rather than by list.
+
+It also pins cost. `ManagementChannel` counts its round trips, and `PagesIT` asserts that
+`/overview`, `/addresses`, `/broker`, `/connectivity` and `/transactions` make the same number of
+calls with thirty more queues on the broker: per-resource reads belong on the page for one resource.
+`ManagementCallLog` logs each request's calls and time at DEBUG, which is how the measured costs in
+the README were taken, and `ScaleMeasurementIT` (opt-in, `-Dmeasure=true`) re-measures them on a
+large broker. Pages that do read per resource are bounded instead: diagnose's operator-block check
+(500 addresses), the snapshot's settings and roles (200 each), connectivity's bridges and cluster
+connections (100 each), prepared-transaction details (100 branches, 50 messages each).
+
+A rendering test is only worth what it fails on. Each Phase 13 page and panel was broken in turn —
+an expression that cannot evaluate, inserted inside the panel's own condition — and
+`PageRenderingTest` failed every time, between 1 and 17 tests per break. Repeat that when adding a
+panel rather than trusting that a `containsString` is looking at it.

@@ -100,6 +100,12 @@ public class BrokerSession implements AutoCloseable
         return info;
     }
 
+    /** Management round trips on this connection so far; 0 when not connected. For measuring a page's cost. */
+    public synchronized long managementCalls()
+    {
+        return management == null ? 0 : management.exchanges();
+    }
+
     synchronized Session requireSession()
     {
         if (session == null)

@@ -44,7 +44,9 @@ Shipped so far:
 
 Phase 13 expands broker visibility and explains operational behavior. P0 and all six feature areas
 (P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots, P5 connectivity and HA,
-P6 transactions and permissions) are done:
+P6 transactions and permissions) are done, and so are the phase acceptance checks: every page
+fetched against a real broker with nothing changed (`PagesIT`), partial states rendered, and costs
+measured at 1,000 queues:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
@@ -153,6 +155,12 @@ Every `*IT` runs once against each, in its own failsafe execution with its own r
 in earlier phases are historical evidence, not a compatibility promise. Run the matrix after a
 `clean`: failsafe merges into an existing summary, and a stale failure fails `verify`.
 
+Every Phase 13 read was probed on both before it was parsed, and none differed between them: the
+availability wording (P0), address pressure (P1), queue configuration (P2), counters across restarts
+(P3), connectivity and HA (P5), prepared transactions and roles (P6). The recorded shapes are in
+`.claude/memory.md`. A version that lacks an operation shows it as *not supported by this broker*,
+never as a zero.
+
 Two things the matrix turned up, both handled: the Artemis image moved from `apache/activemq-artemis`
 to `apache/artemis`, and on 2.57.0 the client's default topology load balancing can send a second
 connection to a different broker than the one named — so every connection factory here turns it off.
@@ -202,16 +210,19 @@ never persisted). From there:
 |---|---|
 | `/` | Connect / disconnect, saved broker locations |
 | `/overview` | Sortable/filterable queue overview, counters, ingress/acknowledgment rates and optional auto-refresh |
-| `/queues?name=` | One queue's counters and rates, paged/filtered waiting messages, scheduled and in-flight panels |
+| `/queues?name=` | One queue's counters and rates, its configuration and what it does, this session's trend, paged/filtered waiting messages, scheduled and in-flight panels (and messages a prepared transaction holds) |
 | `/message` | Single message headers, properties and supported body content, subject to the detail limit |
 | `/message/download` | One message as a .txt or .json file: headers, properties and body together |
 | `/addresses` | Addresses and the queues under them (multicast fan-out) |
-| `/address?name=` | One address: its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts |
+| `/address?name=` | One address: storage and limits beside its full policy, its subscriptions (kind, filter, client, lag), the consumers on them, who is sending, which subscriptions hold a given message, its settings and diverts, prepared transactions holding its messages, and its roles |
 | `/search` | Cross-queue search (browses every queue; counts shown are a floor, see below) |
 | `/export` | CSV/JSON download: one queue with `name`, or a whole cross-queue search without it |
 | `/broker` | Broker health, acceptors, connections, consumers, producers |
-| `/client?id=` or `/client?connection=` | A client's connections, sessions, consumers, producers and links to queues holding its in-flight messages |
+| `/connectivity` | HA role and replica sync, cluster topology, cluster connections, bridges and broker connections, each with its backlog — as this broker reports them |
+| `/transactions` | Prepared XA branches with what they send and hold, and branches resolved by hand |
+| `/client?id=` or `/client?connection=` | A client's connections, sessions, consumers, producers, links to queues holding its in-flight messages, and the roles that may send and consume where it does |
 | `/diagnose` | Why is this stuck: what on the broker is not moving, and what that usually means |
+| `/snapshot?format=json` or `format=text` | An incident snapshot of all of the above, with what could not be collected |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
 (note it maps host port 62616, not 61616, because 61616 is already taken in this environment).
@@ -297,6 +308,11 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
 | `artemis.export-body-total-chars` | `20000000` | Body characters retained per queue's export pass (~40MB); rows past it keep a truncated body |
 | `artemis.in-flight-limit` | `5000` | Most in-flight (delivered, unacknowledged) messages a queue page lists. The broker returns them all at once, so above this they are not read; their consumers are still named |
+| `artemis.trends.spacing-seconds` | `15` | Least time between two trend readings; readings are taken only when a page lists the queues anyway |
+| `artemis.trends.max-readings` | `240` | Readings a session keeps, oldest dropped first — about an hour at the default spacing |
+| `artemis.trends.max-queues` | `500` | Queues a session follows; with the above, at most 120,000 points per session, about 10MB of heap measured at that cap |
+| `artemis.snapshot.max-rows` | `1000` | Rows an incident snapshot keeps per client listing; it records how many there were |
+| `artemis.snapshot.max-address-settings` | `200` | Addresses whose settings an incident snapshot reads, those with something to explain first |
 | `artemis.transactions.detail-limit` | `100` | Most prepared XA branches whose messages a page reads. The broker returns every branch's messages in one reply, so above this only their summary lines (Xid, creation time) are read |
 | `artemis.snapshot.max-address-permissions` | `200` | Addresses whose roles an incident snapshot reads, in the same order as address settings |
 
@@ -427,6 +443,27 @@ and deletion, manage, and the management-RBAC `view` and `edit`. A role is not a
 hold which roles is in the broker's login module, which management does not expose, so the panel is
 never proof of what a particular client may do. If the broker reports security disabled, the page
 says every connection may do everything.
+
+## What management shows, and what it does not
+
+Everything here comes from the broker's management API over one JMS connection: counters, listings,
+settings and state, as the broker holds them at the moment of asking. That covers a lot, and it has
+edges worth knowing before an incident:
+
+| You can see here | You need something else for |
+|---|---|
+| Queue and address counters, and their change over *this session* | History before the session, or while no page was open — a metrics plugin (Prometheus, JMX exporter) or the broker's message counters |
+| Messages waiting, scheduled, in flight, held by a prepared XA branch | Why a consumer is slow, or what it did with a message — application logs or tracing |
+| Addresses at their limits, and the policy that applies | Why disk, memory or GC is under pressure — broker JVM metrics, OS monitoring |
+| Bridges, cluster peers and mirrors as *this* broker reports them | Whether the far side received anything — connect to that broker, or its logs |
+| Prepared XA branches and those resolved by hand | Active branches, local transactions, the transaction manager's own view — the TM's logs and recovery tools |
+| Roles granted per address | Which users hold which roles — the broker's login module (`artemis-roles.properties`, LDAP, …) |
+| A refused, unsupported or failed read, named as such | Why the broker refused — its audit and security logs |
+| Expired and killed counts | Where each such message went, if anywhere — the address settings say where it *would* go; broker logs say what happened |
+
+The pages say which of these a given figure is: *observed* when the broker reported the thing itself,
+*inferred* when a finding reasons from what it reported, and *May be intended* for configuration that
+could explain it. None of it is a substitute for logs.
 
 ## Exports and message bodies
 
