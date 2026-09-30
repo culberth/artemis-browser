@@ -439,6 +439,71 @@
         </th:block>
     </form>
 
+    <!-- Prepared XA branches that received from or sent to this address; only when there are some, or it could not be read. -->
+    <div class="panel" id="transactions" th:if="${prepared != null and (!prepared.available() or !prepared.value().touching(a.name()).isEmpty())}">
+        <h2>Prepared transactions</h2>
+        <th:block th:unless="${prepared.available()}">
+            <p class="muted">Whether a prepared XA transaction holds messages of this address could not be read:
+                <span th:text="${prepared.explained()}">not permitted</span></p>
+        </th:block>
+        <th:block th:if="${prepared.available()}">
+            <p class="note" style="margin-top:0">
+                <strong th:text="${prepared.value().heldFrom(a.name())}">1</strong> message(s) received from this
+                address are held by prepared XA transaction(s): they count as delivering on its queue with no consumer
+                holding them, and neither browse nor the in-flight list shows them until their transaction manager
+                commits or rolls back. Messages sent to it inside them reach it only on commit.
+            </p>
+            <ul>
+                <li th:each="t : ${prepared.value().touching(a.name())}">
+                    <a th:href="@{/transactions} + '#' + ${t.xid()}"><code th:text="${t.title()}">gtrid</code></a>
+                    <span class="muted" th:text="'— holds ' + ${t.heldByAddress().getOrDefault(a.name(), 0L)} + ' received, sends ' + ${t.pendingByAddress().getOrDefault(a.name(), 0L)} + ' here'">— holds 1</span>
+                </li>
+            </ul>
+        </th:block>
+    </div>
+
+    <!-- The roles the broker reports for this address. Roles, not users. -->
+    <div class="panel" id="permissions" th:if="${permissions != null}" th:with="roles=${permissions.of(a.name())}">
+        <h2>Permissions <span th:replace="~{fragments/layout :: collected(${roles})}"></span></h2>
+        <p class="error" th:if="${permissions.securityEnabled().available() and !permissions.securityEnabled().value()}">
+            Security is disabled on this broker: every connection may do everything, whatever the roles below say.
+        </p>
+        <p class="muted" th:unless="${permissions.securityEnabled().available()}">
+            Whether this broker enforces security could not be read:
+            <span th:text="${permissions.securityEnabled().explained()}">unavailable</span>
+        </p>
+        <th:block th:unless="${roles.available()}"><p th:replace="~{fragments/layout :: panelMissing(${roles})}"></p></th:block>
+        <p class="muted" th:if="${roles.available() and roles.value().isEmpty()}">
+            No role is granted anything here, so with security enabled no user may send, consume or browse.
+        </p>
+        <div class="table-scroll" th:if="${roles.available() and !roles.value().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Role</th>
+                    <th th:each="perm : ${permissions.columns()}"
+                        th:title="${perm.meaning()}" th:text="${perm.label()}">send</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="g : ${roles.value()}">
+                    <td><code th:text="${g.role()}">amq</code></td>
+                    <td th:each="perm : ${permissions.columns()}">
+                        <span th:if="${g.allows(perm.key()) == true}" class="badge">yes</span>
+                        <span th:if="${g.allows(perm.key()) == false}" class="muted">no</span>
+                        <span th:if="${g.allows(perm.key()) == null}" class="unavailable" title="Not reported by this broker version">&mdash;</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note">
+            The roles of the security setting whose match fits this address most closely &mdash; Artemis uses that
+            one setting, not a merge of all that match, and does not say which match it was. A role is not a user:
+            which users hold which roles is in the broker&rsquo;s login module, which it does not report, so this does
+            not prove what any particular client may do. <em>view</em> and <em>edit</em> apply to management
+            operations, and only when the broker enables management RBAC.
+        </p>
+    </div>
+
     <div class="panel">
         <h2>Consumers <span class="muted" th:text="'(' + ${detail.consumers().size()} + ')'">(0)</span></h2>
         <p class="muted" th:if="${detail.consumers().isEmpty()}">Nothing is attached to any queue on this address.</p>

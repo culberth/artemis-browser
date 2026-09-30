@@ -391,6 +391,38 @@ core bridges `to-b` (connected) and `to-nowhere` (unresolvable host), AMQP broke
   image binds the console to localhost unless `artemis create` gets `$EXTRA_ARGS`. broker.xml's
   `<core>` is `xsd:all`: a second `<addresses>` fails validation — insert into the existing one.
 
+### Transactions and roles (2026-09-30, 2.55.0, before Phase 13 P6 parsed any of it)
+
+Fixture: an XA branch that sent 2 to `p6.xa` and received 1 from `p6.xa.src`, `prepare()`d, then its
+connection closed without commit or rollback. Over the JMS management channel:
+
+- **`listPreparedTransactions()`** → `Object[]` of String, one per branch:
+  `9/30/26, 7:41:25 AM base64: <xid> XidImpl (… formatID:4242 gtxid:<dotted bytes> base64:<xid>`.
+  `[]` when none.
+- **`listPreparedTransactionDetailsAsJSON()`** → JSON String array, per branch `creation_time`,
+  `xid_as_base64`, `xid_format_id` (bare int), `xid_global_txid`, `xid_branch_qual` (as text),
+  `tx_related_messages[]` of `{message_operation_type: "(+) send" | "(-) receive", message_type:
+  "TextMessage", message_properties: {headers + properties inline, messageID/timestamp bare}}`. No body,
+  no queue name — a receive names only the message's address. **`""` (empty string), not `[]`, when
+  nothing is prepared.** No paging.
+- **`creation_time` is `DateFormat` SHORT/MEDIUM in the broker's locale and zone, no zone written**,
+  with U+202F (narrow no-break space) before AM on the image's JDK. The zone comes from
+  `listConnections`' `Date.toString()` vs `listConnectionsAsJSON`'s epoch millis for one connection.
+- **A message received in a prepared branch stays on its queue**: `messageCount` 1, `deliveringCount`
+  1, `messagesAcknowledged` 0, no consumer (`listConsumers` empty), and **browse and
+  `listDeliveringMessagesAsJSON` both empty**. Sent messages are on no queue (`messageCount` 0).
+- **`listHeuristicCommittedTransactions` / `…RolledBack…`** → `Object[]` of base64 Xids only.
+  `commitPreparedTransaction(base64)` (fixture only — never the app) → true; the branch leaves the
+  prepared list and joins the heuristic one; its sends arrive.
+- **`getRolesAsJSON(address)`** → JSON String array `{"name","send","consume","createDurableQueue",
+  "deleteDurableQueue","createNonDurableQueue","deleteNonDurableQueue","manage","browse","createAddress",
+  "deleteAddress","view","edit"}`, booleans bare. **It resolves the match itself**: a nonexistent
+  address answers with `#`'s roles. `getRoles` is the same as `Object[]` rows. `address.<name>`
+  attributes `rolesAsJSON`/`roles` give the same, but only for an existing address ("Problem while
+  retrieving attribute" before). `securityEnabled` Boolean, `transactionTimeout` Long (300000).
+- The image's default `#` grants `amq` everything but manage/view/edit; `activemq.management.#` grants
+  manage but not browse or durable queues.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -456,7 +488,10 @@ End-to-end HTTP from the browser, three runs each, warm.
 
 - **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
   turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
-  templates are LF; `docs/PRD.md` was CRLF until 2026-09-29 and is LF since — detect, don't assume.
+  templates are LF; `docs/PRD.md` is **CRLF again** in the index (seen 2026-09-30) — detect with
+  `git ls-files --eol`, not `grep -c $'\r'`, which Git Bash's grep reports as 0 on a CRLF file.
+- **Python's `open()` defaults to cp1252 here** (2026-09-30): an edit script wrote `—` as byte 0x97
+  into a Java file, which javac then rejects as invalid UTF-8. Always pass `encoding='utf-8'`.
   Check `git diff --stat` after any scripted edit.
 - **Stale surefire reports can pass a broken build** (2026-09-30): `mvn -q test | grep "Tests run:"`
   showed nothing, and summing `target/surefire-reports` gave the previous run's green total — the

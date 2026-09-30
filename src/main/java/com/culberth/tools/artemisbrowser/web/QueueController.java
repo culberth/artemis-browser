@@ -12,6 +12,8 @@ import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.QueueOverview;
 import com.culberth.tools.artemisbrowser.broker.QueueStats;
 import com.culberth.tools.artemisbrowser.broker.RateService;
+import com.culberth.tools.artemisbrowser.broker.TransactionService;
+import com.culberth.tools.artemisbrowser.broker.Transactions;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -52,10 +54,13 @@ public class QueueController
     private final InFlightService inFlightService;
     private final RateService rateService;
     private final AddressDirectory addressDirectory;
+    private final TransactionService transactionService;
 
     public QueueController(BrokerSession brokerSession, QueueDirectory queueDirectory, QueueBrowseService browseService,
-            InFlightService inFlightService, RateService rateService, AddressDirectory addressDirectory)
+            InFlightService inFlightService, RateService rateService, AddressDirectory addressDirectory,
+            TransactionService transactionService)
     {
+        this.transactionService = transactionService;
         this.addressDirectory = addressDirectory;
         this.brokerSession = brokerSession;
         this.queueDirectory = queueDirectory;
@@ -228,6 +233,12 @@ public class QueueController
             {
                 model.addAttribute("inFlightError", e.getMessage());
             }
+            // A message received in a prepared XA transaction is counted as delivering here, and is in
+            // no consumer's list — so the panel says what holds it rather than leave a gap.
+            Reading<Transactions> prepared = Reading.attempt(transactionService::collect);
+            model.addAttribute("prepared",
+                    prepared.available() && prepared.value() == null ? Reading.failed("the broker gave no answer")
+                            : prepared);
         }
         return "queues";
     }

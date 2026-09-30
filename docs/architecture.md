@@ -223,6 +223,48 @@ A replication backup accepts no client connections, so the page is seen from the
 practice; the backup's view is recorded but not something a user can reach. Shared-store policies
 are recognised by name only — no shared-store pair was available to measure.
 
+## Transactions and permissions: what the broker reports, and no more
+
+`/transactions`, diagnose's transaction findings, the queue and address pages' notes and the
+snapshot's section come from one `TransactionService.collect`: `listPreparedTransactions` for the
+count, `listPreparedTransactionDetailsAsJSON` for each branch's messages, and the two heuristic
+lists — the four operations P6 added to the allowlist, with `getRolesAsJSON`. The operations that
+resolve a branch, `commitPreparedTransaction` and `rollbackPreparedTransaction`, stay off it; only a
+transaction manager should resolve one, and a tool that could would make every read here a risk.
+
+What matters most is not on the transactions page. **A message received inside a prepared branch
+stays on its queue, counted as delivering, with no consumer** — and browse, the delivering list and
+`firstMessageAge` all skip it. Measured on 2.55.0: `messageCount` 1, `deliveringCount` 1, no
+consumer, browse and `listDeliveringMessagesAsJSON` empty. Before P6 diagnose called that "1
+message(s) waiting with no consumer attached", which was wrong twice. It now tells delivering apart
+from waiting, and names the prepared branch holding it. A receive names only its message's address,
+not the queue it came from, so on a multicast address the attribution is to the address.
+
+Three things were decided rather than found:
+
+- **The creation time is the broker's display string.** `9/30/26, 7:41:25 AM`, in the broker JVM's
+  locale and zone, with no zone written and a narrow no-break space before AM on current JDKs. An age
+  needs the zone, which management does not report — but `listConnections` writes a connection's
+  creation time as `Date.toString()` in the same zone, and `listConnectionsAsJSON` as epoch millis,
+  so their difference to the nearest quarter hour is the offset. Two extra calls, made only when
+  something is prepared. A locale other than en-US, or either call refused, leaves the time as written
+  and no age: an age in the wrong zone would be off by hours and look right.
+- **Details are bounded by branch count, not by size.** The detail reply has no paging and a branch's
+  message list has no limit, so it is read only up to `artemis.transactions.detail-limit` branches;
+  past that the summary lines give Xid and time. One branch with a huge message list still costs one
+  large reply — nothing broker-side prevents it.
+- **A branch prepared under a minute ago is worth a look, not stuck.** A transaction manager between
+  prepare and commit looks exactly like a stuck one for that moment.
+
+Permissions are `getRolesAsJSON(address)` per address plus the `securityEnabled` attribute. The
+broker resolves the most specific matching security setting itself (settings are not merged) and does
+not say which match it used. A role is not a user — the user-to-role mapping is the login module's,
+not management's — so no page claims a client's effective access. With management RBAC, the roles
+operation is denied or allowed for every address alike, so the first refusal stands for the rest.
+
+The snapshot carries branch headers only. Message properties are business data like bodies, so they
+stay on the page and out of a file meant to be attached to a ticket.
+
 ## Trends: bounded, session-only, and broken where they must be
 
 Trends extend the one-interval rate tracker rather than add a collector. A reading is taken only

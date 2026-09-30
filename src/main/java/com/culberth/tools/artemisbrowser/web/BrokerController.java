@@ -9,21 +9,30 @@ import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ClientDirectory;
 import com.culberth.tools.artemisbrowser.broker.ClientView;
 import com.culberth.tools.artemisbrowser.broker.ConnectivityService;
+import com.culberth.tools.artemisbrowser.broker.PermissionService;
 import com.culberth.tools.artemisbrowser.broker.QueueDirectory;
 import com.culberth.tools.artemisbrowser.broker.Reading;
+import com.culberth.tools.artemisbrowser.broker.TransactionService;
+import com.culberth.tools.artemisbrowser.broker.Transactions;
+import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-/** The broker's own health, and the addresses on it. */
+/** The broker's own health, the addresses on it, its paths to other brokers, and its transactions. */
 @Controller
 public class BrokerController
 {
 
     private static final List<Integer> REFRESH_CHOICES = List.of(0, 5, 15, 30, 60);
+
+    /** Most addresses one client page reads roles for — one call each. */
+    static final int CLIENT_PERMISSION_LIMIT = 50;
 
     private final BrokerSession brokerSession;
     private final BrokerInfoService brokerInfo;
@@ -32,11 +41,16 @@ public class BrokerController
     private final ClientDirectory clientDirectory;
     private final ConnectivityService connectivity;
     private final QueueDirectory queueDirectory;
+    private final TransactionService transactions;
+    private final PermissionService permissions;
 
     public BrokerController(BrokerSession brokerSession, BrokerInfoService brokerInfo,
             AddressDirectory addressDirectory, AddressDetailService addressDetail, ClientDirectory clientDirectory,
-            ConnectivityService connectivity, QueueDirectory queueDirectory)
+            ConnectivityService connectivity, QueueDirectory queueDirectory, TransactionService transactions,
+            PermissionService permissions)
     {
+        this.transactions = transactions;
+        this.permissions = permissions;
         this.brokerSession = brokerSession;
         this.brokerInfo = brokerInfo;
         this.addressDirectory = addressDirectory;
@@ -73,6 +87,18 @@ public class BrokerController
                         + " is connected to this broker now. It may have disconnected since the link was drawn.");
             }
             model.addAttribute("client", client);
+            if (client != null)
+            {
+                // What it uses, consumed from and sent to, and who may do that there. The user it
+                // connects as is on the page; which roles that user holds is not reported.
+                Set<String> used = new LinkedHashSet<>();
+                client.consumers().stream().map(ClientView.Consumer::address).filter(a -> a != null && !a.isEmpty())
+                        .forEach(used::add);
+                client.producers().stream().map(ClientView.Producer::address).filter(a -> a != null && !a.isEmpty())
+                        .forEach(used::add);
+                model.addAttribute("used", List.copyOf(used));
+                model.addAttribute("permissions", permissions.forAddresses(used, CLIENT_PERMISSION_LIMIT));
+            }
         }
         catch (BrokerException e)
         {
@@ -125,6 +151,33 @@ public class BrokerController
         return "connectivity";
     }
 
+    /**
+     * Prepared XA transactions and those resolved by hand, as the broker reports them. Read-only: nothing here commits,
+     * rolls back or forgets a transaction, and the operations that would are not on the management allowlist.
+     */
+    @GetMapping("/transactions")
+    public String transactions(@RequestParam(name = "refresh", defaultValue = "0") int refresh, Model model)
+    {
+        if (!brokerSession.isConnected())
+        {
+            return "redirect:/";
+        }
+        model.addAttribute("connection", brokerSession.info());
+        model.addAttribute("refresh", REFRESH_CHOICES.contains(refresh) ? refresh : 0);
+        model.addAttribute("refreshChoices", REFRESH_CHOICES);
+        model.addAttribute("viewParams", Map.of());
+        model.addAttribute("tx", transactions.collect());
+        model.addAttribute("now", Instant.now());
+        return "transactions";
+    }
+
+    /** Prepared transactions, or why not; never an empty answer standing for one that was not given. */
+    private Reading<Transactions> prepared()
+    {
+        Reading<Transactions> read = Reading.attempt(transactions::collect);
+        return read.available() && read.value() == null ? Reading.failed("the broker gave no answer") : read;
+    }
+
     @GetMapping("/addresses")
     public String addresses(Model model)
     {
@@ -171,6 +224,12 @@ public class BrokerController
                         + " auto-deleted when its last queue went.");
             }
             model.addAttribute("detail", detail);
+            if (detail != null)
+            {
+                // Each its own panel: a user who may not read roles still sees the subscriptions.
+                model.addAttribute("permissions", permissions.forAddress(name));
+                model.addAttribute("prepared", prepared());
+            }
         }
         catch (BrokerException e)
         {

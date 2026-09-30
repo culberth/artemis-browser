@@ -32,6 +32,7 @@ class StuckDiagnosisServiceTest
     private InFlightService inFlight;
     private RateService rates;
     private ConnectivityService connectivity;
+    private TransactionService transactions;
 
     @BeforeEach
     void mocks()
@@ -45,6 +46,8 @@ class StuckDiagnosisServiceTest
         inFlight = mock(InFlightService.class);
         rates = mock(RateService.class);
         connectivity = mock(ConnectivityService.class);
+        transactions = mock(TransactionService.class);
+        given(transactions.collect()).willReturn(TransactionFixtures.none());
         given(connectivity.collect(org.mockito.ArgumentMatchers.any())).willReturn(ConnectivityFixtures.standalone());
         given(rates.forDiagnosis(org.mockito.ArgumentMatchers.anyList()))
                 .willReturn(new Diagnosis.Measured(Rates.none("not measured in this test"), false));
@@ -83,6 +86,34 @@ class StuckDiagnosisServiceTest
         assertTrue(finding.isStuck());
         assertTrue(finding.title().contains("Nothing is reading 'orders'"), finding.title());
         assertEquals("orders", finding.queue());
+    }
+
+    @Test
+    @DisplayName("messages all in delivery with no consumer are not called waiting, and a prepared transaction is named")
+    void explainsMessagesHeldByAPreparedTransaction()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 1, 1, 0, 0)));
+        given(transactions.collect()).willReturn(TransactionFixtures.held("orders", "shipped"));
+
+        List<Finding> findings = service().diagnose(false);
+
+        Finding queue = findings.stream().filter(f -> "orders".equals(f.queue())).findFirst().orElseThrow();
+        assertTrue(queue.title().contains("holds 1 message(s) in delivery with no consumer attached"), queue.title());
+        assertTrue(queue.explanation().contains("prepared XA transaction"), queue.explanation());
+        assertTrue(findings.stream().anyMatch(f -> f.title().startsWith("Prepared XA transaction")),
+                findings.toString());
+    }
+
+    @Test
+    @DisplayName("transaction listings the broker refuses are named as not checked")
+    void namesUncheckedTransactions()
+    {
+        given(transactions.collect()).willReturn(TransactionFixtures.denied());
+
+        Diagnosis diagnosis = service().run(false);
+
+        assertTrue(diagnosis.unchecked().stream().anyMatch(line -> line.startsWith("Prepared XA transactions")),
+                diagnosis.unchecked().toString());
     }
 
     @Test
@@ -769,7 +800,8 @@ class StuckDiagnosisServiceTest
 
     private StuckDiagnosisService service()
     {
-        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates, connectivity);
+        return new StuckDiagnosisService(queues, addresses, brokerInfo, browse, diverts, inFlight, rates, connectivity,
+                transactions);
     }
 
     private Finding only(List<Finding> findings)

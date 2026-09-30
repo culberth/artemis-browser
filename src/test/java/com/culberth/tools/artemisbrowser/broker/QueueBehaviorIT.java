@@ -223,7 +223,7 @@ class QueueBehaviorIT
                 new DivertDirectory(brokerSession),
                 new InFlightService(brokerSession, new BrokerInfoService(brokerSession), 5000),
                 new RateService(brokerSession, new RateTracker(), new QueueDirectory(brokerSession)),
-                new ConnectivityService(brokerSession)).diagnose(false);
+                new ConnectivityService(brokerSession), new TransactionService(brokerSession, 100)).diagnose(false);
     }
 
     private static Finding about(List<Finding> findings, String queue)

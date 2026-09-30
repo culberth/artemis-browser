@@ -4,8 +4,10 @@ import java.io.PrintWriter;
 import java.io.Writer;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -67,6 +69,9 @@ public final class SnapshotWriter
         limitsNode.put("trendSpacingMillis", limits.trendSpacingMillis());
         limitsNode.put("trendMaxReadings", limits.trendMaxReadings());
         limitsNode.put("trendMaxQueues", limits.trendMaxQueues());
+        limitsNode.put("maxAddressPermissions", limits.maxAddressPermissions());
+        limitsNode.put("transactionDetailLimit", limits.transactionDetailLimit());
+        limitsNode.put("transactionMessagesPerBranch", TransactionService.MESSAGE_LIMIT);
 
         ObjectNode sections = root.putObject("sections");
         health(sections.putObject("health"), snapshot.health(), unavailable);
@@ -112,6 +117,8 @@ public final class SnapshotWriter
             node.put("thisTool", p.self());
         });
         connectivity(sections.putObject("connectivity"), snapshot.connectivity(), unavailable, omitted);
+        transactions(sections.putObject("transactions"), snapshot.transactions(), unavailable, omitted);
+        permissions(sections.putObject("permissions"), snapshot.permissions(), unavailable, omitted);
         trends(sections.putObject("trends"), snapshot.trends());
         diagnosis(sections.putObject("diagnosis"), snapshot.diagnosis(), unavailable);
 
@@ -424,6 +431,153 @@ public final class SnapshotWriter
         }
     }
 
+    /**
+     * Prepared branches with their Xids, creation times and what they send and receive — headers only. Message
+     * properties are left out like bodies: they are an application's data, not the broker's state.
+     */
+    private static void transactions(ObjectNode node, Reading<Transactions> reading, ArrayNode unavailable,
+            ArrayNode omitted)
+    {
+        if (!section(node, reading, "transactions", unavailable))
+        {
+            return;
+        }
+        Transactions transactions = reading.value();
+        node.put("note", "Only XA branches the broker holds prepared are visible, and branches resolved through its"
+                + " management. Active branches, JMS transacted sessions and the transaction manager's own state are"
+                + " not reported by the broker. Message properties are not included.");
+        ObjectNode data = node.putObject("data");
+        if (!transactions.clockNote().isEmpty())
+        {
+            data.put("creationTimes", transactions.clockNote());
+        }
+        ObjectNode prepared = data.putObject("prepared");
+        if (section(prepared, transactions.prepared(), "transactions.prepared", unavailable))
+        {
+            prepared.put("count", transactions.preparedTotal());
+            prepared.put("detailRead", transactions.detailRead());
+            ArrayNode rows = prepared.putArray("branches");
+            for (PreparedTransaction tx : transactions.prepared().value())
+            {
+                branch(rows.addObject(), tx, transactions, omitted);
+            }
+            if (!transactions.detailRead())
+            {
+                omitted(omitted, "transactions.prepared", transactions.preparedTotal(),
+                        "branches whose messages were not read: " + transactions.detailSkipped());
+            }
+        }
+        xids(data, "heuristicallyCommitted", transactions.heuristicCommitted(), unavailable);
+        xids(data, "heuristicallyRolledBack", transactions.heuristicRolledBack(), unavailable);
+    }
+
+    private static void branch(ObjectNode row, PreparedTransaction tx, Transactions transactions, ArrayNode omitted)
+    {
+        row.put("xidBase64", tx.xid());
+        if (tx.detailRead())
+        {
+            row.put("formatId", tx.formatId());
+            row.put("globalTransactionId", tx.globalId());
+            row.put("branchQualifier", tx.branch());
+        }
+        row.put("createdAsReported", tx.createdText());
+        if (tx.created() != null)
+        {
+            row.put("createdAt", tx.created().toString());
+            row.put("ageMillis", tx.ageMillis(transactions.collectedAt()));
+        }
+        else
+        {
+            ObjectNode why = row.putObject("createdAt");
+            why.put("unavailable", "not worked out");
+            why.put("detail", tx.createdNote());
+        }
+        if (!tx.detailRead())
+        {
+            return;
+        }
+        row.put("messageCount", tx.messageTotal());
+        row.put("sends", tx.sends());
+        row.put("receives", tx.receives());
+        ArrayNode messages = row.putArray("messages");
+        for (TransactionMessage message : tx.messages())
+        {
+            ObjectNode m = messages.addObject();
+            m.put("operation", message.operationText());
+            m.put("address", message.address());
+            m.put("messageId", message.messageId());
+            m.put("userId", message.userId());
+            m.put("type", message.type());
+            if (message.timestamp() > 0)
+            {
+                m.put("sentAt", Instant.ofEpochMilli(message.timestamp()).toString());
+            }
+            m.put("durable", message.durable());
+            m.put("priority", message.priority());
+        }
+        if (tx.truncated())
+        {
+            omitted(omitted, "transactions.prepared." + tx.xid(), tx.messageTotal() - tx.messages().size(),
+                    "message(s) of this branch past the first " + TransactionService.MESSAGE_LIMIT);
+        }
+    }
+
+    private static void xids(ObjectNode data, String field, Reading<List<String>> reading, ArrayNode unavailable)
+    {
+        if (!reading.available())
+        {
+            data.set(field, missing(reading));
+            unavailable(unavailable, "transactions", field, reading);
+            return;
+        }
+        ArrayNode list = data.putArray(field);
+        reading.value().forEach(list::add);
+    }
+
+    /**
+     * Roles per address. A refusal of the roles operation is the same for every address, so it is listed under
+     * {@code unavailable} once, not once per address.
+     */
+    private static void permissions(ObjectNode node, Reading<Permissions> reading, ArrayNode unavailable,
+            ArrayNode omitted)
+    {
+        if (!section(node, reading, "permissions", unavailable))
+        {
+            return;
+        }
+        Permissions permissions = reading.value();
+        node.put("note", "Roles from the security setting that matches each address, as the broker reports them."
+                + " Which users hold a role is not reported, so a role is not proof of any client's access.");
+        ObjectNode data = node.putObject("data");
+        reading(data, "securityEnabled", permissions.securityEnabled(), "permissions", unavailable);
+        ObjectNode byAddress = data.putObject("byAddress");
+        Set<String> listed = new HashSet<>();
+        permissions.byAddress().forEach((address, roles) ->
+        {
+            if (!roles.available())
+            {
+                byAddress.set(address, missing(roles));
+                if (listed.add(roles.availability() + roles.detail()))
+                {
+                    unavailable(unavailable, "permissions", address, roles);
+                }
+                return;
+            }
+            ArrayNode grants = byAddress.putArray(address);
+            for (RoleGrant grant : roles.value())
+            {
+                ObjectNode row = grants.addObject();
+                row.put("role", grant.role());
+                grant.permissions().forEach(row::put);
+            }
+        });
+        if (permissions.notRead() > 0)
+        {
+            omitted(omitted, "permissions", permissions.notRead(),
+                    "address(es) past the limit whose roles were not read");
+        }
+    }
+
     private static void trends(ObjectNode node, Trends trends)
     {
         node.put("note", "Readings this session took while pages were open; nothing older than the first. A new epoch"
@@ -706,6 +860,8 @@ public final class SnapshotWriter
         line(out, "");
 
         connectivityText(out, snapshot.connectivity());
+        transactionsText(out, snapshot.transactions());
+        permissionsText(out, snapshot.permissions());
 
         line(out, "CLIENTS");
         line(out, "  " + listingText("connections", snapshot.connections()));
@@ -809,6 +965,63 @@ public final class SnapshotWriter
         {
             line(out, "  Broker connections: not read - " + connectivity.brokerLinks().explained());
         }
+        line(out, "");
+    }
+
+    private static void transactionsText(PrintWriter out, Reading<Transactions> reading)
+    {
+        if (!reading.available())
+        {
+            line(out, "TRANSACTIONS: not read - " + reading.explained());
+            line(out, "");
+            return;
+        }
+        Transactions transactions = reading.value();
+        if (!transactions.prepared().available())
+        {
+            line(out, "TRANSACTIONS: prepared branches not read - " + transactions.prepared().explained());
+        }
+        else
+        {
+            line(out, "TRANSACTIONS (" + transactions.preparedTotal() + " prepared XA branch(es))");
+            for (PreparedTransaction tx : transactions.prepared().value())
+            {
+                String age = tx.ageText(transactions.collectedAt());
+                line(out,
+                        "  " + tx.title() + ": prepared since " + (tx.createdText().isEmpty() ? "?" : tx.createdText())
+                                + (age.isEmpty() ? "" : " (" + age + " ago)")
+                                + (tx.detailRead()
+                                        ? "; holds " + tx.receives() + " received, " + tx.sends() + " sent"
+                                                + (tx.addresses().isEmpty() ? ""
+                                                        : " on " + String.join(", ", tx.addresses()))
+                                        : "; messages not read"));
+            }
+            if (!transactions.detailRead())
+            {
+                line(out, "  " + transactions.detailSkipped());
+            }
+        }
+        line(out, "  Resolved by hand: committed " + text(transactions.heuristicCommitted().map(List::size))
+                + ", rolled back " + text(transactions.heuristicRolledBack().map(List::size)));
+        line(out, "");
+    }
+
+    private static void permissionsText(PrintWriter out, Reading<Permissions> reading)
+    {
+        if (!reading.available())
+        {
+            line(out, "PERMISSIONS: not read - " + reading.explained());
+            line(out, "");
+            return;
+        }
+        Permissions permissions = reading.value();
+        long read = permissions.byAddress().values().stream().filter(Reading::available).count();
+        line(out, "PERMISSIONS");
+        line(out, "  Security enabled: " + text(permissions.securityEnabled()));
+        line(out, "  Roles read for " + read + " of " + (permissions.byAddress().size() + permissions.notRead())
+                + " address(es); the JSON has them. Roles are not users: which users hold them is not reported.");
+        permissions.byAddress().values().stream().filter(roles -> !roles.available()).findFirst()
+                .ifPresent(roles -> line(out, "  Not read: " + roles.explained()));
         line(out, "");
     }
 

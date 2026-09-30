@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; transactions</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+    <meta th:if="${refresh > 0}" http-equiv="refresh" th:content="${refresh}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('transactions')}"></div>
+
+    <div th:replace="~{fragments/layout :: refresh('/transactions', 'transactions', ${viewParams})}"></div>
+
+    <div class="panel">
+        <p class="note" style="margin-top:0">
+            A <strong>prepared</strong> XA transaction branch is one whose transaction manager asked this broker to
+            promise to commit, and has not yet said commit or roll back. Until it does, what the branch
+            <strong>sent</strong> is on no queue, and what it <strong>received</strong> stays on its queue counted as
+            delivering &mdash; with no consumer holding it, and invisible to browse and to the in-flight list.
+        </p>
+        <p class="note">
+            Only prepared branches are visible here. A branch still active, a JMS transacted session, and the
+            transaction manager&rsquo;s own log are not reported by the broker. Nothing on this page commits, rolls
+            back or forgets a transaction: only its transaction manager should, and this tool cannot.
+        </p>
+    </div>
+
+    <!-- Prepared -->
+    <div class="panel">
+        <h2>Prepared XA transactions
+            <span class="muted" th:if="${tx.prepared().available()}" th:text="'(' + ${tx.preparedTotal()} + ')'">(0)</span>
+            <span th:replace="~{fragments/layout :: collected(${tx.prepared()})}"></span></h2>
+        <th:block th:unless="${tx.prepared().available()}"><p th:replace="~{fragments/layout :: panelMissing(${tx.prepared()})}"></p></th:block>
+        <p class="muted" th:if="${tx.prepared().available() and tx.prepared().value().isEmpty()}">
+            None: this broker holds no prepared transaction branch.
+        </p>
+        <div class="error" th:unless="${tx.detailRead()}" th:text="${tx.detailSkipped()}">Too many to read.</div>
+        <p class="note" th:unless="${#strings.isEmpty(tx.clockNote())}" th:text="${tx.clockNote()}">Creation times …</p>
+
+        <div th:if="${tx.prepared().available()}" th:each="t : ${tx.prepared().value()}" th:id="${t.xid()}"
+             style="margin-top:1.25rem">
+            <h3 style="margin:0 0 .5rem">
+                <code th:text="${t.title()}">gtrid / branch</code>
+                <span class="badge warn" th:if="${t.receives() > 0}" th:text="'holds ' + ${t.receives()} + ' received'">holds 1 received</span>
+                <span class="badge" th:if="${t.sends() > 0}" th:text="${t.sends()} + ' sent, not yet delivered'">2 sent</span>
+            </h3>
+            <div class="stats">
+                <div class="stat"><span class="k">Prepared since (broker&rsquo;s time)</span>
+                    <span class="v small" th:text="${#strings.isEmpty(t.createdText())} ? '—' : ${t.createdText()}">9/30/26, 7:41:25 AM</span></div>
+                <div class="stat"><span class="k">Age</span>
+                    <span class="v" th:if="${t.created() != null}" th:text="${t.ageText(now)}">5m 3s</span>
+                    <span class="v" th:if="${t.created() == null}"><span class="unavailable" th:title="${t.createdNote()}">&mdash; not worked out</span></span></div>
+                <div class="stat" th:if="${t.detailRead()}"><span class="k">Format id</span>
+                    <span class="v" th:text="${t.formatId()}">4242</span></div>
+                <div class="stat" th:if="${t.detailRead()}"><span class="k">Messages</span>
+                    <span class="v" th:text="${t.messageTotal()}">3</span></div>
+            </div>
+            <p class="note">Xid (base64, as the broker names it): <code th:text="${t.xid()}">YnJh…</code></p>
+            <p class="muted" th:unless="${t.detailRead()}">Its messages were not read.</p>
+            <p class="muted" th:if="${t.detailRead() and t.messages().isEmpty()}">
+                The broker lists no message for this branch.
+            </p>
+            <div class="table-scroll" th:if="${t.detailRead() and !t.messages().isEmpty()}">
+                <table>
+                    <thead>
+                    <tr><th>Operation</th><th>Address</th><th>Message ID</th><th>Type</th><th>Sent</th>
+                        <th class="num">Priority</th><th>Properties</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="m : ${t.messages()}">
+                        <td>
+                            <span class="badge warn" th:if="${m.receive()}"
+                                  title="Still on its queue as delivering until the transaction is resolved">receive</span>
+                            <span class="badge" th:if="${m.send()}"
+                                  title="On no queue until the transaction commits">send</span>
+                            <span class="badge" th:if="${!m.receive() and !m.send()}" th:text="${m.operationText()}">other</span>
+                        </td>
+                        <td class="nowrap">
+                            <a th:unless="${#strings.isEmpty(m.address())}" th:href="@{/address(name=${m.address()})}"
+                               th:text="${m.address()}">orders</a>
+                        </td>
+                        <td><code class="muted" th:text="${m.displayId()}">ID:…</code></td>
+                        <td th:text="${m.type()}">TextMessage</td>
+                        <td class="muted" th:text="${m.timestampText()}">2026-09-30 07:41:25</td>
+                        <td class="num" th:text="${m.priority()}">4</td>
+                        <td class="props-cell">
+                            <span th:if="${m.properties().isEmpty()}" class="muted">&mdash;</span>
+                            <span th:each="p : ${m.properties()}" class="badge"
+                                  th:title="${p.key} + ' = ' + ${p.value}"
+                                  th:text="${p.key} + '=' + ${p.value}">k=v</span>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note" th:if="${t.truncated()}"
+               th:text="${t.messageTotal()} + ' messages in all; the first ' + ${t.messages().size()} + ' are shown.'">
+                Truncated.</p>
+        </div>
+        <p class="note" th:if="${tx.any()}">
+            A <em>receive</em> names the address its message was sent to, not the queue it was taken from: on an
+            address with several queues it is one of them. <em>Sent</em> is when the message was produced, by the
+            sending client&rsquo;s clock. There are no bodies: the broker does not return them here.
+        </p>
+    </div>
+
+    <!-- Heuristic -->
+    <div class="panel">
+        <h2>Resolved by hand
+            <span class="muted" th:text="'(' + ${tx.heuristicCount()} + ')'">(0)</span></h2>
+        <p class="note" style="margin-top:0">
+            Branches committed or rolled back through the broker&rsquo;s management rather than by their transaction
+            manager. The broker keeps them so the manager can be told on recovery; if other resources in the same
+            transaction went the other way, the outcome is inconsistent.
+        </p>
+        <div class="stats">
+            <div class="stat"><span class="k">Committed by hand</span>
+                <span class="v" th:if="${tx.heuristicCommitted().available()}" th:text="${tx.heuristicCommitted().value().size()}">0</span>
+                <span class="v" th:unless="${tx.heuristicCommitted().available()}"><span th:replace="~{fragments/layout :: missing(${tx.heuristicCommitted()})}"></span></span>
+            </div>
+            <div class="stat"><span class="k">Rolled back by hand</span>
+                <span class="v" th:if="${tx.heuristicRolledBack().available()}" th:text="${tx.heuristicRolledBack().value().size()}">0</span>
+                <span class="v" th:unless="${tx.heuristicRolledBack().available()}"><span th:replace="~{fragments/layout :: missing(${tx.heuristicRolledBack()})}"></span></span>
+            </div>
+        </div>
+        <ul th:if="${tx.heuristicCount() > 0}">
+            <th:block th:if="${tx.heuristicCommitted().available()}">
+                <li th:each="x : ${tx.heuristicCommitted().value()}">committed <code th:text="${x}">xid</code></li>
+            </th:block>
+            <th:block th:if="${tx.heuristicRolledBack().available()}">
+                <li th:each="x : ${tx.heuristicRolledBack().value()}">rolled back <code th:text="${x}">xid</code></li>
+            </th:block>
+        </ul>
+    </div>
+</div>
+</body>
+</html>

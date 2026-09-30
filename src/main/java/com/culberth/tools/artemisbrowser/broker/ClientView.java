@@ -37,6 +37,14 @@ public record ClientView(String clientId, String connectionId, List<Connection> 
         return consumers.stream().mapToLong(Consumer::inTransit).sum();
     }
 
+    /** "consume", "send", or "consume and send" — what this client does on an address. */
+    public String uses(String address)
+    {
+        boolean consumes = consumers.stream().anyMatch(consumer -> address.equals(consumer.address()));
+        boolean sends = producers.stream().anyMatch(producer -> address.equals(producer.address()));
+        return consumes && sends ? "consume and send" : consumes ? "consume" : sends ? "send" : "";
+    }
+
     /** @param createdText as the broker wrote it — {@code listConnections} gives a date string, not a number */
     public record Connection(String connectionId, String remoteAddress, String user, String protocol,
             String createdText, long sessionCount)

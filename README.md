@@ -40,11 +40,11 @@ Shipped so far:
 - **Phase 12** — corrected filtered paging and search exports, expired/killed counters, measured
   ingress and acknowledgment rates, client drilldowns, and scale measurements for the newer views.
 
-## Next: Phase 13 (planned)
+## Phase 13: broker visibility
 
-Phase 13 expands broker visibility and explains operational behavior. It is in progress: P0 and the
-first five feature areas (P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots,
-P5 connectivity and HA) are done, and the last is not yet built:
+Phase 13 expands broker visibility and explains operational behavior. P0 and all six feature areas
+(P1 address pressure, P2 queue behavior, P3 trends, P4 incident snapshots, P5 connectivity and HA,
+P6 transactions and permissions) are done:
 
 1. Address pressure and storage details: limits, page counts, blocking and full-policy consequences.
    **Done.**
@@ -57,6 +57,7 @@ P5 connectivity and HA) are done, and the last is not yet built:
 5. Connectivity and HA inspection from the connected broker's view, including supported outbound paths.
    **Done.**
 6. Read-only prepared-transaction and address-permission inspection.
+   **Done.**
 
 Done so far (P0): every health figure, `/broker` panel, diagnose check, scheduled list, divert list
 and subscription age says why it is missing — unsupported, not permitted, unavailable, could not be
@@ -94,7 +95,15 @@ a mirror's backlog. It is all this broker's view: nothing connects to a peer, ba
 Diagnose names an unconnected bridge, mirror or cluster peer with what is waiting behind it, and a
 replication primary with no synchronized backup. The snapshot has a connectivity section. Connector
 credentials, which the broker returns in clear, are never read, and a password in a URI is masked.
-Transactions and permissions come next. The single-user, one-broker-per-session, read-only design remains.
+
+Done in P6: `/transactions` lists the XA branches the broker holds prepared — Xid, creation time and
+age, and every message each will send or has received — and the ones an operator resolved by hand.
+A message received inside a prepared branch stays on its queue as *delivering* with no consumer, and
+neither browse nor the in-flight list shows it; the queue page and Diagnose now say so, and name the
+transaction. Each address page has a *Permissions* panel with the roles the broker reports, and each
+client page shows which roles may send and consume where that client does. The snapshot gains
+transactions (headers only, no properties) and permissions sections. Nothing commits, rolls back or
+changes a role. The single-user, one-broker-per-session, read-only design remains.
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
@@ -288,6 +297,8 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.allowed-hosts` | *(blank)* | Host headers to answer to beyond loopback, comma-separated — the name people will actually type |
 | `artemis.export-body-total-chars` | `20000000` | Body characters retained per queue's export pass (~40MB); rows past it keep a truncated body |
 | `artemis.in-flight-limit` | `5000` | Most in-flight (delivered, unacknowledged) messages a queue page lists. The broker returns them all at once, so above this they are not read; their consumers are still named |
+| `artemis.transactions.detail-limit` | `100` | Most prepared XA branches whose messages a page reads. The broker returns every branch's messages in one reply, so above this only their summary lines (Xid, creation time) are read |
+| `artemis.snapshot.max-address-permissions` | `200` | Addresses whose roles an incident snapshot reads, in the same order as address settings |
 
 ## Security posture
 
@@ -396,6 +407,27 @@ within seconds. Bridges and cluster connections have no listing operation, so ea
 field, at most 100 of each per page. Core federation (`<federations>`) and connector services are not
 read.
 
+## Transactions and permissions
+
+`/transactions` shows only what the broker reports: XA branches it holds **prepared**, and branches
+committed or rolled back through its management rather than by their transaction manager. An active
+branch, a JMS transacted session and the transaction manager's own log are not reported, so they are
+not here. What a prepared branch sent is on no queue until it commits; what it received stays on its
+queue counted as delivering, with no consumer holding it — invisible to browse and to the in-flight
+list, which is why a queue can show one message, one delivering, no consumer and an empty page. The
+broker writes a branch's creation time in its own locale and time zone with no zone given; the zone is
+worked out from its connection listings, and when it cannot be, the time is shown as written and no
+age is claimed. The detail reply has no paging, so past `artemis.transactions.detail-limit` branches
+only their summary lines are read, and each branch shows at most 50 messages. Nothing here can commit,
+roll back or forget a transaction: those operations are not on the management allowlist.
+
+An address's *Permissions* panel shows the roles of the security setting that matches it most
+closely — Artemis uses that one, not a merge — for send, consume, browse, queue and address creation
+and deletion, manage, and the management-RBAC `view` and `edit`. A role is not a user: which users
+hold which roles is in the broker's login module, which management does not expose, so the panel is
+never proof of what a particular client may do. If the broker reports security disabled, the page
+says every connection may do everything.
+
 ## Exports and message bodies
 
 The message *list* is read through Artemis management `browse`, which truncates a body at the
@@ -456,6 +488,11 @@ com.culberth.tools.artemisbrowser
 │   ├── ConnectivityService        HA state, topology, cluster connections, bridges, broker connections; their findings
 │   ├── Connectivity / HaState / TopologyMember / ClusterLink / Bridge / BrokerLink / Connector
 │   │                              This broker's view of its peers and outbound paths, with backlogs from the listing
+│   ├── TransactionService         Prepared and hand-resolved XA branches, the broker's clock zone; their findings
+│   ├── Transactions / PreparedTransaction / TransactionMessage
+│   │                              What each prepared branch will send and holds received, as the broker reports it
+│   ├── PermissionService / Permissions / RoleGrant
+│   │                              Roles per address from the matching security setting; roles, not users
 │   ├── ConnectionStore            Persists remembered broker locations to disk, passwords excluded
 │   ├── QueueBehavior              A queue's effective settings from its listing row, and what each looks like from outside
 │   ├── ListingFields              One listing field as a Reading: absent is unsupported, malformed is failed
@@ -474,7 +511,7 @@ com.culberth.tools.artemisbrowser
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
-│   ├── BrokerController           /broker, /connectivity, /addresses, /address, /client
+│   ├── BrokerController           /broker, /connectivity, /transactions, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── DiagnoseController         /diagnose
@@ -493,8 +530,9 @@ com.culberth.tools.artemisbrowser
     ├── application.properties     See Configuration above
     ├── templates/
     │   ├── fragments/layout.html  Shared nav — edited once when a page is added
-    │   └── login.html, connect.html, overview.html, queues.html, message.html,
-    │       addresses.html, address.html, broker.html, client.html, search.html, diagnose.html
+    │   └── login.html, connect.html, overview.html, queues.html, message.html, addresses.html,
+    │       address.html, broker.html, client.html, connectivity.html, transactions.html,
+    │       search.html, diagnose.html
     └── static/app.css
 ```
 

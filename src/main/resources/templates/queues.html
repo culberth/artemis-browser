@@ -384,6 +384,19 @@
                 acknowledged, and not part of the list above</span>
         </h2>
         <div class="error" th:if="${inFlightError}" th:text="${inFlightError}">error</div>
+        <th:block th:if="${prepared != null}">
+            <p class="error" th:if="${prepared.available() and prepared.value().heldFrom(stats.address()) > 0}">
+                <strong th:text="${prepared.value().heldFrom(stats.address())}">1</strong> message(s) received from
+                <code th:text="${stats.address()}">orders</code> are held by prepared XA transaction(s), not by a
+                consumer: they count as delivering here and appear in no consumer&rsquo;s list below, until their
+                transaction manager commits or rolls back.
+                <a th:href="@{/transactions}">See the transactions</a>.
+            </p>
+            <p class="muted" th:unless="${prepared.available()}">
+                Whether prepared XA transactions hold any of these could not be read:
+                <span th:text="${prepared.explained()}">not permitted</span>
+            </p>
+        </th:block>
 
         <th:block th:if="${inFlight != null}">
             <p class="note">

@@ -15,15 +15,16 @@ import org.springframework.stereotype.Service;
  *
  * <p>
  * Built from reads the pages already make — the queue and address listings, the health attributes, the client listings
- * — plus address settings for a bounded set of addresses, the connectivity reads, and one diagnose run. Nothing browses
- * a message, so nothing here touches a body. The queue listing is read once and handed to the trend tracker as this
- * session's next reading, so the snapshot's trend section includes the snapshot's own moment.
+ * — plus address settings and roles for a bounded set of addresses, the connectivity and transaction reads, and one
+ * diagnose run. Nothing browses a message, so nothing here touches a body. The queue listing is read once and handed to
+ * the trend tracker as this session's next reading, so the snapshot's trend section includes the snapshot's own moment.
  *
  * <p>
  * Bounded: each client listing keeps at most {@code artemis.snapshot.max-rows} rows and says how many there were;
  * address settings are read for at most {@code artemis.snapshot.max-address-settings} addresses, the ones with
- * something to explain first; trends are already bounded by their own settings. A lost connection still ends the
- * collection, as it ends a page.
+ * something to explain first, and roles for at most {@code artemis.snapshot.max-address-permissions} in the same order;
+ * prepared transactions keep their own detail limit; trends are already bounded by their own settings. A lost
+ * connection still ends the collection, as it ends a page.
  */
 @Service
 public class SnapshotService
@@ -36,13 +37,18 @@ public class SnapshotService
     private final RateService rateService;
     private final StuckDiagnosisService diagnosis;
     private final ConnectivityService connectivityService;
+    private final TransactionService transactionService;
+    private final PermissionService permissionService;
     private final int maxRows;
     private final int maxAddressSettings;
+    private final int maxAddressPermissions;
 
     public SnapshotService(BrokerSession brokerSession, BrokerInfoService brokerInfo, QueueDirectory queueDirectory,
             AddressDirectory addressDirectory, RateService rateService, StuckDiagnosisService diagnosis,
-            ConnectivityService connectivityService, @Value("${artemis.snapshot.max-rows:1000}") int maxRows,
-            @Value("${artemis.snapshot.max-address-settings:200}") int maxAddressSettings)
+            ConnectivityService connectivityService, TransactionService transactionService,
+            PermissionService permissionService, @Value("${artemis.snapshot.max-rows:1000}") int maxRows,
+            @Value("${artemis.snapshot.max-address-settings:200}") int maxAddressSettings,
+            @Value("${artemis.snapshot.max-address-permissions:200}") int maxAddressPermissions)
     {
         this.brokerSession = brokerSession;
         this.brokerInfo = brokerInfo;
@@ -51,8 +57,11 @@ public class SnapshotService
         this.rateService = rateService;
         this.diagnosis = diagnosis;
         this.connectivityService = connectivityService;
+        this.transactionService = transactionService;
+        this.permissionService = permissionService;
         this.maxRows = Math.max(1, maxRows);
         this.maxAddressSettings = Math.max(0, maxAddressSettings);
+        this.maxAddressPermissions = Math.max(0, maxAddressPermissions);
     }
 
     public IncidentSnapshot collect()
@@ -70,9 +79,11 @@ public class SnapshotService
 
         Map<String, Reading<AddressSettings>> settings = new LinkedHashMap<>();
         int omitted = 0;
+        List<AddressOverview> chosen = addresses.available()
+                ? worthExplaining(addresses.value(), queues.orElse(List.of()))
+                : List.of();
         if (addresses.available())
         {
-            List<AddressOverview> chosen = worthExplaining(addresses.value(), queues.orElse(List.of()));
             for (AddressOverview address : chosen)
             {
                 if (settings.size() >= maxAddressSettings)
@@ -95,12 +106,21 @@ public class SnapshotService
 
         // Read once, for its own section and for diagnose's findings about it.
         Reading<Connectivity> connectivity = Reading.attempt(() -> connectivityService.collect(queues));
-        Reading<Diagnosis> found = Reading.attempt(() -> diagnosis.run(false, connectivity.orElse(null)));
+        Reading<Transactions> transactions = Reading.attempt(transactionService::collect);
+        // Without the address listing there is nothing to name; the section says why rather than
+        // showing an empty set of roles.
+        Reading<Permissions> permissions = addresses.available()
+                ? Reading.attempt(() -> permissionService
+                        .forAddresses(chosen.stream().map(AddressOverview::name).toList(), maxAddressPermissions))
+                : addresses.absent();
+        Reading<Diagnosis> found = Reading
+                .attempt(() -> diagnosis.run(false, connectivity.orElse(null), transactions.orElse(null)));
         Trends trends = rateService.trends();
 
         return new IncidentSnapshot(started, Instant.now(), connection, health, queues, addresses, settings, omitted,
-                acceptors, connections, consumers, producers, connectivity, trends, found, new IncidentSnapshot.Limits(
-                        maxRows, maxAddressSettings, trends.spacingMillis(), trends.maxReadings(), trends.maxQueues()));
+                acceptors, connections, consumers, producers, connectivity, transactions, permissions, trends, found,
+                new IncidentSnapshot.Limits(maxRows, maxAddressSettings, trends.spacingMillis(), trends.maxReadings(),
+                        trends.maxQueues(), maxAddressPermissions, transactionService.detailLimit()));
     }
 
     /**
