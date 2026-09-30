@@ -29,8 +29,8 @@ with per-queue, per-state coverage and preflight budgets (`artemis.investigate.*
 (PR #41). P3 — guided filters (a builder writing core syntax; the broker still evaluates) and saved
 searches (`/saved`, a bounded JSON file, never run on opening) — merged
 (PR #43); Phase 14 is complete, acceptance checks included (2026-09-30). Optional P4 — dead-letter
-and expiry triage (`/triage`: a queue's head sample grouped by recorded origin, never a reason) — on
-branch `phase14-p4-dlq-triage`. Planned in
+and expiry triage (`/triage`: a queue's head sample grouped by recorded origin, never a reason) —
+merged (PR #46). Planned in
 [docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 607 unit tests,
 102 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
