@@ -45,6 +45,9 @@ public class ManagementChannel implements AutoCloseable
      */
     private final Map<String, ManagementRefusal> knownRefusals = new HashMap<>();
 
+    /** Round trips made since this channel opened — what a page costs the broker, for measuring it. */
+    private long exchanges;
+
     ManagementChannel(Session session, String managementAddress, long timeoutMillis) throws JMSException
     {
         this.session = session;
@@ -128,6 +131,15 @@ public class ManagementChannel implements AutoCloseable
                 request -> JMSManagementHelper.putAttribute(request, resource, attribute));
     }
 
+    /**
+     * How many requests this channel has sent to the broker. A refusal remembered and answered locally is not one. Page
+     * costs in the README and PRD are differences of this across a request.
+     */
+    public synchronized long exchanges()
+    {
+        return exchanges;
+    }
+
     /** {@code queue.orders} → {@code queue}; {@code broker} → {@code broker}. An operation exists per resource type. */
     static String resourceType(String resource)
     {
@@ -161,6 +173,7 @@ public class ManagementChannel implements AutoCloseable
 
     private Object exchange(String what, String capability, boolean attribute, RequestBuilder builder)
     {
+        exchanges++;
         try
         {
             Message request = session.createMessage();

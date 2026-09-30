@@ -63,6 +63,9 @@ import com.culberth.tools.artemisbrowser.broker.Subscription;
 import com.culberth.tools.artemisbrowser.broker.SubscriptionSearch;
 import com.culberth.tools.artemisbrowser.broker.PermissionService;
 import com.culberth.tools.artemisbrowser.broker.Permissions;
+import com.culberth.tools.artemisbrowser.broker.PreparedTransaction;
+import com.culberth.tools.artemisbrowser.broker.RoleGrant;
+import com.culberth.tools.artemisbrowser.broker.Transactions;
 import com.culberth.tools.artemisbrowser.broker.TransactionFixtures;
 import com.culberth.tools.artemisbrowser.broker.TransactionService;
 import java.util.List;
@@ -271,6 +274,73 @@ class PageRenderingTest
 
         page("/transactions").andExpect(content().string(containsString("Not shown: not permitted for this user")))
                 .andExpect(content().string(containsString("mops.broker.listPreparedTransactions")));
+    }
+
+    @Test
+    @DisplayName("past the detail limit, branches render from their summary lines, and a time with no zone has no age")
+    void rendersSummaryOnlyTransactions() throws Exception
+    {
+        PreparedTransaction summary = new PreparedTransaction("b3RoZXI=", -1, "", "", "30.09.26, 07:41:25", null,
+                "'30.09.26, 07:41:25' is not a date format this tool reads", List.of(), 0, false);
+        given(transactions.collect()).willReturn(new Transactions(Reading.of(List.of(summary)), 150,
+                "150 branches are prepared, more than the 100 whose messages this page reads", Reading.of(List.of()),
+                Reading.missing(Availability.DENIED, "AMQ229032 listHeuristicRolledBackTransactions"), "",
+                java.time.Instant.now()));
+
+        page("/transactions").andExpect(content().string(containsString("150 branches are prepared")))
+                .andExpect(content().string(containsString("(150)")))
+                .andExpect(content().string(containsString("not worked out")))
+                .andExpect(content().string(containsString("is not a date format this tool reads")))
+                .andExpect(content().string(containsString("Its messages were not read.")))
+                .andExpect(content().string(containsString("— not permitted for this user")));
+    }
+
+    @Test
+    @DisplayName("a queue page whose transaction check is refused says so, and the in-flight panel still renders")
+    void rendersInFlightWhenTransactionsAreRefused() throws Exception
+    {
+        QueueStats stats = new QueueStats(QUEUE, QUEUE, "ANYCAST", 1, 1, 0, 0, 1, 0, true, false);
+        given(queueDirectory.stats(QUEUE)).willReturn(stats);
+        given(browseService.page(anyString(), any(), anyInt(), anyInt()))
+                .willReturn(new MessagePage(QUEUE, null, 1, 50, 0, List.of()));
+        given(inFlightService.inFlight(stats)).willReturn(new InFlight(QUEUE, 1, 5000, false, false, List.of()));
+        given(transactions.collect()).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032"));
+
+        page("/queues?name=" + QUEUE)
+                .andExpect(content().string(containsString("Whether prepared XA transactions hold any of these")))
+                .andExpect(content().string(containsString("No consumer holds anything now")));
+    }
+
+    @Test
+    @DisplayName("security switched off is said plainly, and a permission the broker does not report is not shown as no")
+    void rendersSecurityOffAndUnreportedPermissions() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        given(addressDetail.detail("events"))
+                .willReturn(new AddressDetail(events, List.of(), List.of(), List.of(), Map.of()));
+        given(permissions.forAddress("events")).willReturn(new Permissions(Reading.of(false),
+                Map.of("events", Reading.of(List.of(new RoleGrant("legacy", Map.of("send", true, "consume", false))))),
+                0, java.time.Instant.now()));
+
+        page("/address?name=events").andExpect(content().string(containsString("Security is disabled on this broker")))
+                .andExpect(content().string(containsString("<code>legacy</code>")))
+                .andExpect(content().string(containsString("Not reported by this broker version")));
+    }
+
+    @Test
+    @DisplayName("whether security is enforced, when unreadable, is said so rather than assumed either way")
+    void rendersUnreadableSecurityFlag() throws Exception
+    {
+        AddressOverview events = new AddressOverview("events", "MULTICAST", 0, 0, 0, 0, false, false, false, List.of());
+        given(addressDetail.detail("events"))
+                .willReturn(new AddressDetail(events, List.of(), List.of(), List.of(), Map.of()));
+        given(permissions.forAddress("events")).willReturn(new Permissions(
+                Reading.missing(Availability.UNAVAILABLE, "Problem while retrieving attribute securityEnabled"),
+                Map.of("events", Reading.of(List.of(TransactionFixtures.amq()))), 0, java.time.Instant.now()));
+
+        page("/address?name=events")
+                .andExpect(content().string(containsString("Whether this broker enforces security could not be read")))
+                .andExpect(content().string(not(containsString("Security is disabled"))));
     }
 
     @Test

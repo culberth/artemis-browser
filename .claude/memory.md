@@ -484,6 +484,37 @@ End-to-end HTTP from the browser, three runs each, warm.
 - The default 1MB window held 4,434 of these (~30-character bodies), not the ~3,200 measured for the
   earlier probe's messages: the window is bytes, so the count depends on message size.
 
+### Phase 13 pages at scale (2026-09-30, 2.55.0, `ScaleMeasurementIT -Dmeasure=true`)
+
+One broker: 1,000 queues × 20 messages, 100 multicast addresses × 3 durable subscriptions × 10,
+150 prepared XA branches (over the 100-branch detail limit). Seeded in 10s. Times are MockMvc in the
+test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` round trips.
+
+| Page | Time | Response | Calls |
+|---|---|---|---|
+| `/overview` | 140ms | 1.2MB | 7 |
+| `/addresses` | 185ms | 2.3MB | 12 |
+| `/broker` | 18ms | 12KB | 17 |
+| `/connectivity` (standalone) | 71ms | 7KB | 19 |
+| `/transactions` (150 prepared, summaries only) | 18ms | 137KB | 5 |
+| `/queues?name=` | 125ms | 101KB | 19 |
+| `/address?name=` (3 subscriptions), with or without find | ~100ms | 18KB | 36 |
+| `/client` | 8ms | 9KB | 7 |
+| `/diagnose` | 438ms | 873KB | 550 |
+| `/snapshot?format=json` / `text` | ~700ms | 2.7MB / 337KB | 987 |
+| `/search` (1,000 queues) | 526ms | 3KB | 1,013 |
+
+- **List pages do not scan per resource**; `PagesIT` asserts their call counts are unchanged by 30
+  more queues. Diagnose (~550: the operator-block check stops at 500 addresses), the snapshot
+  (diagnose + 200 settings + 200 roles) and search (one browse per queue, by design) are the
+  per-resource ones, and each is bounded or documented.
+- **The detail reply for 150 branches plus one of 5,000 messages: 1.8MB in 128ms** — ~360 bytes per
+  message. Only the branch count is bounded (100); one huge branch under that still costs its size.
+- **Trend history at its cap (240 readings × 500 queues) retained ~10.3MB** of heap per session,
+  measured by GC-settled heap delta — rough, but it corrected an earlier "a few MB" claim.
+- `/overview` and `/addresses` responses grow with the broker (1–2MB at 1,000 queues); the call
+  count does not.
+
 ## Traps hit while working
 
 - **`mvn spring-boot:run` forks a JVM, and stopping the Maven process does not stop it.** The
@@ -494,7 +525,8 @@ End-to-end HTTP from the browser, three runs each, warm.
 
 - **Windows Python rewrites line endings** (2026-09-27): a `python -` read/replace/write in Git Bash
   turned LF files into CRLF, and a 2-line template edit showed as a 300-line diff. Sources and
-  templates are LF; `docs/PRD.md` is **CRLF again** in the index (seen 2026-09-30) — detect with
+  templates are LF; `docs/PRD.md` is **CRLF again** in the index (seen 2026-09-30), and its working copy was
+  silently rewritten to LF once during that day (`core.autocrlf` is false) — a 2,158-line diff — detect with
   `git ls-files --eol`, not `grep -c $'\r'`, which Git Bash's grep reports as 0 on a CRLF file.
 - **Python's `open()` defaults to cp1252 here** (2026-09-30): an edit script wrote `—` as byte 0x97
   into a Java file, which javac then rejects as invalid UTF-8. Always pass `encoding='utf-8'`.

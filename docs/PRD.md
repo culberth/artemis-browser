@@ -575,8 +575,8 @@ Planned 2026-09-29 following a review of the implemented services, pages and tes
 phase extends the existing message browser into a more complete explanation of the connected
 broker: why producers are blocked, why queues behave differently, when conditions changed, and
 which broker-side evidence can be saved for an incident. **All six feature areas below belong to
-this phase**, with reliability work supporting each increment. P0 and all six areas are complete;
-the phase acceptance checks at the end remain open.
+this phase**, with reliability work supporting each increment. **Phase 13 is complete**: P0, all
+six areas and the phase acceptance checks, as of 2026-09-30.
 
 Keep the existing strengths: scheduled and in-flight inspection, subscriber lag, rates, client
 drilldowns, settings and diverts. Extend those views rather than duplicating them. Every new
@@ -862,16 +862,41 @@ changing them, tested with prepared XA fixtures and users with different inspect
 
 ### Phase acceptance and documentation
 
-- [ ] Extend the non-destructive integration guarantee to every new read path, including snapshots
+- [x] Extend the non-destructive integration guarantee to every new read path, including snapshots
       and transaction inspection. Verify relevant message counters and transaction state remain
       unchanged by inspection in controlled fixtures.
-- [ ] Add rendered-page coverage for all new panels, including partial availability and failures.
-- [ ] Measure collection time, response sizes and session-memory bounds on representative large
+      Done 2026-09-30: `PagesIT` starts the whole application, connects through its own form and
+      fetches every route three times — every queue, message, address and client, both snapshot
+      formats — with a prepared XA branch on the broker, then asserts no counter moved and the
+      prepared set is unchanged. Pages rather than services, so a read a controller adds is covered
+      without being listed. `TransactionsIT`, `ConnectivityIT` and `SnapshotIT` do the same for their
+      own fixtures.
+- [x] Add rendered-page coverage for all new panels, including partial availability and failures.
+      Done 2026-09-30. Added the states still missing: transactions read from summaries only, a
+      creation time with no age, a heuristic list refused beside a readable one, a refused
+      transaction check on the queue page, security switched off, an unreadable security flag, and a
+      permission the broker does not report. Then each Phase 13 page and panel was broken in turn
+      and `PageRenderingTest` failed every time (1–17 tests per break, 12 of 12 caught).
+- [x] Measure collection time, response sizes and session-memory bounds on representative large
       brokers. Record the number of management calls and any collection limits, and ensure optional
       detail reads do not turn the overview into an unbounded per-resource scan.
-- [ ] Update the README feature list, configuration/reference documentation, architecture and
+      Done 2026-09-30 with `ScaleMeasurementIT` (opt-in, `-Dmeasure=true`): 1,000 queues, 300
+      subscriptions, 150 prepared branches. `/overview` 140ms, 1.2MB, 7 management calls; `/broker`
+      17 calls; `/transactions` 5; `/diagnose` 438ms and 550 calls, bounded by its 500-address block
+      check; a snapshot ~700ms, 2.7MB JSON, 987 calls, bounded by its 200-address settings and roles.
+      The largest transaction reply measured 1.8MB in 128ms. Trend history at its cap retained about
+      10MB per session, which corrected an earlier "a few MB". `PagesIT` asserts that the five list
+      pages make the same number of calls with 30 more queues. The table is in `.claude/memory.md`;
+      `ManagementCallLog` logs each request's calls at DEBUG for re-measuring.
+- [x] Update the README feature list, configuration/reference documentation, architecture and
       verified-response notes as features ship. Document supported broker versions and distinguish
       management-visible facts from data requiring broker logs, application tracing or metrics plugins.
+      Done 2026-09-30. The README route table gained `/connectivity`, `/transactions` and `/snapshot`,
+      and the configuration table the trend and snapshot keys. Its supported-versions section says
+      every Phase 13 read was probed on 2.55.0 and 2.57.0 with no difference. A new section, *What
+      management shows, and what it does not*, pairs each thing the pages show with what needs logs,
+      tracing, a metrics plugin or another broker instead. The architecture doc covers `PagesIT`, call
+      counting and the mutation check.
 
 Phase 13 is complete when all six areas and their supporting reliability checks meet these
 criteria. No feature authorizes modifying broker configuration, resolving transactions, sending or

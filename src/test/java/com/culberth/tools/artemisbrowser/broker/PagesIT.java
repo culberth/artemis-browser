@@ -1,0 +1,300 @@
+package com.culberth.tools.artemisbrowser.broker;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import jakarta.jms.Connection;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.util.UriComponentsBuilder;
+
+/**
+ * The whole application against a real broker: connected through its own form, every route fetched the way a browser
+ * would, and nothing on the broker changed by it.
+ *
+ * <p>
+ * {@link ReadOnlyGuaranteeIT} drives the read services; this drives the pages, so a read a controller adds on its own —
+ * the queue page's transaction check, the client page's roles — is covered by construction rather than by someone
+ * remembering to list it. The shared broker gets one prepared XA branch for the duration, holding a message from
+ * {@link #SOURCE}, so the transaction reads have something to read; it is rolled back and forgotten afterwards.
+ *
+ * <p>
+ * It also pins what a list page costs: the management calls behind {@code /overview} and the other list pages are the
+ * same with thirty more queues on the broker. Per-resource reads belong on the pages for one resource.
+ */
+@SpringBootTest(properties =
+{ "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash=",
+        "artemis.connections-file=${java.io.tmpdir}/artemis-browser-pages-it.json"
+})
+@AutoConfigureMockMvc
+class PagesIT
+{
+
+    static final String SOURCE = "it-pages-xa.src";
+    static final String TARGET = "it-pages-xa.dst";
+    private static final String BRANCH = "pages";
+    private static final String FILTER = "AMQPriority >= 0";
+    private static final java.util.regex.Pattern TEMPORARY = java.util.regex.Pattern
+            .compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+
+    private static BrokerSession probe;
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    private MockHttpSession http;
+
+    @BeforeAll
+    static void prepare() throws Exception
+    {
+        ArtemisBrokerSupport.start();
+        XaFixtures.prepare(ArtemisBrokerSupport.url(), BRANCH, SOURCE, TARGET, true);
+        probe = ArtemisBrokerSupport.connect();
+    }
+
+    @AfterAll
+    static void clear() throws Exception
+    {
+        if (probe != null)
+        {
+            probe.close();
+        }
+        String url = ArtemisBrokerSupport.url();
+        XaFixtures.clear(url, BRANCH);
+        for (String queue : List.of(SOURCE, TARGET))
+        {
+            remove(queue);
+        }
+    }
+
+    /** The queue and its address: destroying a queue has been seen to leave an auto-created address behind. */
+    private static void remove(String queue) throws Exception
+    {
+        String url = ArtemisBrokerSupport.url();
+        XaFixtures.manage(url, "destroyQueue", queue, true, true);
+        try
+        {
+            XaFixtures.manage(url, "deleteAddress", queue);
+        }
+        catch (AssertionError alreadyGone)
+        {
+            // Auto-deleted with its queue this time.
+        }
+    }
+
+    @BeforeEach
+    void connect() throws Exception
+    {
+        http = new MockHttpSession();
+        BrokerCredentials broker = ArtemisBrokerSupport.credentials();
+        MvcResult connected = mockMvc
+                .perform(post("/connect").session(http).with(csrf()).header("Host", "localhost")
+                        .param("host", broker.host()).param("port", String.valueOf(broker.port()))
+                        .param("username", ArtemisBrokerSupport.USER).param("password", ArtemisBrokerSupport.PASSWORD))
+                .andReturn();
+        assertEquals(302, connected.getResponse().getStatus(), connected.getResponse().getContentAsString());
+        assertTrue(session().isConnected(), "the connect form did not connect");
+    }
+
+    @Test
+    @DisplayName("every page, three times over, moves no counter and resolves no transaction")
+    void readingEveryPageChangesNothing() throws Exception
+    {
+        Map<String, String> before = counters();
+        List<String> preparedBefore = prepared();
+        assertEquals(1, preparedBefore.size(), "the fixture branch is not prepared: " + preparedBefore);
+
+        List<String> visited = new ArrayList<>();
+        for (int round = 0; round < 3; round++)
+        {
+            visited = visitEverything();
+        }
+
+        assertEquals(before, counters(), "a page moved a counter");
+        assertEquals(preparedBefore, prepared(), "a page changed what is prepared");
+        assertTrue(visited.size() > 20, "too few pages visited to mean anything: " + visited);
+        assertTrue(visited.contains("/transactions"), visited.toString());
+        assertTrue(visited.stream().anyMatch(path -> path.startsWith("/snapshot")), visited.toString());
+    }
+
+    @Test
+    @DisplayName("the held message's queue page, address page and transactions page all name the branch")
+    void pagesLinkTheHeldMessage() throws Exception
+    {
+        assertTrue(page("/queues?name=" + SOURCE).contains("held by prepared XA transaction"));
+        assertTrue(page("/address?name=" + SOURCE).contains("/transactions#"));
+        assertTrue(page("/transactions").contains("gtrid-" + BRANCH));
+        assertTrue(page("/diagnose").contains("Prepared XA transaction gtrid-" + BRANCH));
+    }
+
+    @Test
+    @DisplayName("a list page costs the same number of management calls with thirty more queues on the broker")
+    void listPagesDoNotScanPerResource() throws Exception
+    {
+        List<String> lists = List.of("/overview", "/addresses", "/broker", "/connectivity", "/transactions");
+        Map<String, Long> small = new LinkedHashMap<>();
+        for (String path : lists)
+        {
+            calls(path); // the first reading of a session can differ: rates start, refusals are learned
+            small.put(path, calls(path));
+        }
+
+        List<String> extra = new ArrayList<>();
+        for (int i = 0; i < 30; i++)
+        {
+            extra.add("it-pages-bulk-" + i);
+        }
+        try
+        {
+            seed(extra);
+            Map<String, Long> large = new LinkedHashMap<>();
+            for (String path : lists)
+            {
+                large.put(path, calls(path));
+            }
+            assertEquals(small, large, "a list page's cost grew with the number of queues");
+        }
+        finally
+        {
+            for (String queue : extra)
+            {
+                remove(queue);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    /** Every route the app serves, for every queue, message, address and client on the broker. */
+    private List<String> visitEverything() throws Exception
+    {
+        List<String> paths = new ArrayList<>(List.of("/", "/overview", "/broker", "/connectivity", "/transactions",
+                "/addresses", "/search?filter=" + FILTER, "/search?filter=" + FILTER + "&internal=true",
+                "/export?filter=" + FILTER + "&format=csv", "/export?filter=" + FILTER + "&format=json", "/diagnose",
+                "/diagnose?internal=true", "/snapshot?format=json", "/snapshot?format=text"));
+        QueueDirectory queues = new QueueDirectory(probe);
+        QueueBrowseService browse = new QueueBrowseService(probe, 200, 200000, 20000, 20_000_000L);
+        for (QueueOverview queue : queues.overview())
+        {
+            // Temporary reply queues — the app's own, the probe's — come and go with their connections, and the app
+            // does not serve its own. Everything else is visited.
+            if (TEMPORARY.matcher(queue.name()).matches())
+            {
+                continue;
+            }
+            paths.add("/queues?name=" + queue.name());
+            paths.add("/queues?name=" + queue.name() + "&filter=" + FILTER);
+            paths.add("/export?name=" + queue.name() + "&format=json");
+            for (MessageSummary message : browse.page(queue.name(), null, 1, 5).messages())
+            {
+                paths.add("/message?name=" + queue.name() + "&id=" + message.messageId());
+                paths.add("/message/download?name=" + queue.name() + "&id=" + message.messageId() + "&format=txt");
+            }
+        }
+        for (AddressOverview address : new AddressDirectory(probe, queues).overview())
+        {
+            paths.add("/address?name=" + address.name());
+            paths.add("/address?name=" + address.name() + "&find=" + FILTER);
+        }
+        for (BrokerConnection connection : new BrokerInfoService(probe).connections())
+        {
+            paths.add("/client?connection=" + connection.connectionId());
+        }
+        for (String path : paths)
+        {
+            page(path);
+        }
+        return paths;
+    }
+
+    /** One page, which must be served — a 200, or the one redirect the connect page makes when connected. */
+    private String page(String path) throws Exception
+    {
+        MvcResult result = mockMvc.perform(get(UriComponentsBuilder.fromUriString(path).encode().build().toUri())
+                .session(http).header("Host", "localhost")).andReturn();
+        int status = result.getResponse().getStatus();
+        assertTrue(status == 200 || (path.equals("/") && status == 302),
+                path + " answered " + status + ": " + result.getResponse().getErrorMessage());
+        String body = result.getResponse().getContentAsString();
+        assertFalse(body.contains("Whitelabel Error Page"), path);
+        return body;
+    }
+
+    /** The management round trips one fetch of this page costs. */
+    private long calls(String path) throws Exception
+    {
+        long before = session().managementCalls();
+        page(path);
+        return session().managementCalls() - before;
+    }
+
+    /** The app's own broker session for this HTTP session: the session-scoped bean, as Spring stores it. */
+    private BrokerSession session()
+    {
+        return (BrokerSession) http.getAttribute("scopedTarget.brokerSession");
+    }
+
+    private Map<String, String> counters()
+    {
+        Map<String, String> counters = new LinkedHashMap<>();
+        for (QueueOverview queue : new QueueDirectory(probe).overview())
+        {
+            if (queue.name().startsWith("it-"))
+            {
+                counters.put(queue.name(), queue.messageCount() + "/" + queue.deliveringCount() + "/"
+                        + queue.messagesAcked() + "/" + queue.messagesAdded());
+            }
+        }
+        assertFalse(counters.isEmpty(), "no it- queues on the broker");
+        return counters;
+    }
+
+    private List<String> prepared()
+    {
+        return new TransactionService(probe, 100).collect().prepared().value().stream()
+                .map(tx -> tx.xid() + "/" + tx.messageTotal()).toList();
+    }
+
+    private static void seed(List<String> names) throws Exception
+    {
+        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(ArtemisBrokerSupport.url()))
+        {
+            Connection connection = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
+            try
+            {
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                for (String name : names)
+                {
+                    try (MessageProducer producer = session.createProducer(session.createQueue(name)))
+                    {
+                        producer.send(session.createTextMessage(name));
+                    }
+                }
+            }
+            finally
+            {
+                connection.close();
+            }
+        }
+    }
+}

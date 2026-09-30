@@ -5,26 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import jakarta.jms.Connection;
-import jakarta.jms.Message;
-import jakarta.jms.MessageConsumer;
-import jakarta.jms.MessageProducer;
-import jakarta.jms.Session;
-import jakarta.jms.TemporaryQueue;
-import jakarta.jms.XAConnection;
-import jakarta.jms.XASession;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import javax.transaction.xa.XAResource;
-import javax.transaction.xa.Xid;
-import org.apache.activemq.artemis.api.core.management.ResourceNames;
-import org.apache.activemq.artemis.api.jms.management.JMSManagementHelper;
-import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
-import org.apache.activemq.artemis.jms.client.ActiveMQXAConnectionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -39,9 +24,8 @@ import org.testcontainers.utility.DockerImageName;
  * <p>
  * Its own broker, not {@link ArtemisBrokerSupport}'s: a prepared branch outlives the connection that made it and holds
  * a message as delivering with no consumer, which the shared broker's diagnose tests would rightly report. Two branches
- * are made the way a transaction manager would leave them after a crash — prepared, connection closed — and one is then
- * committed through management by this test, as an operator would, to put something in the heuristic list. The app
- * never calls either operation; it cannot, since neither is on its allowlist.
+ * are made with {@link XaFixtures} the way a transaction manager would leave them after a crash, and one is then
+ * committed by hand, as an operator would, to put something in the heuristic list.
  */
 class TransactionsIT
 {
@@ -63,10 +47,9 @@ class TransactionsIT
                 .withStartupTimeout(Duration.ofMinutes(4));
         container.start();
 
-        prepare("held", true);
-        prepare("resolved", false);
-        committedXid = heldBy("gtrid-resolved");
-        assertEquals(Boolean.TRUE, manage("commitPreparedTransaction", committedXid));
+        XaFixtures.prepare(url(), "held", SOURCE, TARGET, true);
+        XaFixtures.prepare(url(), "resolved", SOURCE, TARGET, false);
+        committedXid = XaFixtures.commitByHand(url(), "resolved");
 
         brokerSession = new BrokerSession(10000, 10000);
         brokerSession.connect(new BrokerCredentials(container.getHost(), container.getMappedPort(61616),
@@ -123,13 +106,13 @@ class TransactionsIT
 
     @Test
     @DisplayName("past the detail limit the summary is read, with the same Xid and creation time")
-    void readsTheSummaryPastTheLimit()
+    void readsTheSummaryPastTheLimit() throws Exception
     {
         Transactions transactions = new TransactionService(brokerSession, 0).collect();
 
         PreparedTransaction tx = transactions.prepared().value().get(0);
         assertFalse(transactions.detailRead());
-        assertEquals(heldBy("gtrid-held"), tx.xid());
+        assertEquals(XaFixtures.preparedXid(url(), "gtrid-held"), tx.xid());
         assertNotNull(tx.created(), tx.createdNote());
     }
 
@@ -259,128 +242,5 @@ class TransactionsIT
     {
         return "tcp://" + container.getHost() + ":" + container.getMappedPort(61616)
                 + "?useTopologyForLoadBalancing=false";
-    }
-
-    private record TestXid(byte[] global, byte[] branch) implements Xid
-    {
-        @Override
-        public int getFormatId()
-        {
-            return 4242;
-        }
-
-        @Override
-        public byte[] getGlobalTransactionId()
-        {
-            return global;
-        }
-
-        @Override
-        public byte[] getBranchQualifier()
-        {
-            return branch;
-        }
-    }
-
-    /**
-     * One branch left prepared: when {@code receive}, a message put on the source queue beforehand; then inside the
-     * branch two sent to the target and — when {@code receive} — that one received. The connection is closed without
-     * commit or rollback, as a crashed application's would be.
-     */
-    private static void prepare(String name, boolean receive) throws Exception
-    {
-        if (receive)
-        {
-            try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(url()))
-            {
-                Connection plain = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
-                Session session = plain.createSession(false, Session.AUTO_ACKNOWLEDGE);
-                session.createProducer(session.createQueue(SOURCE)).send(session.createTextMessage("to take"));
-                plain.close();
-            }
-        }
-        try (ActiveMQXAConnectionFactory factory = new ActiveMQXAConnectionFactory(url()))
-        {
-            XAConnection connection = factory.createXAConnection(ArtemisBrokerSupport.USER,
-                    ArtemisBrokerSupport.PASSWORD);
-            connection.start();
-            XASession xa = connection.createXASession();
-            XAResource resource = xa.getXAResource();
-            Xid xid = new TestXid(("gtrid-" + name).getBytes(StandardCharsets.UTF_8),
-                    "branch-1".getBytes(StandardCharsets.UTF_8));
-            resource.start(xid, XAResource.TMNOFLAGS);
-            Session session = xa.getSession();
-            MessageProducer producer = session.createProducer(session.createQueue(TARGET));
-            Message first = session.createTextMessage("sent in the branch");
-            first.setStringProperty("orderId", "o-1");
-            producer.send(first);
-            producer.send(session.createTextMessage("also sent in the branch"));
-            if (receive)
-            {
-                MessageConsumer consumer = session.createConsumer(session.createQueue(SOURCE));
-                assertNotNull(consumer.receive(5000), "nothing to receive on " + SOURCE);
-            }
-            resource.end(xid, XAResource.TMSUCCESS);
-            assertEquals(XAResource.XA_OK, resource.prepare(xid));
-            connection.close();
-        }
-    }
-
-    /** The base64 Xid of the prepared branch with this global id, read the way an operator would. */
-    private static String heldBy(String globalId)
-    {
-        try
-        {
-            String details = String.valueOf(manage("listPreparedTransactionDetailsAsJSON"));
-            for (tools.jackson.databind.JsonNode node : new tools.jackson.databind.ObjectMapper().readTree(details))
-            {
-                if (globalId.equals(node.get("xid_global_txid").asString()))
-                {
-                    return node.get("xid_as_base64").asString();
-                }
-            }
-            throw new AssertionError("no prepared branch " + globalId + " in " + details);
-        }
-        catch (AssertionError e)
-        {
-            throw e;
-        }
-        catch (Exception e)
-        {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    /**
-     * A management operation from the test, not the app — {@code commitPreparedTransaction} is exactly what the app's
-     * allowlist refuses, and the fixture needs it to stand in for an operator.
-     */
-    private static Object manage(String operation, Object... params) throws Exception
-    {
-        try (ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(url()))
-        {
-            Connection connection = factory.createConnection(ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD);
-            try
-            {
-                connection.start();
-                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-                TemporaryQueue reply = session.createTemporaryQueue();
-                MessageProducer producer = session.createProducer(session.createQueue("activemq.management"));
-                MessageConsumer consumer = session.createConsumer(reply);
-                Message request = session.createMessage();
-                JMSManagementHelper.putOperationInvocation(request, ResourceNames.BROKER, operation, params);
-                request.setJMSReplyTo(reply);
-                producer.send(request);
-                Message answer = consumer.receive(10000);
-                assertNotNull(answer, "no answer to " + operation);
-                assertTrue(JMSManagementHelper.hasOperationSucceeded(answer),
-                        operation + ": " + JMSManagementHelper.getResult(answer));
-                return JMSManagementHelper.getResult(answer);
-            }
-            finally
-            {
-                connection.close();
-            }
-        }
     }
 }
