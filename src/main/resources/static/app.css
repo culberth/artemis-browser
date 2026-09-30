@@ -189,6 +189,7 @@ table th { white-space: nowrap; }
 .tab.current { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .stat .v.small { font-size: .95rem; }
+.small { font-size: .8rem; }
 .stat .muted { display: block; font-size: .75rem; }
 .stat-warn { border-color: var(--danger-border); }
 .stat-warn .v { color: var(--danger-text); }

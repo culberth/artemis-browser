@@ -140,6 +140,11 @@ Searches can be saved, with where they run, from search results, a filtered queu
 lookup, and are listed, renamed and deleted under **Saved**. See **Building and saving filters**
 below.
 
+Done in optional P4: **Triage by origin**, on every queue page, groups a sample of that queue — a
+dead-letter or expiry queue, usually — by the address and queue each message came from, with how
+many of each the broker expired, what each origin's settings say now, and example messages to open.
+See **Triaging a dead-letter or expiry queue** below.
+
 The phase acceptance checks are done too. `PagesIT` fetches the Phase 14 routes with the rest —
 exact-ID lookups of real messages, built filters, every saved-search scope, `/compare` — against a
 real broker on both supported versions and asserts nothing changed; it also asserts that comparing
@@ -364,6 +369,9 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.investigate.max-in-flight` | `20000` | In-flight messages one lookup may read across all queues (the per-queue limit is `artemis.in-flight-limit`) |
 | `artemis.investigate.max-scheduled-per-queue` | `5000` | Most scheduled messages a queue may hold for a lookup to read its scheduled list, which comes in one reply |
 | `artemis.investigate.max-scheduled` | `20000` | Scheduled messages one lookup may read across all queues |
+| `artemis.triage.default-sample` / `max-sample` | `500` / `2000` | Messages a triage reads from the head of a queue by default, and at most |
+| `artemis.triage.max-groups` | `50` | Origins (and values of a grouped property) a triage lists, largest first; the rest are counted |
+| `artemis.triage.max-settings-reads` | `20` | Origin addresses whose current settings a triage reads, one call each, largest groups first |
 
 ## Security posture
 
@@ -476,6 +484,39 @@ Deleting one rewrites the file without it — written beside the file and moved 
 write leaves the previous file whole — and nothing else keeps a copy. The file is plain JSON, so it
 can be read, edited or removed by hand; removing it removes every saved search. A file that cannot be
 read is reported on **Saved** and never overwritten.
+
+## Triaging a dead-letter or expiry queue
+
+*Triage by origin* on a queue's page (`/triage?name=…`) reads a sample of that queue and groups it by
+where each message came from. It is meant for a dead-letter or expiry queue, and works on any.
+
+What the broker records, checked on 2.55.0 and 2.57.0: a message it dead-letters, expires or moves
+carries `_AMQ_ORIG_ADDRESS` and `_AMQ_ORIG_QUEUE` (for a multicast subscriber, the subscription's
+queue), and one it expired also carries `_AMQ_ACTUAL_EXPIRY`, the time it did. An AMQP message shows
+the same values as `extraProperties._AMQ_ORIG_…` and `x-opt-ORIG-…` annotations, which are read too.
+**No reason is recorded.** A message killed after its delivery attempts, one an operator sent to the
+dead-letter address and one moved by hand look the same, so the page never says why a message is
+there. Per origin it shows:
+
+- how many sampled messages, and their share **of the sample** — never of the queue;
+- how many the broker expired, and when, from `_AMQ_ACTUAL_EXPIRY`; nothing else counts as expired;
+- the range of their sent times, and up to three example messages to open;
+- whether the origin queue is still on the broker;
+- what the origin address's settings say **now**: *dead-letters here*, *expires here*, or *sends
+  elsewhere* (moved by hand, or the settings changed since). Settings are read for the largest
+  `artemis.triage.max-settings-reads` origins; the rest say they were not read.
+
+A message with no origin — sent to the queue directly, or by something that records none — is
+listed as *no origin recorded*, never folded into a guess. Every property name in the sample is
+listed with how many messages carry it; choose one to group by its value as well, where a message
+without it is *not set*, not an empty value.
+
+**The sample** is the head of the queue, oldest first, as management `browse` pages it — not random,
+and not the whole queue unless the page says the browse ran out. In-flight and scheduled messages are
+not in it (their counts are shown). An optional core filter narrows it, evaluated by the broker. The
+queue's count is read before and after; if it moved, or a message came back on two pages, the page
+says so. It reads on request only, costs one `browse` per 200 messages plus the queue listing twice
+and the settings reads, and consumes, retries, moves and deletes nothing.
 
 ## Rates and diagnostic evidence
 
@@ -634,6 +675,8 @@ com.culberth.tools.artemisbrowser
 │   ├── MessageIdLookup            Recognises an exact message-ID search, the one kind in-flight messages can answer
 │   ├── MessageInvestigation       Where one message was seen, state by state, and where the lookup could not look
 │   ├── MessageInvestigationService One message ID looked up in every state, under per-request budgets
+│   ├── DeadLetterTriageService    A bounded sample of one queue grouped by recorded origin; origin settings now
+│   ├── DeadLetterTriage           The grouping: origins, recorded expiry, property values, and the sample's limits
 │   ├── AddressDirectory           Groups queues under their addresses (multicast fan-out)
 │   ├── AddressDetailService       One address: subscriptions, consumers, producers, lag, settings, diverts, pressure; per-subscription search
 │   ├── DivertDirectory            The broker's diverts: getDivertNames, then one read per field (there is no listing)
@@ -686,6 +729,7 @@ com.culberth.tools.artemisbrowser
 │   ├── BrokerController           /broker, /connectivity, /transactions, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── SavedSearchController      /saved: list, save, rename, delete; /saved/{id} shows before it runs
+│   ├── TriageController           /triage: a queue's sample grouped by where its messages came from
 │   ├── GuidedFilterForm           The filter builder's fields, bound from a GET
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
 │   ├── CompareController          /compare: two uploaded snapshots compared, no broker contacted
@@ -708,7 +752,7 @@ com.culberth.tools.artemisbrowser
     │   ├── fragments/filter.html  The filter builder and the save form, shared by three pages
     │   └── login.html, connect.html, overview.html, queues.html, message.html, addresses.html,
     │       address.html, broker.html, client.html, connectivity.html, transactions.html,
-    │       search.html, saved.html, saved-search.html, diagnose.html, compare.html
+    │       search.html, saved.html, saved-search.html, diagnose.html, compare.html, triage.html
     └── static/app.css
 ```
 

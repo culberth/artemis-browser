@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
 Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
-complete 2026-09-30: P1–P3 and the acceptance checks; P4–P5 optional. Phase 15 specified
+complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 done, P5 optional. Phase 15 specified
 2026-09-29: interactive regression lab, not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
@@ -1016,16 +1016,30 @@ both versions and checks nothing was consumed.
 
 ### P4 — Dead-letter and expiry triage (optional)
 
-- [ ] **Summarize a bounded sample.** On an inspected dead-letter or expiry queue, group sampled
+- [x] **Summarize a bounded sample.** On an inspected dead-letter or expiry queue, group sampled
       messages by original address/queue and available diagnostic properties. Link to representative
       messages and show the sample size, collection time, limits and excluded or missing metadata.
-- [ ] **Keep explanations evidence-based.** Verify origin and diagnostic metadata on supported
+- [x] **Keep explanations evidence-based.** Verify origin and diagnostic metadata on supported
       brokers before promising groupings. Unknown origin remains unknown; no failure reason is
       invented from a missing property. Sample proportions are not whole-queue totals.
 
 Done means a user can identify common origins or reported diagnostic patterns in the inspected
 sample. Cover heterogeneous and absent metadata, bounded collection and non-destructive reads.
 There are no retry, move or delete controls.
+
+**P4 done (2026-09-30):** *Triage by origin* on every queue page (`/triage`). Checked first on 2.55.0 and
+2.57.0: every broker move — a kill, an expiry, an operator's `sendMessageToDeadLetterAddress`, a
+`moveMessages` — sets `_AMQ_ORIG_ADDRESS`, `_AMQ_ORIG_QUEUE`, `_AMQ_ORIG_ROUTING_TYPE` and
+`_AMQ_ORIG_MESSAGE_ID`; expiry adds `_AMQ_ACTUAL_EXPIRY`; nothing records a reason or delivery count; an
+AMQP message browses them under `extraProperties.` and `x-opt-` names. So a group is an origin (address
+and queue, routing type, whether the queue still exists), with how many the broker expired and when,
+sent-time range, examples to open, and the origin address's settings *now* (dead-letters here, expires
+here, or sends elsewhere). No origin stays "no origin recorded". Every property name in the sample is
+counted, and one can be grouped by value, a missing one as "not set". The sample is the queue's head
+through paged `browse` (`artemis.triage.*`: 500 by default, 2,000 at most, 50 groups, 20 settings reads),
+shares are of the sample, and a queue that moved while it was read says so. No management operation was
+added. `DeadLetterTriageIT` covers each origin shape, expiry, a manual move, filtering on origin and
+unchanged counters on both versions; `PagesIT` visits `/triage` for every queue.
 
 ### P5 — Message comparison (optional)
 

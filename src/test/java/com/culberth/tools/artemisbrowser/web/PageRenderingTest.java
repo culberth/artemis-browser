@@ -33,6 +33,9 @@ import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
 import com.culberth.tools.artemisbrowser.broker.ConnectivityFixtures;
 import com.culberth.tools.artemisbrowser.broker.ConnectivityService;
 import com.culberth.tools.artemisbrowser.broker.ConnectionStore;
+import com.culberth.tools.artemisbrowser.broker.DeadLetterTriage;
+import com.culberth.tools.artemisbrowser.broker.DeadLetterTriageService;
+import com.culberth.tools.artemisbrowser.broker.InvalidFilterException;
 import com.culberth.tools.artemisbrowser.broker.Diagnosis;
 import com.culberth.tools.artemisbrowser.broker.Divert;
 import com.culberth.tools.artemisbrowser.broker.Finding;
@@ -107,7 +110,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @WebMvcTest(
 { BrokerController.class, ConnectionController.class, DiagnoseController.class, LoginController.class,
-        QueueController.class, SavedSearchController.class, SearchController.class
+        QueueController.class, SavedSearchController.class, SearchController.class, TriageController.class
 })
 @WithMockUser
 // A login configured, as on a shared host: the arrangement with a sign-in page and a signed-in user.
@@ -177,6 +180,9 @@ class PageRenderingTest
 
     @MockitoBean
     private PermissionService permissions;
+
+    @MockitoBean
+    private DeadLetterTriageService triageService;
 
     @BeforeEach
     void connected()
@@ -1090,6 +1096,78 @@ class PageRenderingTest
                 .andExpect(content().string(containsString("Invalid filter")));
     }
 
+    // -------------------------------------------------------------- triage
+
+    @Test
+    @DisplayName("the queue page links to triage")
+    void linksToTriage() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(
+                new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"), summary(2, "ID:bbb"))));
+
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("href=\"/triage?name=" + QUEUE)))
+                .andExpect(content().string(containsString("Triage by origin")));
+    }
+
+    @Test
+    @DisplayName("triage shows origins, recorded expiry, settings now, unknown origin and a property grouping")
+    void rendersATriage() throws Exception
+    {
+        given(triageService.triage(anyString(), any(), anyInt(), any())).willReturn(triage(false, true));
+
+        page("/triage?name=DLQ&by=code")
+                .andExpect(content().string(containsString("records <strong>no reason</strong>")))
+                .andExpect(content().string(containsString("href=\"/address?name=orders\"")))
+                .andExpect(content().string(containsString("href=\"/queues?name=orders\"")))
+                .andExpect(content().string(containsString("dead-letters here")))
+                .andExpect(content().string(containsString("dead-letter address DLQ, expiry address ExpiryQueue")))
+                .andExpect(content().string(containsString("no longer on the broker")))
+                .andExpect(content().string(containsString("no origin recorded")))
+                .andExpect(content().string(containsString("sends elsewhere")))
+                .andExpect(content().string(containsString("not permitted for this user")))
+                .andExpect(content().string(containsString("not collected")))
+                .andExpect(content().string(containsString("2 of 3")))
+                .andExpect(content().string(containsString("66.7%")))
+                .andExpect(content().string(containsString("href=\"/message?name=DLQ&amp;id=ID:1\"")))
+                .andExpect(content().string(containsString("head</strong> of the queue")))
+                .andExpect(content().string(containsString("E42")))
+                .andExpect(content().string(containsString("not set")))
+                .andExpect(content().string(containsString("group by")))
+                .andExpect(content().string(containsString("1 more origins, with 4 sampled messages")))
+                .andExpect(content().string(containsString("were not read")));
+    }
+
+    @Test
+    @DisplayName("triage of a whole, still queue says so, and one that moved says that")
+    void rendersWholeAndMovedTriage() throws Exception
+    {
+        given(triageService.triage(anyString(), any(), anyInt(), any())).willReturn(triage(true, false));
+        page("/triage?name=DLQ").andExpect(content().string(containsString("this is every waiting message")))
+                .andExpect(content().string(not(containsString("changed while it was sampled"))));
+
+        given(triageService.triage(anyString(), any(), anyInt(), any())).willReturn(triage(false, false));
+        page("/triage?name=DLQ").andExpect(content().string(containsString("changed while it was sampled")))
+                .andExpect(content().string(containsString("appeared on two pages")));
+    }
+
+    @Test
+    @DisplayName("triage of an empty queue, a missing queue and an invalid filter each say what happened")
+    void rendersTriageEdges() throws Exception
+    {
+        DeadLetterTriage empty = new DeadLetterTriage("DLQ", "DLQ", "", 0, 0L, 0, 0, 500, 0, true, 0, 200, 50, 20,
+                Instant.now(), Instant.now(), 2, List.of(), 0, 0, 0, 0, 0, 0, List.of(), 0, null);
+        given(triageService.triage(anyString(), any(), anyInt(), any())).willReturn(empty);
+        page("/triage?name=DLQ").andExpect(content().string(containsString("Nothing to group")));
+
+        given(triageService.triage(anyString(), any(), anyInt(), any())).willReturn(null);
+        page("/triage?name=nowhere").andExpect(content().string(containsString("No queue named")));
+
+        given(triageService.triage(anyString(), any(), anyInt(), any()))
+                .willThrow(new InvalidFilterException("AMQ229020: Invalid filter: =="));
+        page("/triage?name=DLQ&filter=%3D%3D").andExpect(content().string(containsString("nothing was sampled")));
+    }
+
     // -------------------------------------------------------------- message
 
     @Test
@@ -1534,6 +1612,35 @@ class PageRenderingTest
     {
         return new MessageSummary(position, id, id, "TextMessage", 1_758_000_000_000L, "2026-09-20 10:00:00", 4, true,
                 false, 512, "CORE", false, Map.of("orderNumber", "1"), "a body preview", false);
+    }
+
+    /** Origins with settings read, elsewhere, refused and not collected, one unknown, and a property grouping. */
+    private static DeadLetterTriage triage(boolean whole, boolean withGroupBy)
+    {
+        Reading<AddressSettings> dlq = Reading
+                .of(AddressSettings.of(Map.of("deadLetterAddress", "DLQ", "expiryAddress", "ExpiryQueue")));
+        Reading<AddressSettings> elsewhere = Reading.of(AddressSettings.of(Map.of("deadLetterAddress", "OtherDLQ")));
+        List<DeadLetterTriage.Origin> origins = List.of(
+                new DeadLetterTriage.Origin("orders", "orders", List.of("anycast"), 3, 2, 1_790_000_000_000L,
+                        1_790_000_100_000L, 1_790_000_200_000L, 1_790_000_300_000L, List.of("CORE"),
+                        List.of("ID:1", "ID:2"), true, dlq, "DLQ"),
+                new DeadLetterTriage.Origin("events", "client.sub", List.of("multicast"), 2, 0, 1_790_000_000_000L,
+                        1_790_000_000_000L, null, null, List.of("AMQP"), List.of("ID:3"), false, elsewhere, "DLQ"),
+                new DeadLetterTriage.Origin("audit", "audit", List.of(), 1, 0, null, null, null, null, List.of(),
+                        List.of(), true, Reading.missing(Availability.DENIED, "AMQ229032"), "DLQ"),
+                new DeadLetterTriage.Origin("late", "late", List.of(), 1, 0, null, null, null, null, List.of(),
+                        List.of(), true, Reading.notCollected("past the limit"), "DLQ"),
+                new DeadLetterTriage.Origin(null, null, List.of(), 1, 0, null, null, null, null, List.of(),
+                        List.of("ID:9"), null, null, "DLQ"));
+        DeadLetterTriage.GroupBy groupBy = withGroupBy
+                ? new DeadLetterTriage.GroupBy("code", List.of(new DeadLetterTriage.ValueGroup("E42", false, 2,
+                        List.of("orders / orders"), 1, List.of("ID:1"))), 1, 0, 0)
+                : null;
+        return new DeadLetterTriage("DLQ", "DLQ", "", 12, whole ? 12L : 13L, 0, 0, 500, whole ? 12 : 3, whole,
+                whole ? 0 : 1, 200, 50, 20, Instant.now(), Instant.now(), 5, origins, 1, 4, 1, 0, 2, 1,
+                List.of(new DeadLetterTriage.PropertySeen("code", 2, false),
+                        new DeadLetterTriage.PropertySeen("_AMQ_ORIG_ADDRESS", 3, true)),
+                0, groupBy);
     }
 
     private static MessageDetail detail(String id)

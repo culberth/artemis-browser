@@ -327,6 +327,27 @@ public class QueueBrowseService
     }
 
     /**
+     * One page of rows and nothing else: no total, no probe for a next page. For reading a sample page by page, where
+     * the three counting calls {@link #page} makes per page would triple the cost and say nothing the sample needs.
+     */
+    public List<MessageSummary> rows(String queueName, String filter, int page, int pageSize)
+    {
+        ManagementChannel management = brokerSession.requireManagement();
+        String effectiveFilter = filter == null ? "" : filter.trim();
+        String resource = ResourceNames.QUEUE + queueName;
+        Object result = effectiveFilter.isEmpty() ? management.invoke(resource, "browse", page, pageSize)
+                : management.invoke(resource, "browse", page, pageSize, effectiveFilter);
+
+        List<MessageSummary> messages = new ArrayList<>();
+        long firstPosition = (long) (page - 1) * pageSize + 1;
+        for (CompositeData entry : compositeData(result))
+        {
+            messages.add(toSummary(entry, firstPosition + messages.size(), bodyPreviewChars));
+        }
+        return messages;
+    }
+
+    /**
      * Messages the broker is holding back until their delivery time.
      *
      * <p>

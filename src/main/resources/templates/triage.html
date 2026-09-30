@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; triage</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('browse')}"></div>
+
+    <div class="panel">
+        <h2 style="margin-top:0">Triage <code th:text="${name}">DLQ</code>
+            <a class="badge-link" th:href="@{/queues(name=${name})}">back to the queue</a></h2>
+        <p class="note" style="margin-top:0">
+            Groups a sample of this queue by where each message came from. Artemis records the address and queue a
+            message left when it dead-letters, expires or moves it (<code>_AMQ_ORIG_ADDRESS</code>,
+            <code>_AMQ_ORIG_QUEUE</code>), and the time when it expired one (<code>_AMQ_ACTUAL_EXPIRY</code>).
+            It records <strong>no reason</strong>: a message killed after its delivery attempts, one an operator sent
+            to the dead-letter address and one moved by hand look the same. So this page says where messages came from
+            and which ones the broker expired &mdash; never why the others are here.
+        </p>
+        <form method="get" th:action="@{/triage}" class="field-row">
+            <input type="hidden" name="name" th:value="${name}">
+            <div>
+                <label for="sample">Sample size</label>
+                <input id="sample" name="sample" type="number" min="1" th:max="${maxSample}" th:value="${sample}"
+                       style="width:7rem">
+            </div>
+            <div style="flex:1;min-width:14rem">
+                <label for="filter">Filter (Artemis core syntax, optional)</label>
+                <input id="filter" name="filter" th:value="${filter}" style="width:100%"
+                       placeholder="e.g. _AMQ_ORIG_ADDRESS = 'orders'">
+            </div>
+            <div style="min-width:12rem">
+                <label for="by">Also group by property (optional)</label>
+                <input id="by" name="by" th:value="${by}" placeholder="e.g. errorCode">
+            </div>
+            <div><button type="submit">Triage</button></div>
+        </form>
+        <p class="note" th:text="'At most ' + ${maxSample} + ' messages per sample. Read on request only, never in the background; nothing is consumed, retried, moved or deleted.'">At most 2000.</p>
+    </div>
+
+    <div class="error" th:if="${error}">
+        <span th:text="${error}">error</span>
+        <span th:if="${invalidFilter}"> &mdash; nothing was sampled. Filters use Artemis core syntax, not JMS selector names.</span>
+    </div>
+
+    <th:block th:if="${triage}">
+    <div class="panel">
+        <h2 style="margin-top:0">Sample</h2>
+        <div class="stats">
+            <div class="stat"><span class="k">Sampled</span>
+                <span class="v" th:text="${triage.sampled()}">500</span></div>
+            <div class="stat"><span class="k">Asked for</span>
+                <span class="v" th:text="${triage.requested()}">500</span></div>
+            <div class="stat"><span class="k">Queue held (start &rarr; end)</span>
+                <span class="v" th:text="${triage.messageCountBefore()} + ' → ' + (${triage.messageCountAfter() == null} ? '?' : ${triage.messageCountAfter()})">1200 → 1200</span></div>
+            <div class="stat"><span class="k">In flight / scheduled (not sampled)</span>
+                <span class="v" th:text="${triage.deliveringCount()} + ' / ' + ${triage.scheduledCount()}">0 / 0</span></div>
+            <div class="stat"><span class="k">Expired by the broker</span>
+                <span class="v" th:text="${triage.expired()}">3</span></div>
+            <div class="stat"><span class="k">No origin recorded</span>
+                <span class="v" th:text="${triage.noOrigin()}">1</span></div>
+        </div>
+        <p class="note">
+            <span th:text="'Collected ' + ${triage.startedText()} + ' to ' + ${triage.finishedText()} + ' (' + ${triage.elapsedMillis()} + 'ms, ' + ${triage.managementCalls()} + ' management calls, ' + ${triage.pageSize()} + ' messages per browse).'">Collected …</span>
+            <span th:if="${!#strings.isEmpty(triage.filter())}" th:text="'Only messages matching ' + ${triage.filter()} + '.'">Filter.</span>
+        </p>
+        <p class="note" th:if="${triage.wholeQueue()}">
+            The browse ran out before the sample size: this is every waiting message the queue held<span
+                th:unless="${#strings.isEmpty(triage.filter())}"> that matches the filter</span>, as far as two
+            readings a moment apart can tell.
+        </p>
+        <p class="note" th:unless="${triage.wholeQueue()}">
+            These are the messages at the <strong>head</strong> of the queue, oldest first &mdash; not a random
+            sample, and not the whole queue. Every share below is a share of this sample; the rest of the queue may
+            look different.
+        </p>
+        <p class="error" th:if="${triage.moved()}">
+            The queue changed while it was sampled<span th:if="${triage.duplicates() > 0}"
+                th:text="' (' + ${triage.duplicates()} + ' messages appeared on two pages and were counted once)'"></span>.
+            Messages may have been missed or shifted between pages; the sample describes what was read, not one instant.
+        </p>
+        <p class="muted" th:if="${triage.empty()}">
+            Nothing to group: browse returned no waiting message<span th:unless="${#strings.isEmpty(triage.filter())}"> matching the filter</span>.
+        </p>
+    </div>
+
+    <div class="panel" th:unless="${triage.empty()}">
+        <h2 style="margin-top:0">By origin
+            <span class="muted" th:text="'(' + ${triage.origins().size()} + ' listed)'">(3 listed)</span></h2>
+        <p class="note" style="margin-top:0">
+            <strong>Origin</strong> is what the message itself records. <strong>Settings now</strong> is what the
+            origin address&rsquo;s settings say today &mdash; they may have changed since the message moved, and a
+            message can arrive here without them (sent directly, or moved by an operator).
+        </p>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                <tr><th>Origin address / queue</th><th class="num">Messages</th><th class="num">Share of sample</th>
+                    <th>Expired by the broker</th><th>Sent</th><th>Settings now</th><th>Examples</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="o : ${triage.origins()}">
+                    <td>
+                        <th:block th:if="${o.known()}">
+                            <a th:if="${o.address() != null}" th:href="@{/address(name=${o.address()})}"
+                               th:text="${o.address()}">orders</a>
+                            <span th:if="${o.address() == null}" class="unavailable">address not recorded</span>
+                            /
+                            <a th:if="${o.queue() != null and o.queueExists()}" th:href="@{/queues(name=${o.queue()})}"
+                               th:text="${o.queue()}">orders</a>
+                            <span th:if="${o.queue() != null and !o.queueExists()}">
+                                <code th:text="${o.queue()}">gone</code> <span class="badge">no longer on the broker</span></span>
+                            <span th:if="${o.queue() == null}" class="unavailable">queue not recorded</span>
+                            <div class="muted small" th:unless="${o.routingTypes().isEmpty()}"
+                                 th:text="${#strings.listJoin(o.routingTypes(), ', ')}">anycast</div>
+                        </th:block>
+                        <span th:unless="${o.known()}" class="unavailable"
+                              title="No _AMQ_ORIG_ADDRESS or _AMQ_ORIG_QUEUE: sent here directly, or by something that records no origin. Unknown, not a group of its own.">no origin recorded &mdash; unknown</span>
+                    </td>
+                    <td class="num" th:text="${o.count()}">12</td>
+                    <td class="num" th:text="${triage.share(o.count())} + '%'">40.0%</td>
+                    <td>
+                        <span th:if="${o.expired() == 0}" class="muted">none recorded</span>
+                        <th:block th:if="${o.expired() > 0}">
+                            <span th:text="${o.expired()} + ' of ' + ${o.count()}">3 of 12</span>
+                            <div class="muted small" th:text="${o.firstExpiredText()} + (${o.expired() > 1} ? ' – ' + ${o.lastExpiredText()} : '')">time</div>
+                        </th:block>
+                    </td>
+                    <td class="nowrap">
+                        <span th:text="${o.firstSentText()}">first</span>
+                        <th:block th:if="${o.count() > 1 and o.lastSent() != o.firstSent()}"><br><span th:text="${o.lastSentText()}">last</span></th:block>
+                    </td>
+                    <td>
+                        <span th:if="${o.settings() == null}" class="muted">&mdash;</span>
+                        <th:block th:if="${o.settings() != null and !o.settingsRead()}">
+                            <span th:replace="~{fragments/layout :: missing(${o.settings()})}"></span>
+                        </th:block>
+                        <th:block th:if="${o.settingsRead()}">
+                            <span class="badge" th:if="${o.deadLettersHere()}">dead-letters here</span>
+                            <span class="badge" th:if="${o.expiresHere()}">expires here</span>
+                            <span class="badge warn" th:if="${!o.deadLettersHere() and !o.expiresHere()}"
+                                  title="Its settings now send neither dead letters nor expired messages to this queue's address: moved by hand, or the settings changed">sends elsewhere</span>
+                            <div class="muted small" th:text="${o.settingsText()}">dead-letter address DLQ</div>
+                        </th:block>
+                    </td>
+                    <td>
+                        <a th:each="id : ${o.examples()}" class="nowrap" style="display:block"
+                           th:href="@{/message(name=${triage.queueName()},id=${id})}" th:text="${id}">ID:…</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${triage.originsNotListed() > 0}"
+           th:text="${triage.originsNotListed()} + ' more origins, with ' + ${triage.messagesNotListed()} + ' sampled messages between them, are not listed (limit ' + ${triage.maxGroups()} + ').'">More.</p>
+        <p class="note" th:if="${triage.partialOrigin() > 0}"
+           th:text="${triage.partialOrigin()} + ' sampled messages record an origin address but no origin queue.'">Partial.</p>
+        <p class="note" th:if="${triage.settingsNotRead() > 0}"
+           th:text="'Settings were read for the ' + ${triage.settingsReadLimit()} + ' largest origin addresses only; ' + ${triage.settingsNotRead()} + ' more were not read.'">Limit.</p>
+    </div>
+
+    <div class="panel" th:if="${triage.groupBy() != null}">
+        <h2 style="margin-top:0">By <code th:text="${triage.groupBy().property()}">errorCode</code></h2>
+        <p class="note" style="margin-top:0">
+            A property&rsquo;s value as the sender or the broker set it. A message without it is counted as
+            <em>not set</em>, never as an empty value, and nothing is inferred from its absence.
+        </p>
+        <p class="muted" th:if="${triage.groupBy().values().isEmpty()}"
+           th:text="'No sampled message carries ' + ${triage.groupBy().property()} + '. Property names are case-sensitive; the list below shows the ones the sample has.'">None.</p>
+        <div class="table-scroll" th:unless="${triage.groupBy().values().isEmpty()}">
+            <table>
+                <thead>
+                <tr><th>Value</th><th class="num">Messages</th><th class="num">Share of sample</th><th>Origins</th><th>Examples</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="v : ${triage.groupBy().values()}">
+                    <td><code th:text="${v.value()}">E42</code>
+                        <span class="badge" th:if="${v.truncated()}" title="Longer values are grouped by their first 200 characters">cut</span></td>
+                    <td class="num" th:text="${v.count()}">4</td>
+                    <td class="num" th:text="${triage.share(v.count())} + '%'">10.0%</td>
+                    <td>
+                        <div th:each="label : ${v.origins()}" th:text="${label}">orders / orders</div>
+                        <div class="muted small" th:if="${v.originCount() > v.origins().size()}"
+                             th:text="'and ' + (${v.originCount()} - ${v.origins().size()}) + ' more'">and 2 more</div>
+                    </td>
+                    <td>
+                        <a th:each="id : ${v.examples()}" class="nowrap" style="display:block"
+                           th:href="@{/message(name=${triage.queueName()},id=${id})}" th:text="${id}">ID:…</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="unavailable">not set</span></td>
+                    <td class="num" th:text="${triage.groupBy().notSet()}">2</td>
+                    <td class="num" th:text="${triage.share(triage.groupBy().notSet())} + '%'">5.0%</td>
+                    <td></td><td></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${triage.groupBy().valuesNotListed() > 0}"
+           th:text="${triage.groupBy().valuesNotListed()} + ' more values, with ' + ${triage.groupBy().messagesNotListed()} + ' sampled messages between them, are not listed.'">More.</p>
+    </div>
+
+    <div class="panel" th:unless="${triage.empty()}">
+        <h2 style="margin-top:0">Properties in the sample</h2>
+        <p class="note" style="margin-top:0">
+            Every property name the sampled messages carry, and how many carry it. Choose one to group by. Names marked
+            <span class="badge">broker</span> are set by the broker or the protocol, not by the sender.
+        </p>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>Property</th><th class="num">Messages carrying it</th><th></th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${triage.properties()}">
+                    <td><code th:text="${p.name()}">errorCode</code>
+                        <span class="badge" th:if="${p.artemis()}">broker</span></td>
+                    <td class="num" th:text="${p.count()} + ' of ' + ${triage.sampled()}">4 of 40</td>
+                    <td><a class="badge-link"
+                           th:href="@{/triage(name=${triage.queueName()},filter=${triage.filter()},sample=${triage.requested()},by=${p.name()})}">group by</a></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="note" th:if="${triage.propertiesNotListed() > 0}"
+           th:text="${triage.propertiesNotListed()} + ' rarer property names are not listed.'">More.</p>
+    </div>
+    </th:block>
+</div>
+</body>
+</html>

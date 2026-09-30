@@ -457,6 +457,27 @@ Filtered `browse` on one queue of four messages, properties set through JMS or t
 - **Tomcat answers 400 to a raw `[` or `]` in a query string** (`conditions[0].name=`); a browser's form
   GET percent-encodes them, so only a hand-typed URL hits it. Use `%5B`/`%5D` when testing by URL.
 
+### Dead-letter and expiry metadata (2026-09-30, 2.55.0 and 2.57.0 identical, before Phase 14 P4 grouped on it)
+
+Killed after `maxDeliveryAttempts=2` (anycast, and a durable subscription), expired on delivery (TTL 500ms),
+`sendMessageToDeadLetterAddress`, `moveMessages` to an ordinary queue, sent to DLQ directly, and an AMQP sender
+(the image's CLI, `artemis producer --protocol amqp`) killed and expired. Seen through management `browse`:
+
+- **Every broker move sets the same four**: `_AMQ_ORIG_ADDRESS`, `_AMQ_ORIG_QUEUE` (StringProperties),
+  `_AMQ_ORIG_ROUTING_TYPE` (ByteProperties, 0 multicast / 1 anycast), `_AMQ_ORIG_MESSAGE_ID` (LongProperties, the
+  original's core id). A subscription's origin queue is the subscription queue (`client.sub`), address the topic.
+- **No reason, no count**: killed, operator-sent and `moveMessages`-moved messages are identical; `redelivered` false,
+  `JMSXDeliveryCount` 0 on the JMS path. Only the origin's settings can hint which. A message sent to DLQ directly
+  has none of them (just `_AMQ_ROUTING_TYPE`).
+- **Expiry adds `_AMQ_ACTUAL_EXPIRY`** (Long epoch millis) and resets `expiration` to 0. Same for an AMQP message.
+- **AMQP messages browse with section prefixes**: `extraProperties._AMQ_ORIG_ADDRESS`, `messageAnnotations.x-opt-ORIG-
+  ADDRESS` (and `-QUEUE`, `-ROUTING-TYPE`, `-MESSAGE-ID`), `applicationProperties.<name>`, `properties.to`. The JMS
+  path shows `_AMQ_ORIG_*` plain plus `JMS_AMQP_MA_x-opt-ORIG-*`. `userID` is the AMQP message id.
+- **`autoCreateDeadLetterResources=true`** makes queue `DLQ.<address>` on the dead-letter address, MULTICAST,
+  `autoCreated`, filter `_AMQ_ORIG_ADDRESS = '<address>'`.
+- A core filter `_AMQ_ORIG_ADDRESS = 'x'` works on a filtered browse. `moveMessages` needs an existing target queue
+  (`AMQ229049` otherwise); a dead-letter address with no queue drops the message.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging

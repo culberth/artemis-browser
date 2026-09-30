@@ -245,6 +245,8 @@
             <div class="field-row">
                 <a class="badge-link" th:href="@{/export(name=${selected},filter=${filter},format=csv)}">Export CSV</a>
                 <a class="badge-link" th:href="@{/export(name=${selected},filter=${filter},format=json)}">Export JSON</a>
+                <a class="badge-link" th:href="@{/triage(name=${selected},filter=${filter})}"
+                   title="Group a sample of this queue by where its messages came from: for a dead-letter or expiry queue">Triage by origin</a>
             </div>
             <div class="pager" th:if="${messages.totalPages() > 1}">
                 <a class="tab" th:classappend="${!messages.hasPrevious()} ? 'disabled' : ''"

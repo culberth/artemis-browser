@@ -410,6 +410,35 @@ after Save believes it saved. A file that cannot be read is never overwritten, s
 replace searches this tool could not see; entries that are merely unusable are listed as such and
 dropped by the next write. Writes go to a temporary file moved over the old one.
 
+### Dead-letter triage: where from, never why
+
+Triage (Phase 14 P4) groups a sample of one queue by the origin each message records. Before a
+grouping was written, what the broker records was checked on 2.55.0 and 2.57.0 by dead-lettering,
+expiring and moving real messages (`.claude/memory.md`, *Dead-letter and expiry metadata*):
+
+- **Origin is recorded; reason is not.** `_AMQ_ORIG_ADDRESS`, `_AMQ_ORIG_QUEUE`,
+  `_AMQ_ORIG_ROUTING_TYPE` and `_AMQ_ORIG_MESSAGE_ID` are set on every move — a kill after max
+  delivery attempts, an operator's `sendMessageToDeadLetterAddress`, and a `moveMessages` to an
+  ordinary queue alike. No delivery count or failure reason survives (`JMSXDeliveryCount` reads 0).
+  So a group is an origin, and the page says in words that it cannot say why.
+- **Expiry is the one move that leaves its own mark**, `_AMQ_ACTUAL_EXPIRY`, on core and AMQP messages
+  both. Only that counts as expired; the message's own expiration header is reset to 0 on the move.
+- **The origin address's settings are read now, and labelled as now.** *Dead-letters here* means its
+  current dead-letter address is this queue's address — an observation about settings today, which
+  may have changed since, not a claim about why a message moved. That is how an operator's move shows
+  up at all: its origin's settings *send elsewhere*.
+- **Browse names an AMQP message's properties by section** (`extraProperties._AMQ_ORIG_ADDRESS`,
+  `messageAnnotations.x-opt-ORIG-ADDRESS`, `applicationProperties.…`), so the origin is read under
+  each name and an AMQP message joins the same group as a core one.
+- **No origin stays unknown.** A message sent straight to the queue records none, and is its own row,
+  always listed, never assigned to the nearest group.
+
+The sample is the head of the queue through the same paged `browse` as the queue page, in pages of up
+to 200 — never more than the sample, so a short page means the queue ran out. Grouping happens in the
+app over at most `artemis.triage.max-sample` rows; nothing streams the queue. Shares are of the
+sample. The queue's count is read before and after, and a row seen on two pages is counted once and
+reported, because a dead-letter queue that is being drained or filled moves under the pages.
+
 ### A filtered count is a sample, not a count
 
 Artemis examines only the first `management-browse-page-size` messages (200 by default) when
@@ -639,11 +668,14 @@ management calls, and opening a saved search reads only the listing its scope ne
 queue listing, or the address listing that joins it) — a search would add a browse per queue.
 `/saved` and `/compare` join the list pages whose cost must not grow with the broker. The
 allowlist is pinned exactly in `ManagementChannelTest`, so adding a read is a visible change that
-should arrive with its recorded reply shape; Phase 14 added none.
+should arrive with its recorded reply shape; Phase 14 added none. Triage (P4) is visited for every
+queue, plain and grouped by a property; it adds no operation either, reading `browse`, the queue
+listing and `getAddressSettingsAsJSON`.
 
 A rendering test is only worth what it fails on. Each Phase 13 page and panel was broken in turn —
 an expression that cannot evaluate, inserted inside the panel's own condition — and
 `PageRenderingTest` failed every time, between 1 and 17 tests per break. Phase 14's templates got the
 same treatment — `compare`, `saved`, `saved-search`, `search`, and both fragments in `filter.html` —
-and each break failed between 4 and 41 tests across the rendering and controller tests. Repeat that
+and each break failed between 4 and 41 tests across the rendering and controller tests. P4's
+`triage.html` got it too. Repeat that
 when adding a panel rather than trusting that a `containsString` is looking at it.
