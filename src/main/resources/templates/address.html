@@ -401,6 +401,11 @@
         </p>
 
         <div class="error" th:if="${findError}" th:text="${findError}">error</div>
+    </form>
+    <div class="panel" th:if="${found}">
+        <div th:replace="~{fragments/filter :: save('ADDRESS', ${name}, ${find}, false)}"></div>
+    </div>
+    <div class="panel" th:if="${found}">
 
         <th:block th:if="${found}">
             <p>
@@ -443,7 +448,7 @@
                 </table>
             </div>
         </th:block>
-    </form>
+    </div>
 
     <!-- Prepared XA branches that received from or sent to this address; only when there are some, or it could not be read. -->
     <div class="panel" id="transactions" th:if="${prepared != null and (!prepared.available() or !prepared.value().touching(a.name()).isEmpty())}">

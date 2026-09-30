@@ -190,6 +190,10 @@ public class ManagementChannel implements AutoCloseable
             if (!JMSManagementHelper.hasOperationSucceeded(reply))
             {
                 String reason = describeFailure(reply);
+                if (InvalidFilterException.recognises(reason))
+                {
+                    throw new InvalidFilterException(InvalidFilterException.explain(what, reason));
+                }
                 Availability availability = classify(reason, attribute);
                 ManagementRefusal refusal = new ManagementRefusal(availability,
                         refusalMessage(what, reason, availability));

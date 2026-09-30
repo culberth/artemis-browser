@@ -37,8 +37,15 @@
             <code>AMQUserID = 'ID:&hellip;'</code>): that looks for it in every state a queue can hold
             it in &mdash; scheduled, waiting, in flight to a consumer, or held by a prepared
             transaction &mdash; and reports where it could not look.
+            Not sure of the syntax? <a href="#builder">Build a filter</a> below.
         </p>
     </form>
+
+    <div th:replace="~{fragments/filter :: builder(@{/search}, ${builderKeep})}"></div>
+
+    <div class="panel" th:if="${result != null or investigation != null}">
+        <div th:replace="~{fragments/filter :: save('ALL_QUEUES', '', ${filter}, ${internal})}"></div>
+    </div>
 
     <div class="panel" th:if="${investigation}" th:with="inv=${investigation}">
         <h2>

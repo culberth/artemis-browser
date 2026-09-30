@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
+import com.culberth.tools.artemisbrowser.broker.InvalidFilterException;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessagePage;
 import com.culberth.tools.artemisbrowser.broker.MessageInvestigationService;
@@ -109,6 +110,62 @@ class SearchControllerTest
         verify(investigationService).investigate("ID:abc-1", false);
         verify(investigationService).investigate("ID:abc-1", true);
         verify(searchService, never()).search(anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("the builder's 'show' writes the filter into the box and searches nothing")
+    void builderShowsWithoutSearching() throws Exception
+    {
+        mockMvc.perform(get("/search").param("build", "show").param("conditions[0].name", "region")
+                .param("conditions[0].value", "O'Brien").param("priorityMin", "5").header("Host", "localhost"))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("filter", "region = 'O''Brien' AND AMQPriority >= 5"))
+                .andExpect(model().attributeExists("built")).andExpect(model().attributeDoesNotExist("result"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Written as")));
+
+        verify(searchService, never()).search(anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("the builder's 'run' searches with the written filter, keeping the internal-queues choice")
+    void builderRuns() throws Exception
+    {
+        given(searchService.search("\"order-id\" = 'A-1'", true))
+                .willReturn(new SearchResult("\"order-id\" = 'A-1'", 3, 0, false, List.of()));
+
+        mockMvc.perform(
+                get("/search").param("build", "run").param("internal", "true").param("conditions[0].name", "order-id")
+                        .param("conditions[0].value", "A-1").header("Host", "localhost"))
+                .andExpect(status().isOk()).andExpect(model().attributeExists("result"));
+
+        verify(searchService).search("\"order-id\" = 'A-1'", true);
+    }
+
+    @Test
+    @DisplayName("a request the builder cannot write shows why and searches nothing, not even the typed filter")
+    void builderErrors() throws Exception
+    {
+        mockMvc.perform(get("/search").param("build", "run").param("filter", "count = 1")
+                .param("conditions[0].name", "count").param("conditions[0].type", "INTEGER")
+                .param("conditions[0].value", "five").header("Host", "localhost")).andExpect(status().isOk())
+                .andExpect(model().attributeDoesNotExist("result"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("No filter written")));
+
+        verify(searchService, never()).search(anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("a filter the broker cannot parse is an error that says nothing was searched")
+    void invalidFilter() throws Exception
+    {
+        given(searchService.search("n == 2", false)).willThrow(new InvalidFilterException("The broker could not"
+                + " read this filter, so queue.x.browse() searched nothing — this is not a result of zero matches"));
+
+        mockMvc.perform(get("/search").param("filter", "n == 2").header("Host", "localhost")).andExpect(status().isOk())
+                .andExpect(model().attribute("invalidFilter", true))
+                .andExpect(model().attribute("error", org.hamcrest.Matchers.containsString("not a result of zero")))
+                .andExpect(model().attribute("error",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("JMS selector"))));
     }
 
     @Test

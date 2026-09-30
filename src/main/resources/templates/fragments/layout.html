@@ -26,6 +26,8 @@
            th:href="@{/queues}">Browse</a>
         <a class="tab" th:classappend="${active == 'search'} ? 'current' : ''"
            th:href="@{/search}">Search</a>
+        <a class="tab" th:classappend="${active == 'saved'} ? 'current' : ''"
+           th:href="@{/saved}">Saved</a>
         <a class="tab" th:classappend="${active == 'diagnose'} ? 'current' : ''"
            th:href="@{/diagnose}">Diagnose</a>
         <a class="tab" th:classappend="${active == 'compare'} ? 'current' : ''"

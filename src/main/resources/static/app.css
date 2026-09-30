@@ -224,3 +224,22 @@ p.unavailable .muted { display: block; font-size: .8rem; font-style: normal; wor
 .spark { color: var(--accent); vertical-align: middle; overflow: visible; }
 .trend-summary { margin: .25rem 0 .75rem; padding-left: 1.2rem; }
 .trend-summary li { margin: .15rem 0; }
+
+/* Phase 14 P3: the filter builder and saved searches. */
+.builder summary { margin-bottom: .25rem; }
+.builder h3 { font-size: .9rem; margin: 1rem 0 .4rem; }
+.builder-row { margin-bottom: .5rem; }
+.builder ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+code.expression { word-break: break-all; }
+.clauses { border-collapse: collapse; margin: .4rem 0; }
+.clauses th, .clauses td { text-align: left; padding: .2rem .9rem .2rem 0; vertical-align: top; }
+.inline-form { display: inline-flex; gap: .35rem; align-items: center; margin: .25rem 0 0; }
+.save-search .note { margin-top: 0; }
+.notice {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: .7rem .9rem;
+    margin-bottom: 1rem;
+    background: var(--panel);
+}

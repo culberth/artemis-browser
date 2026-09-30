@@ -58,9 +58,17 @@
                 <code>AMQTimestamp</code>, <code>AMQDurable</code>, <code>AMQSize</code>, or a
                 property by its bare name. JMS selector names such as <code>JMSPriority</code> are
                 not rejected; they simply match nothing.
+                <a th:if="${selected}" href="#builder">Build a filter</a>
             </p>
         </div>
     </form>
+
+    <th:block th:if="${selected}">
+        <div th:replace="~{fragments/filter :: builder(@{/queues}, ${builderKeep})}"></div>
+    </th:block>
+    <div class="panel" th:if="${messages != null and !#strings.isEmpty(filter)}">
+        <div th:replace="~{fragments/filter :: save('QUEUE', ${selected}, ${filter}, false)}"></div>
+    </div>
 
     <div class="panel" th:if="${stats}">
         <h2>

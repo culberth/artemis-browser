@@ -437,6 +437,26 @@ connection closed without commit or rollback. Over the JMS management channel:
 - **A filtered `browse`/`countMessages` for `AMQUserID = '<scheduled id>'` finds nothing** — browse never sees a
   scheduled message, filtered or not. The scheduled list is the only place it is.
 
+### Core filter syntax (2026-09-30, 2.55.0 and 2.57.0 identical, before Phase 14 P3 wrote any)
+
+Filtered `browse` on one queue of four messages, properties set through JMS or the core message:
+
+- **String literal**: `'O''Brien'` matches; `'O\'Brien'` → `AMQ229020: Invalid filter`. A backslash is
+  literal: `'back\slash'` matches a one-backslash value, `'back\\slash'` does not. Non-ASCII is fine.
+- **Types are strict**: string `"5"` ≠ `5`; int `2` ≠ `'2'`; int `2` = `2.0`; long past int range
+  works; boolean matches `TRUE`/`true`, not `'true'`. `missing = 'x'` → 0, `missing IS NULL` → all.
+- **Names**: bare `my-prop = 'h1'` is **valid and matches nothing** (parsed as subtraction); `"my-prop"`
+  (double-quoted) matches; `hyphenated_props:my-prop` also works. Bare `my.dotted` → AMQ229020;
+  `"my.dotted"` and a quoted reserved word (`"and"`) match. JMS `setStringProperty("my-prop")` throws
+  AMQ139012 client-side — set such names on the core message.
+- **Headers**: `AMQDurable = 'DURABLE' | 'NON_DURABLE'`; `AMQPriority BETWEEN 4 AND 5` inclusive;
+  `AMQTimestamp` = the sender's `JMSTimestamp` in millis, `>=` includes the exact stamp.
+- **LIKE**: `ESCAPE '\'` works for `%` and `_` in the value.
+- **Every parse failure is `AMQ229020: Invalid filter: <text>`** (`==`, unterminated literal, `AND = 1`)
+  — it used to reach the page wrapped in "check the manage permission". Now `InvalidFilterException`.
+- **Tomcat answers 400 to a raw `[` or `]` in a query string** (`conditions[0].name=`); a browser's form
+  GET percent-encodes them, so only a hand-typed URL hits it. Use `%5B`/`%5D` when testing by URL.
+
 ## Verified behaviour
 
 - **Both read paths are non-destructive.** Counts, delivering and acked unchanged after paging
@@ -539,6 +559,12 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **Python's `open()` defaults to cp1252 here** (2026-09-30): an edit script wrote `—` as byte 0x97
   into a Java file, which javac then rejects as invalid UTF-8. Always pass `encoding='utf-8'`.
   Check `git diff --stat` after any scripted edit.
+- **PowerShell 5.1 `Set-Content -Encoding utf8` writes a BOM** (2026-09-30): javac then fails with
+  "illegal character: '\ufeff'". And `Get-Content -Raw` read UTF-8 as cp1252, so `—` came back as `â€”`.
+  Edit through Python with `encoding='utf-8'` or the Edit tool instead.
+- **Jackson 3 fails a record on a missing primitive** (2026-09-30): a saved-search entry without
+  `internal` made the whole file unreadable ("Cannot map `null` into type `boolean`") —
+  `FAIL_ON_NULL_FOR_PRIMITIVES` is on. `SavedSearchStore` turns it and unknown-property failures off.
 - **Stale surefire reports can pass a broken build** (2026-09-30): `mvn -q test | grep "Tests run:"`
   showed nothing, and summing `target/surefire-reports` gave the previous run's green total — the
   compile had failed, and `-q` plus a grep for "Tests run" hid it. Delete the reports first, and grep

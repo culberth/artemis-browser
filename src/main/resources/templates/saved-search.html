@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; saved search</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('saved')}"></div>
+
+    <div class="error" th:if="${problem}">
+        <span th:text="${problem}">No such saved search.</span> <a th:href="@{/saved}">All saved searches</a>
+    </div>
+
+    <div class="panel" th:if="${search}" th:with="s=${search}">
+        <h2 th:text="${s.name()}">name</h2>
+
+        <table class="clauses">
+            <tbody>
+            <tr><th>Runs on</th><td th:text="${s.describeScope()}">every queue</td></tr>
+            <tr><th>Filter</th><td><code class="expression" th:text="${s.filter()}">AMQPriority = 4</code></td></tr>
+            <tr><th>Saved from</th>
+                <td th:text="(${#strings.isEmpty(s.savedFrom())} ? 'unknown broker' : ${s.savedFrom()}) + ', ' + ${s.createdText()}">localhost:61616</td></tr>
+            <tr><th>Would run against</th>
+                <td>
+                    <strong th:if="${currentBroker}" th:text="${connection.describe()}">artemis@localhost:61616</strong>
+                    <span th:unless="${currentBroker}" class="muted">no broker &mdash; this session is not connected.
+                        <a th:href="@{/}">Connect</a> first.</span>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="error" th:if="${otherBroker}"
+             th:text="'Saved while connected to ' + ${s.savedFrom()} + ', and this session is connected to ' + ${currentBroker} + '. It runs against the broker you are connected to now; the same queue name there may hold something else entirely.'">
+            Different broker.</div>
+
+        <th:block th:if="${scopeCheck}">
+            <p th:class="${scopeCheck.exists()} ? 'muted' : 'error'" th:text="${scopeCheck.explanation()}">exists</p>
+
+            <!-- A run is always this button: never automatic, never in the background. The filter can be changed first. -->
+            <form method="get" th:if="${scopeCheck.exists() or !scopeCheck.checked()}"
+                  th:action="${s.scope().name() == 'QUEUE'} ? @{/queues} : (${s.scope().name() == 'ADDRESS'} ? @{/address} : @{/search})">
+                <input type="hidden" name="name" th:if="${s.scope().name() != 'ALL_QUEUES'}" th:value="${s.target()}">
+                <input type="hidden" name="internal" th:if="${s.scope().name() == 'ALL_QUEUES'}" th:value="${s.internal()}">
+                <div class="field-row">
+                    <div style="flex:1;min-width:22rem">
+                        <label for="run-filter">Filter (change it here for this run; the saved one stays as it is)</label>
+                        <input id="run-filter" type="text" style="width:100%" autocomplete="off"
+                               th:name="${s.scope().name() == 'ADDRESS'} ? 'find' : 'filter'" th:value="${s.filter()}">
+                    </div>
+                    <div>
+                        <button type="submit">Run</button>
+                    </div>
+                </div>
+            </form>
+            <p class="note" th:unless="${scopeCheck.exists() or !scopeCheck.checked()}">
+                Not run: there is nothing there to search.
+                <a th:href="@{/search(filter=${s.filter()})}">Search every queue for it instead</a>.
+            </p>
+        </th:block>
+
+        <p class="note">
+            A search that finds nothing has not shown that the messages are gone: a search sees only messages
+            waiting on a queue, not ones in flight to a consumer or scheduled for later, and an invalid filter
+            is reported as an error rather than as no matches.
+        </p>
+        <p><a th:href="@{/saved}">All saved searches</a></p>
+    </div>
+</div>
+</body>
+</html>

@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.culberth.tools.artemisbrowser.broker.AddressDirectory;
 import com.culberth.tools.artemisbrowser.broker.BrokerSession;
 import com.culberth.tools.artemisbrowser.broker.ConnectionInfo;
+import com.culberth.tools.artemisbrowser.filter.SavedSearchStore;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,7 +40,8 @@ import org.springframework.test.web.servlet.MockMvc;
  * stay true without a login: the host check, and CSRF.
  */
 @SpringBootTest(properties =
-{ "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash="
+{ "server.address=127.0.0.1", "artemis.auth.username=", "artemis.auth.password-hash=",
+        "artemis.saved-searches.file=${java.io.tmpdir}/artemis-browser-tests/local-saved-searches.json"
 })
 @AutoConfigureMockMvc
 class LocalWithoutLoginTest
@@ -116,6 +118,41 @@ class LocalWithoutLoginTest
         mockMvc.perform(multipart("/compare").file(file).param("_csrf", token.group(1)).session(session).header("Host",
                 "localhost")).andExpect(status().isOk())
                 .andExpect(content().string(Matchers.containsString("Choose two snapshot files")));
+    }
+
+    @Autowired
+    private SavedSearchStore savedSearches;
+
+    /**
+     * Saving, renaming and deleting are POSTs like any other; the forms carry the token and nothing works without it.
+     */
+    @Test
+    @DisplayName("saved searches need the CSRF token to change, and the forms carry it")
+    void savedSearchesNeedTheirToken() throws Exception
+    {
+        java.nio.file.Files.deleteIfExists(savedSearches.file());
+        mockMvc.perform(post("/saved").param("name", "x").param("filter", "a = 1").header("Host", "localhost"))
+                .andExpect(status().isForbidden());
+        assertTrue(savedSearches.all().searches().isEmpty());
+
+        MockHttpSession session = new MockHttpSession();
+        String form = mockMvc.perform(get("/compare").session(session).header("Host", "localhost")).andReturn()
+                .getResponse().getContentAsString();
+        Matcher token = Pattern.compile("name=\"_csrf\" value=\"([^\"]+)\"").matcher(form);
+        assertTrue(token.find(), form);
+        mockMvc.perform(post("/saved").param("name", "x").param("filter", "a = 1").param("_csrf", token.group(1))
+                .session(session).header("Host", "localhost")).andExpect(redirectedUrl("/saved"));
+        String id = savedSearches.all().searches().get(0).id();
+
+        String list = mockMvc.perform(get("/saved").session(session).header("Host", "localhost")).andReturn()
+                .getResponse().getContentAsString();
+        assertTrue(list.contains("action=\"/saved/" + id + "/delete\""), list);
+        assertTrue(list.contains("name=\"_csrf\""), list);
+
+        mockMvc.perform(post("/saved/" + id + "/delete").header("Host", "localhost")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/saved/" + id + "/delete").param("_csrf", token.group(1)).session(session).header("Host",
+                "localhost")).andExpect(redirectedUrl("/saved"));
+        assertTrue(savedSearches.all().searches().isEmpty());
     }
 
     @Test
