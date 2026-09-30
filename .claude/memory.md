@@ -420,6 +420,12 @@ connection closed without commit or rollback. Over the JMS management channel:
   address answers with `#`'s roles. `getRoles` is the same as `Object[]` rows. `address.<name>`
   attributes `rolesAsJSON`/`roles` give the same, but only for an existing address ("Problem while
   retrieving attribute" before). `securityEnabled` Boolean, `transactionTimeout` Long (300000).
+- **Resolving a branch through management leaves a record** (2026-09-30, cleaning up the probe):
+  `rollbackPreparedTransaction` moved the branch from prepared to `listHeuristicRolledBackTransactions`,
+  as `commitPreparedTransaction` does to the committed list. No management operation clears either,
+  and they are journaled. `XAResource.forget(xid)` from an XA client does — `recover()` lists them too.
+  Also: `destroyQueue(name, true, true)` left two of four auto-created addresses behind;
+  `deleteAddress` removed them.
 - The image's default `#` grants `amq` everything but manage/view/edit; `activemq.management.#` grants
   manage but not browse or durable queues.
 
