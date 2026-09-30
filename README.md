@@ -236,6 +236,14 @@ rendering the login page creates a session, one per probe, and a loopback Host b
 Rebuilding on the same tag does not restart anything: `./scripts/build-image.ps1 -Restart`, or
 `kubectl rollout restart deploy/artemis-browser -n artemis-browser`.
 
+## Regression lab (Phase 15 — specification)
+
+Phase 15 plans a separate web-controlled lab for creating repeatable test-broker conditions and
+observing them in Artemis Browser. The lab services are not implemented yet. See the
+[service specification](docs/Phase%2015%20plan.md) and
+[first-draft regression procedure](docs/Phase%2015%20regression%20procedure.md) for scope, proposed
+controls, current-feature test cases, expected results and future coverage. Browser stays read-only.
+
 ## Configuration
 
 Keys from `src/main/resources/application.properties`:

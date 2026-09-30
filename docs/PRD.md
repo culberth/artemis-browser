@@ -1,7 +1,7 @@
 # artemis-browser — Product Requirements
 
 Status: **Phase 13 in progress: broker visibility and operational explanation. Phase 14 planned
-2026-09-29: incident investigation.**
+2026-09-29: incident investigation. Phase 15 specified 2026-09-29: interactive regression lab.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
@@ -910,6 +910,45 @@ of untrusted content.
 Phase 14 is complete when P1–P3 and their supporting acceptance checks are complete. P4–P5 remain
 optional unless explicitly promoted into the committed scope.
 
+## Phase 15 — Interactive regression lab and regression procedure
+
+Specified 2026-09-29. **Specification and procedure first; implementation has not started.**
+Create separate test services with a web interface that prepares repeatable conditions on a test
+broker, so every implemented Artemis Browser feature can be demonstrated and regression tested.
+The lab may produce, consume, acknowledge and configure its owned disposable brokers; Artemis
+Browser itself retains its read-only boundary and production artifact.
+
+The [Phase 15 specification](Phase%2015%20plan.md) defines the service boundaries, isolation,
+web workflow, fixture catalog, delivery increments and acceptance criteria. The
+[draft regression procedure](Phase%2015%20regression%20procedure.md) defines stable case IDs,
+setup conditions, Browser actions, expected results, cleanup and evidence. Update those documents
+as the test servers and their controls are refined.
+
+### Scope and delivery
+
+- [ ] **P0 — Independent lab and disposable brokers.** Provision pinned supported broker versions;
+      verify identity, ownership and bounded lifecycle operations; provide a scenario catalog and
+      run records through a separate web application.
+- [ ] **P1 — Message and client services.** Deterministic producers and controlled consumers create
+      waiting, scheduled, in-flight, redelivery, dead-letter and expiry conditions, mixed bodies,
+      subscriptions, routing, rates and client identities.
+- [ ] **P2 — Behavior and failure services.** Create queue-behavior and pressure scenarios, restricted
+      reads, connection failures and bounded scale; cover security/deployment through an explicit
+      external harness where broker traffic alone cannot test the feature.
+- [ ] **P3 — Executed regression coverage.** Run all current-feature cases against the supported
+      matrix, retain results/evidence, and refine the first-draft procedure into verified instructions.
+      Extend fixtures and cases as the remaining Phase 13 and Phase 14 features land.
+
+The initial baseline is Phases 1–12 and Phase 13 P0–P2. Unimplemented Phase 13/14 features are
+reserved future cases, not claimed current coverage. A successfully created broker condition is
+not a passed Browser test: both setup evidence and Browser observations must be recorded. Existing
+unit and integration tests remain required; the interactive procedure supplements them.
+
+Done means each implemented feature has a repeatable scenario or explicitly documented harness
+procedure, applicable cases have results on the supported broker matrix, and reset/cleanup and
+the Browser's non-destructive guarantee are verified. Unresolved defects and blocked coverage must
+be visible, with any accepted exceptions recorded.
+
 ## Open questions
 
 1. ~~**Does Phase 5 have a theme, or is it a cleanup phase?**~~ **Settled 2026-09-19: Phase 5 is
@@ -950,3 +989,6 @@ Creating or deleting queues and addresses. Editing broker configuration. Multi-b
 Alerting. **Multi-user** authentication — the tool has a login as of Phase 7, but one shared
 account, which is a deliberate fit for a single user rather than an unfinished feature. Per-user
 accounts, roles and an audit trail are out of scope until someone other than the author runs it.
+
+These mutation exclusions apply to Artemis Browser; Phase 15's separate regression lab is explicitly
+allowed to create and change conditions on its owned disposable test brokers.
