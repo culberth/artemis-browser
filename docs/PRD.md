@@ -999,7 +999,7 @@ Done means a user can build and repeat a common search without knowing core synt
 filters remain available. Verify generated expressions against real brokers, including quoted
 strings and timestamp boundaries, and cover saved-search persistence and missing scopes.
 
-**P3 done (2026-09-30):** a *Build a filter* panel on `/search` and the queue page writes core
+**P3 done (2026-09-30, PR #43):** a *Build a filter* panel on `/search` and the queue page writes core
 syntax for property conditions (text, whole or decimal number, true/false; is, is not, ordering,
 starts with, contains, is set, is not set), priority, a sent-time range in a named zone and
 durability, shows each part beside its text with notes on what it leaves out, and puts it in the
