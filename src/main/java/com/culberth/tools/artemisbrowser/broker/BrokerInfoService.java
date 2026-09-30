@@ -56,7 +56,8 @@ public class BrokerInfoService
                 whole(read(management, "addressMemoryUsage")), whole(read(management, "addressMemoryUsagePercentage")),
                 // diskStoreUsage is a 0..1 ratio; maxDiskUsage and diskPressure() work in 0..100.
                 fraction(read(management, "diskStoreUsage")).map(ratio -> ratio * 100),
-                whole(read(management, "maxDiskUsage")), started, whole(read(management, "globalMaxSize")));
+                whole(read(management, "maxDiskUsage")), started, whole(read(management, "globalMaxSize")),
+                whole(read(management, "uptimeMillis")));
     }
 
     private Reading<Object> read(ManagementChannel management, String attribute)

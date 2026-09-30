@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>artemis-browser &mdash; file too large</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<!--
+  Tomcat refuses an upload over spring.servlet.multipart.max-file-size itself, with 413, before any
+  controller runs; the only upload here is /compare, so this page speaks to it.
+-->
+<div class="wrap">
+    <h1>artemis-browser</h1>
+    <div class="error">A file is larger than this tool accepts, so nothing was compared.</div>
+    <div class="panel">
+        <p>Snapshot files are limited by <code>artemis.compare.max-file-bytes</code> (64MB by default), which
+            <code>spring.servlet.multipart.max-file-size</code> follows. A snapshot from a long session is mostly its
+            trends section; raise the limit to compare it.</p>
+        <p><a class="badge-link" th:href="@{/compare}">Back to compare</a></p>
+    </div>
+</div>
+</body>
+</html>

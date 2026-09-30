@@ -133,6 +133,7 @@ public final class SnapshotWriter
         ObjectNode data = node.putObject("data");
         reading(data, "version", health.version(), "health", unavailable);
         reading(data, "uptime", health.uptime(), "health", unavailable);
+        reading(data, "uptimeMillis", health.uptimeMillis(), "health", unavailable);
         reading(data, "state", health.state(), "health", unavailable);
         reading(data, "nodeId", health.nodeId(), "health", unavailable);
         reading(data, "connectionCount", health.connectionCount(), "health", unavailable);

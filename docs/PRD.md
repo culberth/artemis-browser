@@ -932,20 +932,27 @@ configuration changes.
 
 ### P1 — Incident snapshot comparison
 
-- [ ] **Compare two saved Phase 13 snapshots from the same broker.** Show queue-depth changes,
+- [x] **Compare two saved Phase 13 snapshots from the same broker.** Show queue-depth changes,
       settings changes, consumer and connection changes, and new or resolved Diagnose findings.
       Show the collection windows and source evidence beside each difference.
-- [ ] **Validate comparability.** Validate schema versions and broker identity, and explain when
+- [x] **Validate comparability.** Validate schema versions and broker identity, and explain when
       snapshots cannot be compared. Distinguish an unavailable or omitted resource from a removed
       one. Handle broker restarts, counter resets and queue recreation without presenting their
       counter differences as traffic; mark uncertain continuity explicitly.
-- [ ] **Keep comparison bounded and usable offline.** Limit imported file sizes and resource
+- [x] **Keep comparison bounded and usable offline.** Limit imported file sizes and resource
       counts, treat snapshot contents as untrusted data, and require no live broker reads to compare
       them. Preserve units, availability and truncation metadata in the result.
 
 Done means two saved snapshots can answer what observably changed, without turning missing data
 into a change or a reset into throughput. Cover compatible and incompatible schemas, identity
 mismatches, incomplete snapshots and counter discontinuities.
+
+**P1 done (2026-09-30):** `/compare`, offline. Snapshots now record `uptimeMillis` (an added field,
+schema still 1) so a restart between two can be seen; older ones compare with continuity unknown.
+Queue depth, counters and configuration, addresses, address settings, consumers, connections and
+diagnose findings are compared, each difference beside its section and read times. Refused: other
+kinds, unknown schemas, different node ids, or a missing node id with different addresses. Bounded
+by `artemis.compare.max-file-bytes` and `artemis.compare.max-rows`; trends are skipped while reading.
 
 ### P2 — Unified message-ID investigation
 

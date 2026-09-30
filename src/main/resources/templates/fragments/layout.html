@@ -28,6 +28,8 @@
            th:href="@{/search}">Search</a>
         <a class="tab" th:classappend="${active == 'diagnose'} ? 'current' : ''"
            th:href="@{/diagnose}">Diagnose</a>
+        <a class="tab" th:classappend="${active == 'compare'} ? 'current' : ''"
+           th:href="@{/compare}">Compare</a>
         <form method="post" th:action="@{/disconnect}">
             <button class="secondary" type="submit">Disconnect</button>
         </form>
@@ -124,7 +126,8 @@
     <a class="badge-link" th:href="@{/snapshot(format='json')}">JSON</a>
     <a class="badge-link" th:href="@{/snapshot(format='text')}">text summary</a>
     <span class="muted">&mdash; everything on this broker page, the queues, addresses, trends and diagnose findings in
-        one file, with what could not be read. No message bodies or credentials. Takes a few seconds.</span>
+        one file, with what could not be read. No message bodies or credentials. Takes a few seconds.
+        Keep the JSON: <a th:href="@{/compare}">compare two of them</a> later to see what changed.</span>
 </p>
 
 <!-- When a panel's figures were read. Panels are read one after another, not at one instant. -->

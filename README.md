@@ -109,6 +109,19 @@ changes a role. The single-user, one-broker-per-session, read-only design remain
 See [Phase 13 in the PRD](docs/PRD.md#phase-13--broker-visibility-explain-pressure-behavior-and-change)
 for delivery order and acceptance criteria.
 
+## Phase 14: incident investigation
+
+Phase 14 helps use that evidence during an incident. P1–P3 are its core scope.
+
+Done in P1: `/compare` compares two saved JSON snapshots of one broker, in either order, and needs
+no broker connection. It shows what observably changed: queue depths and running totals, queue and
+address settings, consumers and connections that came or went, and diagnose findings that are new,
+no longer reported or changed, each beside the section and times it came from. Snapshots of different
+brokers or schemas are refused with the reason. A section either side could not read is not
+compared, so nothing in it is called removed. Counters are subtracted only across one unbroken run:
+a restart (from the snapshot's new `uptimeMillis`), a recreated queue (a changed id) or a counter
+that went down shows two readings, not traffic.
+
 For the architectural "why" behind these decisions, see [docs/architecture.md](docs/architecture.md);
 what the product is and what is planned next is in [docs/PRD.md](docs/PRD.md); day-to-day discoveries
 and environment quirks are logged in `.claude/memory.md`.
@@ -223,6 +236,7 @@ never persisted). From there:
 | `/client?id=` or `/client?connection=` | A client's connections, sessions, consumers, producers, links to queues holding its in-flight messages, and the roles that may send and consume where it does |
 | `/diagnose` | Why is this stuck: what on the broker is not moving, and what that usually means |
 | `/snapshot?format=json` or `format=text` | An incident snapshot of all of the above, with what could not be collected |
+| `/compare` | Compare two saved JSON snapshots of one broker: what changed, and what could not be compared. Needs no connection |
 
 To test against a real broker rather than mocks, see the container recipe in `.claude/memory.md`
 (note it maps host port 62616, not 61616, because 61616 is already taken in this environment).
@@ -315,6 +329,8 @@ Keys from `src/main/resources/application.properties`:
 | `artemis.snapshot.max-address-settings` | `200` | Addresses whose settings an incident snapshot reads, those with something to explain first |
 | `artemis.transactions.detail-limit` | `100` | Most prepared XA branches whose messages a page reads. The broker returns every branch's messages in one reply, so above this only their summary lines (Xid, creation time) are read |
 | `artemis.snapshot.max-address-permissions` | `200` | Addresses whose roles an incident snapshot reads, in the same order as address settings |
+| `artemis.compare.max-file-bytes` | `67108864` | Largest snapshot file `/compare` reads (64MB); `spring.servlet.multipart.max-file-size` follows it |
+| `artemis.compare.max-rows` | `50000` | Most entries in any one section of a compared snapshot; past it the file is refused, not cut short |
 
 ## Security posture
 
@@ -408,6 +424,23 @@ addresses, those near a limit, paging, dropping, or killing and expiring message
 names each unit (`addressSizeBytes`), uses ISO-8601 UTC times, and lists `unavailable` reads and
 `omitted` rows, so two snapshots can be compared. Message bodies are never included. Setting values
 under keys that look like secrets are masked.
+
+## Comparing snapshots
+
+`/compare` takes two JSON snapshots (not the text summary), puts them in time order, and reads
+nothing else: no broker, no session state, and the files are dropped with the request. A file is
+refused, with the reason, when it is not an incident snapshot, has a schema this build does not
+read, has no collection time, is over `artemis.compare.max-file-bytes`, or has more than
+`artemis.compare.max-rows` entries in a section. The pair is refused when two known node ids
+differ, or when a node id is missing and the addresses differ too; with a node id missing and the
+same address, the comparison goes ahead marked *unconfirmed*.
+
+What it will not do: call something removed when its section was unreadable on one side, call a
+consumer or connection gone when that side's listing was cut short, count a value one side could not
+read as a change, or present added/acknowledged/expired/killed across a restart, a recreated queue or
+a reset as traffic. Without `uptimeMillis` (snapshots taken before this phase) a restart cannot be
+ruled out, so those differences are shown only "if unbroken". Trends are not compared. Each
+snapshot's own *not collected* and *left out* lists are shown beside the result.
 
 ## Connectivity and HA
 
@@ -545,12 +578,19 @@ com.culberth.tools.artemisbrowser
 │   ├── Reading / Availability     A value the broker gave, or why not — never a zero in its place
 │   └── BrokerException / ManagementRefusal / NotConnectedException / ConnectionLostException
 │                                  Broker-facing error types; the last is deliberately not a BrokerException
+├── compare/                       Offline comparison of two saved snapshots; no broker, no session
+│   ├── SnapshotReader             Reads an uploaded snapshot as untrusted, bounded JSON; skips trends
+│   ├── SnapshotFile / Value       What a comparison needs from one file; a missing value keeps its reason
+│   ├── SnapshotComparer           Identity, continuity, and every difference with its evidence
+│   └── SnapshotComparison / SnapshotRejected
+│                                  The result, or why two files cannot be compared
 ├── web/                           Thymeleaf controllers, security and filters
 │   ├── ConnectionController       / connect, disconnect, forget a saved connection
 │   ├── QueueController            /overview, /queues, /message, /message/download
 │   ├── BrokerController           /broker, /connectivity, /transactions, /addresses, /address, /client
 │   ├── SearchController           /search, /export (one queue, or a whole search)
 │   ├── SnapshotController         /snapshot: the incident snapshot as JSON or a text summary
+│   ├── CompareController          /compare: two uploaded snapshots compared, no broker contacted
 │   ├── DiagnoseController         /diagnose
 │   ├── LoginController            /login (the sign-in itself is Spring Security's)
 │   ├── ConnectForm                Connect page form backing object

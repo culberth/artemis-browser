@@ -193,6 +193,41 @@ Three rules make it usable offline:
 `schemaVersion` is bumped whenever a field changes meaning, so two saved snapshots can be compared
 knowingly.
 
+### Comparing two snapshots: missing is not removed, and a reset is not traffic
+
+`/compare` (Phase 14 P1) reads two saved JSON snapshots and nothing else. `SnapshotReader` treats a
+file as untrusted: bounded in bytes, nesting, string length and rows per section, strict about
+duplicate keys and trailing content, and refusing any kind or `schemaVersion` it does not know
+rather than guessing what a field means. It streams past `sections.trends` — the largest part of a
+long session's snapshot, and not comparable across sessions. `SnapshotComparer` is pure: two files
+in, a comparison or a refusal out.
+
+- **Same broker or nothing.** Node ids decide. A missing node id falls back to the address, and the
+  result says the identity is unconfirmed; a different broker at the same address would look the same.
+- **Missing is not removed.** A queue is removed only when both sides read the queue listing. A
+  section either side could not read is not compared at all, with that side's reason. A client
+  missing from a listing the snapshot cut short is "unknown", not gone. A value either side lacks is
+  shown with its reason and never counts as a change.
+- **Levels compare; counters subtract only across one run.** Depth, in flight, scheduled and
+  consumers are levels. Added, acknowledged, expired and killed restart with the broker (at what the
+  journal reloads, not zero — see trends below) and with a recreated queue. So the snapshot records
+  `uptimeMillis`, and a later uptime shorter than the gap between the two, or lower than the earlier
+  one, is a restart; a changed queue id is a recreation; a counter that went down is a reset. Each
+  shows two readings and no difference. With no uptime (older snapshots) continuity is unknown, and a
+  difference is labelled "if unbroken".
+- **Findings match by what they point at**, and by title with counts outside quoted names blanked,
+  so "holding 7" and "holding 900" are one finding that changed. "No longer reported" is exactly
+  that; when the later run lists checks it could not make, the page says a missing finding may not
+  have been looked for.
+
+Every difference carries its evidence: which section, read when on each side. Both snapshots'
+own *unavailable* and *omitted* lists are shown beside the result.
+
+An upload over `spring.servlet.multipart.max-file-size` never reaches the controller: Tomcat 11
+answers 413 itself while the multipart body is parsed (whether the CSRF token is in the body or the
+URL — checked against the running app), so `templates/error/413.html` says what happened and links
+back. The file-size check inside `SnapshotReader` covers the same limit for anything under it.
+
 ## Connectivity: this broker's view, and the backlog behind it
 
 `/connectivity`, diagnose's connectivity findings and the snapshot's connectivity section come from
