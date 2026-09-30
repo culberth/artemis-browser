@@ -30,9 +30,11 @@ with per-queue, per-state coverage and preflight budgets (`artemis.investigate.*
 searches (`/saved`, a bounded JSON file, never run on opening) — merged
 (PR #43); Phase 14 is complete, acceptance checks included (2026-09-30). Optional P4 — dead-letter
 and expiry triage (`/triage`: a queue's head sample grouped by recorded origin, never a reason) —
-merged (PR #46). Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 607 unit tests,
-102 integration, run once per supported broker version (plus the opt-in
+merged (PR #46). Optional P5 — message comparison (`/message/compare`: two messages read over JMS,
+headers, typed properties, text or JSON bodies, bounded; gone or in flight is unavailable, never empty) —
+on branch `phase14-p5-message-compare`. Planned in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 638 unit tests,
+108 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

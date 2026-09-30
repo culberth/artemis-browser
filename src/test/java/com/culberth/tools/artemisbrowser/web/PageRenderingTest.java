@@ -45,6 +45,7 @@ import com.culberth.tools.artemisbrowser.broker.InFlightLookup;
 import com.culberth.tools.artemisbrowser.broker.InFlightMessage;
 import com.culberth.tools.artemisbrowser.broker.InFlightService;
 import com.culberth.tools.artemisbrowser.broker.ManagementRefusal;
+import com.culberth.tools.artemisbrowser.broker.MessageComparisonService;
 import com.culberth.tools.artemisbrowser.broker.MessageDetail;
 import com.culberth.tools.artemisbrowser.broker.MessageExporter;
 import com.culberth.tools.artemisbrowser.broker.MessageInvestigation;
@@ -110,8 +111,11 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @WebMvcTest(
 { BrokerController.class, ConnectionController.class, DiagnoseController.class, LoginController.class,
-        QueueController.class, SavedSearchController.class, SearchController.class, TriageController.class
+        QueueController.class, SavedSearchController.class, SearchController.class, TriageController.class,
+        MessageCompareController.class
 })
+// The real comparison service over the mocked directory and browse service, so the page renders real differences.
+@org.springframework.context.annotation.Import(MessageComparisonService.class)
 @WithMockUser
 // A login configured, as on a shared host: the arrangement with a sign-in page and a signed-in user.
 // Without one, on loopback, there is neither — LocalWithoutLoginTest covers that.
@@ -1192,6 +1196,115 @@ class PageRenderingTest
         page("/message?name=" + QUEUE + "&id=ID:gone").andExpect(content().string(containsString("no longer on")));
     }
 
+    // -------------------------------------------------------------- message comparison
+
+    @Test
+    @DisplayName("the queue page lets two rows be ticked and compared, and the message page offers a comparison")
+    void offersComparison() throws Exception
+    {
+        given(queueDirectory.stats(QUEUE)).willReturn(stats(QUEUE, 2, 0));
+        given(browseService.page(anyString(), any(), anyInt(), anyInt())).willReturn(
+                new MessagePage(QUEUE, null, 1, 50, 2, List.of(summary(1, "ID:aaa"), summary(2, "ID:bbb"))));
+        page("/queues?name=" + QUEUE).andExpect(content().string(containsString("action=\"/message/compare\"")))
+                .andExpect(content().string(containsString("name=\"id\" value=\"ID:bbb\"")))
+                .andExpect(content().string(containsString("Compare the two picked")));
+
+        given(browseService.detail(anyString(), anyString(), anyString())).willReturn(detail("ID:aaa"));
+        page("/message?name=" + QUEUE + "&id=ID:aaa")
+                .andExpect(content().string(containsString("Compare with another message")))
+                .andExpect(content().string(containsString("name=\"id2\"")));
+    }
+
+    @Test
+    @DisplayName("the comparison page with nothing chosen is a form, and reads nothing")
+    void rendersEmptyComparison() throws Exception
+    {
+        page("/message/compare").andExpect(content().string(containsString("Compare two messages")))
+                .andExpect(content().string(not(containsString("What was read"))));
+        page("/message/compare?name=" + QUEUE + "&id=ID:a")
+                .andExpect(content().string(containsString("Two messages are needed")));
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:b&id=ID:c")
+                .andExpect(content().string(containsString("Choose exactly two messages to compare; 3 were chosen")));
+        org.mockito.Mockito.verify(browseService, org.mockito.Mockito.never()).detail(anyString(), anyString(),
+                anyString());
+    }
+
+    @Test
+    @DisplayName("two text messages: headers, typed properties, not set versus empty, and a line diff")
+    void rendersTextComparison() throws Exception
+    {
+        given(browseService.detail(QUEUE, QUEUE, "ID:a"))
+                .willReturn(compared("ID:a", "Text", "one\ntwo\nthree", Map.of("same", "x", "typed", "5", "blank", ""),
+                        Map.of("same", "String", "typed", "String", "blank", "String")));
+        given(browseService.detail(QUEUE, QUEUE, "ID:b")).willReturn(compared("ID:b", "Text", "one\nTWO\nthree",
+                Map.of("same", "x", "typed", "5"), Map.of("same", "String", "typed", "Integer")));
+
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:b")
+                .andExpect(content().string(containsString("What was read")))
+                .andExpect(content().string(containsString("href=\"/message?name=orders&amp;id=ID:a\"")))
+                .andExpect(content().string(containsString("href=\"/message?name=orders&amp;id=ID:b\"")))
+                .andExpect(content().string(containsString("moments apart, not one instant")))
+                .andExpect(content().string(containsString("Integer")))
+                .andExpect(content().string(containsString("only on the left")))
+                .andExpect(content().string(containsString("class=\"cmp-empty\">empty")))
+                .andExpect(content().string(containsString("class=\"cmp-absent\">not set")))
+                .andExpect(content().string(containsString("class=\"removed\"")))
+                .andExpect(content().string(containsString("TWO")))
+                .andExpect(content().string(containsString("Compared line by line")));
+    }
+
+    @Test
+    @DisplayName("two JSON messages are compared by path; a bytes message is not compared and says why")
+    void rendersJsonAndUnsupportedComparison() throws Exception
+    {
+        given(browseService.detail(QUEUE, QUEUE, "ID:a"))
+                .willReturn(compared("ID:a", "Text", "{\"a\":1,\"gone\":null}", Map.of(), Map.of()));
+        given(browseService.detail(QUEUE, QUEUE, "ID:b"))
+                .willReturn(compared("ID:b", "Text", "{\"a\":2}", Map.of(), Map.of()));
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:b").andExpect(content().string(containsString("$.a")))
+                .andExpect(content().string(containsString("$.gone")))
+                .andExpect(content().string(containsString("value by value")))
+                .andExpect(content().string(containsString("0 value(s) the same")));
+
+        given(browseService.detail(QUEUE, QUEUE, "ID:b"))
+                .willReturn(compared("ID:b", "Bytes", "4 bytes\nabcd", Map.of(), Map.of()));
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:b")
+                .andExpect(content().string(containsString("not compared")))
+                .andExpect(content().string(containsString("a text and a bytes message")));
+    }
+
+    @Test
+    @DisplayName("a message gone since it was picked is unavailable, and nothing is compared")
+    void rendersUnavailableComparison() throws Exception
+    {
+        given(browseService.detail(QUEUE, QUEUE, "ID:a")).willReturn(compared("ID:a", "Text", "x", Map.of(), Map.of()));
+        given(browseService.detail(QUEUE, QUEUE, "ID:gone")).willReturn(null);
+
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&name2=missing&id2=ID:b")
+                .andExpect(content().string(containsString("No queue named &#39;missing&#39; on this broker.")));
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:gone")
+                .andExpect(content().string(containsString("not an empty message")))
+                .andExpect(content().string(containsString("Nothing was compared")))
+                .andExpect(content().string(not(containsString("<h2>Headers"))));
+    }
+
+    @Test
+    @DisplayName("untrusted content is escaped for HTML and its invisible characters are shown")
+    void rendersUntrustedContentSafely() throws Exception
+    {
+        given(browseService.detail(QUEUE, QUEUE, "ID:a")).willReturn(compared("ID:a", "Text",
+                "<script>alert(1)</script>", Map.of("<img src=x>", "a‮b"), Map.of("<img src=x>", "String")));
+        given(browseService.detail(QUEUE, QUEUE, "ID:b")).willReturn(
+                compared("ID:b", "Text", "safe", Map.of("<img src=x>", "ab"), Map.of("<img src=x>", "String")));
+
+        page("/message/compare?name=" + QUEUE + "&id=ID:a&id=ID:b")
+                .andExpect(content().string(not(containsString("<script>alert"))))
+                .andExpect(content().string(containsString("&lt;script&gt;alert(1)&lt;/script&gt;")))
+                .andExpect(content().string(not(containsString("<img src=x>"))))
+                .andExpect(content().string(containsString("a\\u202Eb")))
+                .andExpect(content().string(not(containsString("‮"))));
+    }
+
     // --------------------------------------------------------- guided filters, saved searches
 
     @Test
@@ -1641,6 +1754,13 @@ class PageRenderingTest
                 List.of(new DeadLetterTriage.PropertySeen("code", 2, false),
                         new DeadLetterTriage.PropertySeen("_AMQ_ORIG_ADDRESS", 3, true)),
                 0, groupBy);
+    }
+
+    private static MessageDetail compared(String id, String type, String body, Map<String, String> properties,
+            Map<String, String> types)
+    {
+        return new MessageDetail(QUEUE, id, null, type, QUEUE, "2026-09-20 10:00:00", "never", 4, true, false, 0, null,
+                false, body, false, properties, types);
     }
 
     private static MessageDetail detail(String id)

@@ -287,10 +287,14 @@
                     th:if="${stats != null and stats.deliveringCount() > 0}"> (<a href="#in-flight">listed below</a>, unfiltered)</span>.</span>
         </p>
 
-        <div class="table-scroll" th:unless="${messages.messages().isEmpty()}">
+        <!-- Tick two rows to compare them: a plain GET form, id=…&id=…, no script. -->
+        <form method="get" th:action="@{/message/compare}" th:unless="${messages.messages().isEmpty()}">
+        <input type="hidden" name="name" th:value="${selected}">
+        <div class="table-scroll">
             <table>
                 <thead>
                 <tr>
+                    <th style="width:1%" title="Tick two to compare them">Pick</th>
                     <th class="num">#</th>
                     <th>Type</th>
                     <th>Timestamp</th>
@@ -304,6 +308,8 @@
                 </thead>
                 <tbody>
                 <tr th:each="m : ${messages.messages()}">
+                    <td><input type="checkbox" name="id" th:value="${m.messageId()}" style="width:auto"
+                               th:attr="aria-label='Pick message ' + ${m.position()} + ' to compare'"></td>
                     <td class="num muted" th:text="${m.position()}">1</td>
                     <td th:text="${m.type()}">Text</td>
                     <td th:text="${m.timestampText()}">&mdash;</td>
@@ -331,6 +337,11 @@
                 </tbody>
             </table>
         </div>
+        <div class="field-row" style="margin-top:.5rem">
+            <button class="secondary" type="submit">Compare the two picked</button>
+            <span class="muted small">Headers, properties and text or JSON bodies, read again when compared.</span>
+        </div>
+        </form>
 
         <p class="unavailable" th:if="${scheduledError != null}" style="margin-top:1.5rem"
            th:text="'This queue reports ' + ${stats.scheduledCount()} + ' scheduled message(s), and they could not be listed: ' + ${scheduledError}">

@@ -509,7 +509,8 @@ public class QueueBrowseService
                 message.getJMSPriority(), message.getJMSDeliveryMode() == jakarta.jms.DeliveryMode.PERSISTENT,
                 message.getJMSRedelivered(), message.getLongProperty("JMSXDeliveryCount"),
                 message.getStringProperty("JMSXGroupID"), message.propertyExists(LARGE_BODY_SIZE),
-                truncated ? body.substring(0, bodyDetailChars) : body, truncated, properties(message));
+                truncated ? body.substring(0, bodyDetailChars) : body, truncated, properties(message),
+                propertyTypes(message));
     }
 
     private String typeOf(Message message)
@@ -608,6 +609,19 @@ public class QueueBrowseService
             properties.put(name, value == null ? "" : value.toString());
         }
         return properties;
+    }
+
+    private Map<String, String> propertyTypes(Message message) throws JMSException
+    {
+        Map<String, String> types = new LinkedHashMap<>();
+        Enumeration<?> names = message.getPropertyNames();
+        while (names.hasMoreElements())
+        {
+            String name = names.nextElement().toString();
+            Object value = message.getObjectProperty(name);
+            types.put(name, value == null ? "null" : value.getClass().getSimpleName());
+        }
+        return types;
     }
 
     /**

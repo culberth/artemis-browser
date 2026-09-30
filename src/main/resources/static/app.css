@@ -244,3 +244,16 @@ code.expression { word-break: break-all; }
     margin-bottom: 1rem;
     background: var(--panel);
 }
+
+/* Message comparison: values and diff lines are untrusted text, wrapped rather than allowed to widen the page. */
+.cmp-value { font-family: var(--mono); white-space: pre-wrap; word-break: break-all; }
+.cmp-absent, .cmp-empty { font-family: inherit; font-style: italic; color: var(--muted); }
+tr.cmp-differs td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+tr.cmp-only td { background: color-mix(in srgb, var(--danger-bg) 45%, transparent); }
+table.diff td { padding: 0 .5rem; border-bottom: none; font-family: var(--mono); font-size: .85rem; }
+table.diff td.ln { color: var(--muted); text-align: right; width: 1%; white-space: nowrap; user-select: none; }
+table.diff td.op { width: 1%; user-select: none; }
+table.diff td.txt { white-space: pre-wrap; word-break: break-all; }
+table.diff tr.removed td { background: color-mix(in srgb, var(--danger-bg) 70%, transparent); }
+table.diff tr.added td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+table.diff tr.skip td { color: var(--muted); font-style: italic; font-family: inherit; padding: .2rem .5rem; }

@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- One value: absent and empty in words, anything else as escaped, visible text with its type. -->
+<th:block th:fragment="value(raw, shown, type)">
+    <span th:if="${raw == null}" class="cmp-absent">not set</span>
+    <span th:if="${raw != null and #strings.isEmpty(raw)}" class="cmp-empty">empty</span>
+    <span th:if="${raw != null and !#strings.isEmpty(raw)}" class="cmp-value" th:text="${shown}">value</span>
+    <span th:if="${raw != null and type != null}" class="badge" th:text="${type}">String</span>
+</th:block>
+</body>
+</html>
