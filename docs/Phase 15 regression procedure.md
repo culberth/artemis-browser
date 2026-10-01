@@ -1,6 +1,7 @@
 # Artemis Browser regression procedure — first draft
 
-Revision 0.1 · 2026-09-29 · **Design draft; not an executed test report.**
+Revision 0.2 · 2026-09-30 · **Design draft; not an executed test report.** The lab's P0 is
+implemented (`test-lab/`); only `LAB-SMOKE` is runnable, so every case below still needs its recipe.
 
 Companion: [Phase 15 plan](Phase%2015%20plan.md). The proposed lab controls and scenario names below
 are requirements for the test services, not controls that exist today. Startup commands, final
@@ -9,9 +10,10 @@ Existing integration tests supply useful recipes but do not constitute execution
 
 ## Baseline and result rules
 
-Current coverage is Phases 1–12 plus Phase 13 P0–P2, based on the source reviewed on 2026-09-29.
-Use the commit actually under test to confirm availability. Cases F01–F08 are reserved for planned
-features; keep them deferred until those features ship. Never mark a missing fixture as a pass.
+Current coverage is Phases 1–14 (Phase 13 P3–P6 and Phase 14 P1–P5 merged by 2026-09-30). Use
+the commit actually under test to confirm availability. Cases F01–F08 were written as deferred
+when those features were planned; they have shipped, so record them **Blocked** (no lab recipe
+yet) until P3 supplies fixtures — never Deferred, never a pass. Never mark a missing fixture as a pass.
 
 For each case record **Not run, Pass, Fail, Blocked, or Deferred**, actual result, evidence links,
 execution time, operator and defect reference. Pass requires both the verified broker precondition
@@ -39,9 +41,11 @@ images in the supported matrix; a result on one version is not a result on the o
 
 1. Build the Browser revision under test. Record the results of `mvn test` and, with Docker
    available, `mvn clean verify -Pintegration`. The latter runs the pinned broker matrix. These are
-   existing commands; a future lab startup command is intentionally not invented here.
-2. Provision an **owned disposable** broker through the lab, selecting a pinned supported version.
-   Check readiness, endpoint and node ID. Do not connect the lab writer to an existing cluster broker.
+   existing commands.
+   Start the lab with `mvn -f test-lab/pom.xml spring-boot:run` and open `http://localhost:8082`;
+   `mvn -f test-lab/pom.xml clean verify -Pintegration` checks the lab itself on both images.
+2. Provision an **owned disposable** broker through the lab (*Provision broker*), selecting a
+   pinned supported version. Check readiness, endpoint (`127.0.0.1:62616`) and node ID. Do not connect the lab writer to an existing cluster broker.
    Confirm that two simultaneous lab connections report that same broker identity.
 3. Launch Browser using the normal README instructions, with a separate temporary remembered-
    connections file for this run. Record configuration, including body, search, export and in-flight
@@ -133,9 +137,10 @@ Run behavior variants separately; settings are verified effective values, not on
 | E07 Scale and responsiveness (P7/11–13) | SCALE: small preset first, then 100,000 bounded small messages, many queues/clients/subscriptions and held deliveries within resource budget. Exercise overview, late-match filters, search, export, client/address and Diagnose. | Results remain correct and bounded; capture latency, response size and Browser/lab/broker memory plus limits. Set performance budgets before execution; do not invent a universal latency pass threshold. Excess reads are disclosed. | Stop all workers; reset and check resource release. |
 | E08 Lab safeguards (P15) | Attempt wrong broker identity, invalid/out-of-range parameters, double Start, reset during a worker, blocked-send cancellation, lab restart and partial cleanup failure. | Wrong target performs no mutation; jobs remain bounded; duplicate requests do not duplicate data; interrupted work/cleanup failures are visible and recoverable; unrelated broker/resources are untouched. | Reconcile exact ownership manifest. |
 
-## Deferred expansion when the Browser features land
+## Shipped features awaiting lab recipes
 
-These IDs reserve coverage; they do not describe current Browser behavior.
+Written as reserved coverage before these features shipped; all have now merged. Record them
+Blocked until P3 provides fixtures.
 
 | ID / planned feature | Required fixture and future assertion |
 |---|---|
@@ -176,3 +181,4 @@ cases into the appropriate execution group. Maintain a feature-to-case review at
 | Revision | Change | Execution status |
 |---|---|---|
 | 0.1 — 2026-09-29 | Initial current-feature catalog, proposed fixtures, expected observations, cleanup and future coverage | Not run; lab services pending |
+| 0.2 — 2026-09-30 | Baseline moved to Phases 1–14; F01–F08 are shipped features awaiting recipes (Blocked, not Deferred); lab P0 start/verify commands | Not run; only LAB-SMOKE runnable (E08 partial) |

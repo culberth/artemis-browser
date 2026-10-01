@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<div th:fragment="nav(active)" class="panel topbar">
+    <div>
+        <h1 style="margin:0">artemis regression lab</h1>
+        <span class="conn">writes only to the disposable broker it started &middot; Artemis Browser stays read-only</span>
+    </div>
+    <div class="field-row nav">
+        <a class="tab" th:classappend="${active == 'lab'} ? 'current' : ''" th:href="@{/}">Broker and runs</a>
+        <a class="tab" th:classappend="${active == 'catalog'} ? 'current' : ''" th:href="@{/catalog}">Catalog</a>
+    </div>
+</div>
+
+<div th:fragment="messages" th:if="${error}" class="panel error" role="alert" th:text="${error}">Refused.</div>
+
+</body>
+</html>

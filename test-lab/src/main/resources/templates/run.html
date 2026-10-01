@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="2" th:if="${busy}">
+    <title th:text="'Run ' + ${run.runId()}">Run</title>
+    <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<div class="wrap">
+    <div th:replace="~{fragments/layout :: nav('lab')}"></div>
+    <div th:replace="~{fragments/layout :: messages}"></div>
+
+    <div class="panel">
+        <h2>Run <span class="mono" th:text="${run.runId()}">r1</span>
+            <span class="badge" id="run-state" th:text="${run.state()}">OPEN</span></h2>
+        <table>
+            <tr><th>Resource prefix</th><td class="mono" th:text="${run.prefix()}">lab.r1.</td></tr>
+            <tr><th>Broker</th><td class="mono"
+                                   th:text="${run.broker().brokerId()} + ' · ' + ${run.broker().image()} + ' · Artemis ' + ${run.broker().version()}">b1</td></tr>
+            <tr><th>Node id</th><td class="mono" th:text="${run.broker().nodeId()}">node</td></tr>
+            <tr><th>Endpoint</th><td class="mono" th:text="${run.broker().endpoint()}">127.0.0.1:62616</td></tr>
+            <tr><th>Browser revision</th><td class="mono" th:text="${run.browserCommit().isEmpty()} ? '(not given)' : ${run.browserCommit()}">abc</td></tr>
+            <tr><th>Catalog revision</th><td class="mono" th:text="${run.catalogRevision()}">rev</td></tr>
+            <tr><th>Created</th><td th:text="${run.createdAt()} + ' (lab zone ' + ${run.zone()} + ')'">now</td></tr>
+            <tr><th>Generated</th><td th:text="${run.generatedBytes()} + ' of ' + ${limits.maxRunBytes()} + ' bytes allowed'">0</td></tr>
+        </table>
+        <p><a th:href="@{/runs/{id}/manifest.json(id=${run.runId()})}">Download the run manifest (JSON)</a>
+            <span class="muted">&mdash; no passwords; partial while a job is running.</span></p>
+    </div>
+
+    <div class="panel" th:if="${run.acceptsScenarios()}">
+        <h2><span class="mono" th:text="${smoke.id()}">LAB-SMOKE</span> &mdash; <span th:text="${smoke.title()}">t</span></h2>
+        <p th:text="${smoke.summary()}">summary</p>
+        <p class="note" th:text="${smoke.expected()}">expected</p>
+        <form method="post" th:action="@{/runs/{id}/scenarios/{s}(id=${run.runId()},s=${smoke.id()})}" class="field-row">
+            <input type="hidden" name="token" th:value="${token}">
+            <div>
+                <label for="count">Messages</label>
+                <input id="count" name="count" type="number" min="1" th:max="${limits.maxMessages()}" value="10">
+            </div>
+            <div>
+                <label for="bodyBytes">Body bytes</label>
+                <input id="bodyBytes" name="bodyBytes" type="number" min="0" th:max="${limits.maxBodyBytes()}" value="100">
+            </div>
+            <div><button type="submit" th:disabled="${busy}">Run</button></div>
+        </form>
+        <p class="note">Queue: <code th:text="${smokeQueue}">lab.r1.smoke</code></p>
+    </div>
+
+    <div class="panel" th:if="${!jobs.isEmpty()}">
+        <h2>Jobs</h2>
+        <table class="jobs">
+            <thead><tr><th>Job</th><th>What</th><th>State</th><th>Outcome</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="j : ${jobs}">
+                <td class="mono" th:text="${j.id()}">j1</td>
+                <td th:text="${j.description()}">LAB-SMOKE</td>
+                <td th:text="${j.state()}" th:classappend="${j.state().name() == 'FAILED'} ? 'bad' : ''">RUNNING</td>
+                <td th:text="${j.active()} ? ${j.progress()} : ${j.detail()}">ok</td>
+                <td>
+                    <form method="post" th:if="${j.active()}"
+                          th:action="@{/runs/{r}/jobs/{j}/cancel(r=${run.runId()},j=${j.id()})}">
+                        <button class="secondary" type="submit">Cancel</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="panel">
+        <h2>Owned resources</h2>
+        <p class="note">Exactly what cleanup may remove. The prefix is a naming convention, not deletion authority.</p>
+        <p th:if="${run.resources().isEmpty()}" class="muted">None yet.</p>
+        <table th:if="${!run.resources().isEmpty()}">
+            <thead><tr><th>Kind</th><th>Name</th><th>Routing</th><th>State</th><th>Detail</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${run.resources()}">
+                <td th:text="${r.kind()}">QUEUE</td>
+                <td class="mono" th:text="${r.name()}">lab.r1.smoke</td>
+                <td th:text="${r.routingType()}">ANYCAST</td>
+                <td th:text="${r.state()}" th:classappend="${r.state().name() == 'DELETE_FAILED'} ? 'bad' : ''">CREATED</td>
+                <td th:text="${r.detail()}">detail</td>
+            </tr>
+            </tbody>
+        </table>
+        <form method="post" th:action="@{/runs/{id}/cleanup(id=${run.runId()})}" class="field-row"
+              th:if="${run.state().name() == 'OPEN' or run.state().name() == 'CLEANUP_FAILED'}">
+            <input type="hidden" name="token" th:value="${token}">
+            <button class="secondary" type="submit" th:disabled="${busy}"
+                    th:text="${run.state().name() == 'CLEANUP_FAILED'} ? 'Retry cleanup' : 'Stop workers and clean up'">Clean up</button>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h2>Case results</h2>
+        <p class="note">Record the fixture result and the Browser observation separately. Pass needs both.</p>
+        <table th:if="${!run.results().isEmpty()}">
+            <thead><tr><th>Case</th><th>Fixture</th><th>Browser</th><th>Notes</th><th>Recorded</th></tr></thead>
+            <tbody>
+            <tr th:each="c : ${run.results()}">
+                <td class="mono" th:text="${c.caseId()}">C01</td>
+                <td th:text="${c.fixture()}">PASS</td>
+                <td th:text="${c.browser()}">PASS</td>
+                <td th:text="${c.notes()}">notes</td>
+                <td th:text="${c.recordedAt()}">now</td>
+            </tr>
+            </tbody>
+        </table>
+        <form method="post" th:action="@{/runs/{id}/results(id=${run.runId()})}" class="field-row">
+            <div>
+                <label for="caseId">Case</label>
+                <select id="caseId" name="caseId">
+                    <option th:each="c : ${cases}" th:value="${c.id()}" th:text="${c.id()} + ' ' + ${c.title()}">C01</option>
+                </select>
+            </div>
+            <div>
+                <label for="fixture">Fixture</label>
+                <select id="fixture" name="fixture">
+                    <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}">PASS</option>
+                </select>
+            </div>
+            <div>
+                <label for="browser">Browser</label>
+                <select id="browser" name="browser">
+                    <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}">PASS</option>
+                </select>
+            </div>
+            <div style="flex:1">
+                <label for="notes">Actual result, evidence, issue</label>
+                <input id="notes" name="notes" maxlength="4000" style="width:100%">
+            </div>
+            <div><button type="submit">Record</button></div>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h2>History</h2>
+        <p class="muted" th:if="${run.droppedHistory() > 0}"
+           th:text="${run.droppedHistory()} + ' older entries were dropped by the history bound.'">dropped</p>
+        <table>
+            <thead><tr><th>When</th><th>Job</th><th>Action</th><th>Outcome</th><th>Detail</th></tr></thead>
+            <tbody>
+            <tr th:each="a : ${run.history()}">
+                <td th:text="${a.at()}">now</td>
+                <td class="mono" th:text="${a.jobId()}">j1</td>
+                <td th:text="${a.action()}">create</td>
+                <td th:text="${a.outcome()}"
+                    th:classappend="${a.outcome().name() == 'FAILED' or a.outcome().name() == 'REFUSED' or a.outcome().name() == 'ASSERTION_FAILED'} ? 'bad' : ''">OK</td>
+                <td th:text="${a.detail()}">detail</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>
