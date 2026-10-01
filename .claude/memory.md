@@ -696,9 +696,11 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **A replacement entrypoint that creates the instance only when `etc/broker.xml` is missing survives
   restart and stop/start** (2026-09-30): the lab's profiles kept their RBAC after a 5s and a 20s
   interrupt, same node id. The image's own `/docker-run.sh` uses the same test.
-- **For a user without `manage`, `/overview` also says "Queues (0) … This broker reported no
-  queues"** under the correct AMQ229032 explanation (2026-09-30, 2.55.0) — an open Browser defect for
-  procedure E02, recorded in the Phase 15 plan.
+- **A page-level `catch (BrokerException)` that fills the model with `List.of()` renders as an empty
+  broker** (2026-09-30, procedure E02): `/overview` said "Queues (0) … This broker reported no queues"
+  under AMQ229032 for `nomanage`; `/addresses` and `/diagnose` ("nothing is obviously blocked") did the
+  same. Fixed with a `listed`/`checked` model flag the count and empty-state wording are gated on. Any
+  new list page with an inline-error catch needs the same flag; `/broker` panels avoid it via `Reading`.
 - **A job cancelled through its executor `Future` before it started never ran and never finished**
   (2026-09-30, lab): `Future.cancel` on a not-yet-started task stops it from running, so the lab's job
   stayed RUNNING and blocked its run's cleanup. Cancel by flag plus interrupting the job's own thread.

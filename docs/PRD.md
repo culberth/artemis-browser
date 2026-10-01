@@ -1140,7 +1140,7 @@ as the test servers and their controls are refined.
       reads, connection failures and bounded scale; cover security/deployment through an explicit
       external harness where broker traffic alone cannot test the feature. *Merged (PR #55):
       six recipes, broker profiles, Interrupt broker, E05/E06 harness. Two Browser defects found,
-      listed in the Phase 15 plan: Q01 fixed (PR #54), E02 open.*
+      listed in the Phase 15 plan: Q01 fixed (PR #54), E02 fixed (PR #57).*
 - [ ] **P3 — Executed regression coverage.** Run all current-feature cases against the supported
       matrix, retain results/evidence, and refine the first-draft procedure into verified instructions.
       Extend fixtures and cases as the remaining Phase 13 and Phase 14 features land.
