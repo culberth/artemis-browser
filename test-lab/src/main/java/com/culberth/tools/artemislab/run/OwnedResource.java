@@ -8,10 +8,10 @@ package com.culberth.tools.artemislab.run;
  * call that creates it. So a PLANNED resource that exists after a crash was created by that call, and cleanup may
  * remove it; a name that already existed is never recorded as owned.
  *
- * @param kind        address or queue
+ * @param kind        what sort of resource
  * @param name        exact name
- * @param address     the address a queue is bound to (the name itself for an address)
- * @param routingType ANYCAST or MULTICAST
+ * @param address     the address a queue or divert is bound to (the name itself for an address or settings match)
+ * @param routingType ANYCAST or MULTICAST; for a divert, where it forwards to; blank for settings
  * @param state       where it is in its life
  * @param detail      the latest outcome, for the page
  */
@@ -20,7 +20,9 @@ public record OwnedResource(Kind kind, String name, String address, String routi
 
     public enum Kind
     {
-        ADDRESS, QUEUE
+        ADDRESS, QUEUE, DIVERT,
+        /** Address settings added for exactly this address match; removing them restores what applied before. */
+        ADDRESS_SETTINGS
     }
 
     public enum State

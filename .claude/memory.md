@@ -658,6 +658,28 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **Testcontainers' reaper took ~40s, not ~10s,** to remove the lab's broker after the lab JVM was killed
   (2026-09-30, Ryuk 0.14.0, Docker Desktop npipe). A lab restarted inside that window finds 62616 still
   held — and lists the container as a leftover, which is what that list is for.
+- **A queue browses in priority order, not send order** (2026-09-30, 2.55.0 and 2.57.0): with priority
+  `seq % 10` on 300 messages, a JMS `QueueBrowser` returned seq 259 (priority 9) before seq 251, and the
+  first "late" marker sat at position ~26. Highest priority first, then arrival. Management `browse`
+  and Browser's pages follow the same order. A fixture that needs a message at a queue *position* must
+  control priorities (the lab's SEARCH gives its late markers priority 0, landing them at 291–300).
+- **Dots in a JMS client id are backslash-escaped in a durable subscription's queue name** (2026-09-30,
+  2.55.0): client id `lab.r1` + subscription `durable-all` made queue `lab\.r1.durable-all` — the
+  separator dot is not escaped, the ones inside the client id are. Not `lab.r1.durable-all`, as
+  `clientId.subName` suggests. The lab uses dot-free client ids. Browser has never been shown such a
+  name; worth a fixture.
+- **A JMS send to a queue named after an address auto-creates a queue of that name** (2026-09-30,
+  observed on 2.55.0): address `orders` with anycast queue `orders-q`; `session.createQueue("orders")`
+  and six sends made the client create queue `orders` on the address, and anycast then split the six 3/3.
+  Send by FQQN (`orders::orders-q`) to reach a differently named queue.
+- **Verified for the lab's worker recipes** (2026-09-30, 2.55.0 and 2.57.0): `addAddressSettings(address,
+  json)` takes camelCase keys (`maxDeliveryAttempts`, `deadLetterAddress`, `expiryAddress`,
+  `redeliveryDelay`, `autoCreateQueues`, `autoCreateAddresses`) and `removeAddressSettings(match)` undoes
+  it; an exclusive divert that matches also skips the address's non-exclusive diverts (audit got only
+  the 3 non-eu of 6); `address.<name>` attribute `unRoutedMessageCount` counts multicast publishes with no
+  queue; a dead-letter address that does not exist is not auto-created when a message is killed (cleanup
+  found nothing left); a container restart keeps the node id and durable messages, and held messages
+  return to their queue; a 2s TTL expired within the default 30s scan.
 - **A container is not "launched here" until `start()` returns** (2026-09-30): the lab first recorded
   ownership by container id after start, so while provisioning, its own starting broker was listed as
   a removable leftover. Ownership is now the broker-id label, recorded before the container exists.

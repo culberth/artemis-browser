@@ -1,5 +1,5 @@
 {
-  "revision": "2026-09-30.1",
+  "revision": "2026-09-30.3",
   "scenarios": [
     {
       "id": "LAB-SMOKE",
@@ -14,54 +14,54 @@
       "id": "BASIC",
       "title": "Basic queues and connection",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Empty and populated queues with distinct waiting, delivering, scheduled, added, acked, expired and killed counts; names with spaces, & and Unicode; 0, 1 and 251 persistent messages with sequence properties.",
-      "expected": "Overview counters, sorting and filters, paging and refresh match independent lab readings.",
+      "runnable": true,
+      "summary": "Five owned queues: empty (0); one (1 persistent); paged (251 persistent, seq 1..251); counters (12 sent, 3 consumed and acknowledged, 2 scheduled an hour out); and 'odd name & ü 日本', one message, for link encoding.",
+      "expected": "Fixture assertions: empty 0, one 1, paged 251; counters messageCount 9, scheduledCount 2, messagesAdded 12, messagesAcknowledged 3; odd name 1. In Artemis Browser: overview counters match, paged gives six pages at size 50 with one row on the last, scheduled messages are counted but not browsed, and the odd name links and escapes correctly. Delivering, expired and killed counts need held consumers and come with DELIVERY.",
       "cases": ["C01", "C02", "C03", "C04", "M01"]
     },
     {
       "id": "BODIES",
       "title": "Message bodies and export content",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Text, bytes, map, stream, object and empty bodies; typed properties; Unicode, quotes, newlines, literal HTML; long and large (250KB) bodies; values beginning =, +, - and @.",
-      "expected": "Detail, previews, large badges, downloads and CSV/JSON exports agree with the send manifest; CSV neutralises formulas.",
+      "runnable": true,
+      "summary": "One queue, bodies, with 17 messages in labSeq order: plain text; Unicode, quotes, newline and literal HTML; empty and null text; bytes 0..63 and empty bytes; map; stream; object; one property of every type; 1,000-character text; 250,000-character text and 250,000 bytes (large messages); bodies and a note property starting =, +, - and @ with commas, quotes and newlines. Each carries labCase naming it.",
+      "expected": "Fixture assertion: messageCount 17. In Artemis Browser: each detail page matches its labCase; HTML shows as text; the two 250,000 messages carry large badges and bounded previews; exports parse, carry full supported bodies, and the CSV neutralises the four formula-like values. Compare with the run's send manifest.",
       "cases": ["M03", "M04", "M06", "M08", "M09"]
     },
     {
       "id": "SEARCH",
       "title": "Filters, search and export bounds",
       "increment": "P1",
-      "runnable": false,
-      "summary": "300 messages with a late marker at positions 251-260, distinct priority, durability and timestamps; matches across two queues; known exact IDs.",
-      "expected": "Core filters, cross-queue search, match caps and export limits behave as documented.",
+      "runnable": true,
+      "summary": "search-a: 300 messages, marker='late' on 251-260 only (priority 0, so they browse last, at positions 291-300; every other message priority 1-9), odd seq persistent and even non-persistent, region eu/us, amount seq*3, distinct timestamps. search-b: 20, marker='late' on 5-8. search-many: 60, all marker='many' (over the 50-per-queue search cap). export-bounds: ten 400-character bodies, marker='deep' on 7-10.",
+      "expected": "Fixture assertions: the four counts, and by a whole-queue QueueBrowser marker='late' 10 and 4, marker='many' 60, marker='deep' 4, region='eu' AND amount>600 50. In Artemis Browser: the core filters marker = 'late', AMQPriority = 9, AMQDurable = 'NON_DURABLE' and region = 'eu' AND amount > 600 find exactly these; cross-queue search reports both late queues and a capped floor for search-many; exact-id lookups use ids from the send manifest.",
       "cases": ["M02", "M05", "M06", "M07"]
     },
     {
       "id": "DELIVERY",
       "title": "Scheduled, held, redelivered, dead-lettered and expired",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Scheduled messages; consumers holding deliveries unacknowledged; rollback until dead-lettered; TTL expiry; missing dead-letter and expiry destinations.",
-      "expected": "Scheduled and in-flight panels, budgets, Diagnose findings and killed/expired counters match the lab's record.",
+      "runnable": true,
+      "summary": "sched: 5 waiting + 3 scheduled five minutes out. held: 20, a consumer (client lab-<run>-holder) holding 10 unacknowledged. all-held: 250, all held. imbalance: 20, one consumer holding 10 and one idle. redelivery: 3 messages, max 3 delivery attempts, dead-lettered to redelivery.dlq by the Roll back once step. expiry: 4 with a 2s TTL expiring to expiry.exp, 2 without. kill-none / kill-absent / kill-noqueue: one message rolled back to a limit of 2 with no dead-letter address, a missing one, and one with no queue; expire-none: one expiring with no expiry address.",
+      "expected": "Fixture assertions: sched 8 with 3 scheduled; held 20 with 10 delivering; all-held 250 delivering; imbalance 10 delivering on 2 consumers; redelivery 3; each kill variant 0 left and 1 killed; expiry 2 left and 4 expired, expiry.exp 4; expire-none 0 left and 1 expired. In Artemis Browser: scheduled and in-flight panels, empty browse with a non-empty queue, consumer imbalance (and, after ten minutes, age), redelivery counts between steps and the dead-lettered origin, killed/expired counters and Diagnose's explanation of where messages went. Acknowledge or release the held consumers from Workers and refresh.",
       "cases": ["D01", "D02", "D03", "D04", "D05", "D06", "D07"]
     },
     {
       "id": "SUBSCRIPTIONS",
       "title": "Routing, subscriptions and diverts",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Anycast queue named differently from its address; multicast feed with durable, filtered, shared and non-durable subscriptions; exclusive and non-exclusive diverts; unrouted sends.",
-      "expected": "Address view, FQQN browsing, subscription lag and divert links are correct.",
+      "runnable": true,
+      "summary": "A01: anycast queue orders-q on address orders; multicast address feed with feed-sub-a and feed-sub-b. A02: multicast events with durable lab-<run>.durable-all (offline), durable filtered lab-<run>.durable-eu on region = 'eu' (drained), shared durable lab-<run>-shared and a live non-durable subscriber (a worker). A03: address routed with an exclusive divert of region = 'eu' to routed.eu and a non-exclusive divert to routed.audit; nowhere, a multicast address with no queue and auto-creation off.",
+      "expected": "Fixture assertions: orders-q 6, feed-sub-a 6, feed-sub-b 6; durable-all 10 with no consumer; durable-eu 0 left of 5 added, 5 acknowledged; shared 10; routed 3, routed.eu 3, routed.audit 3; nowhere 3 unrouted. In Artemis Browser: the address view groups each queue under its address, FQQN browsing reads every subscription, subscription kinds, filter and lag are shown, diverts link source to target, and the unrouted count appears on nowhere.",
       "cases": ["A01", "A02", "A03"]
     },
     {
       "id": "RATES",
       "title": "Clients and rates",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Identified and anonymous producers and consumers with several sessions; bounded target-rate traffic; restart or recreation for counter discontinuities.",
-      "expected": "Broker, client drilldown and rates agree with actual operation counts; no fabricated throughput across resets.",
+      "runnable": true,
+      "summary": "A04: queue clients with three idle clients kept as workers: producer lab-<run>-producer on 2 sessions, an anonymous consumer, consumer lab-<run>-consumer on 3 sessions. A05: queue rate, with steps to start a producer and a consumer at a chosen rate for a chosen time and to stop them. A06: a step that destroys and recreates rate, and Restart broker on the lab page.",
+      "expected": "Fixture assertion: clients has 4 consumers. In Artemis Browser: /broker, producer rows and /client pages identify each client with and without an id. Rates follow the lab's actual counts (the Workers panel) stage by stage; after Recreate rate queue or a broker restart, no negative or fabricated throughput is shown and a fresh baseline is needed.",
       "cases": ["A04", "A05", "A06"]
     },
     {

@@ -1130,9 +1130,11 @@ as the test servers and their controls are refined.
 - [x] **P0 — Independent lab and disposable brokers.** Provision pinned supported broker versions;
       verify identity, ownership and bounded lifecycle operations; provide a scenario catalog and
       run records through a separate web application.
-- [ ] **P1 — Message and client services.** Deterministic producers and controlled consumers create
+- [x] **P1 — Message and client services.** Deterministic producers and controlled consumers create
       waiting, scheduled, in-flight, redelivery, dead-letter and expiry conditions, mixed bodies,
-      subscriptions, routing, rates and client identities.
+      subscriptions, routing, rates and client identities. *All six recipes on branch
+      `phase15-p1-message-fixtures`: `BASIC`, `BODIES`, `SEARCH`, `DELIVERY`, `SUBSCRIPTIONS`,
+      `RATES`, with long-lived workers and steps.*
 - [ ] **P2 — Behavior and failure services.** Create queue-behavior and pressure scenarios, restricted
       reads, connection failures and bounded scale; cover security/deployment through an explicit
       external harness where broker traffic alone cannot test the feature.

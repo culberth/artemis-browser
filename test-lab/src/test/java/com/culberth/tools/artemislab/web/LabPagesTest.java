@@ -84,12 +84,11 @@ class LabPagesTest
     @DisplayName("A run page renders its manifest, and the download carries it with no password")
     void runPageAndManifest() throws Exception
     {
-        store.create(new RunManifest(RunManifest.SCHEMA, "rpage", "rev", Instant.now(), "UTC", "",
-                new RunManifest.BrokerRef("b1", "apache/artemis:2.55.0-alpine", "2.55.0", "node-1", "127.0.0.1:62616"),
-                RunManifest.RunState.OPEN, 0, List.of(), List.of(), 0, List.of()));
+        store.create(RunManifest.open("rpage", "rev", Instant.now(), "UTC", "", new RunManifest.BrokerRef("b1",
+                "apache/artemis:2.55.0-alpine", "2.55.0", "node-1", "127.0.0.1:62616")));
 
         mvc.perform(get("/runs/rpage").header("Host", "localhost")).andExpect(status().isOk())
-                .andExpect(content().string(containsString("lab.rpage.smoke")))
+                .andExpect(content().string(containsString("BODIES")))
                 .andExpect(content().string(containsString("node-1")));
         mvc.perform(get("/runs/rpage/manifest.json").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", containsString("lab-run-rpage.json")))

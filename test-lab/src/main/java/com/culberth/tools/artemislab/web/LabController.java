@@ -11,8 +11,8 @@ import com.culberth.tools.artemislab.run.RunManifest;
 import com.culberth.tools.artemislab.run.RunService;
 import com.culberth.tools.artemislab.run.RunStore;
 import com.culberth.tools.artemislab.scenario.ScenarioCatalog;
-import com.culberth.tools.artemislab.scenario.SmokeScenario;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +31,9 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @Controller
 public class LabController
 {
+
+    /** Send-manifest rows with a note shown on the run page; the download has them all. */
+    static final int SENT_SHOWN = 100;
 
     private final BrokerService brokers;
     private final RunService runs;
@@ -99,6 +102,12 @@ public class LabController
         });
     }
 
+    @PostMapping("/broker/restart")
+    public String restartBroker(@RequestParam String token, RedirectAttributes redirect)
+    {
+        return act(redirect, "/", () -> runs.restartBroker(token));
+    }
+
     @PostMapping("/leftovers/remove")
     public String removeLeftover(@RequestParam String containerId, RedirectAttributes redirect)
     {
@@ -136,8 +145,10 @@ public class LabController
         model.addAttribute("jobs", jobs);
         model.addAttribute("busy", jobs.stream().anyMatch(Job::active));
         model.addAttribute("broker", brokers.current().orElse(null));
-        model.addAttribute("smoke", catalog.find(SmokeScenario.ID).orElseThrow());
-        model.addAttribute("smokeQueue", SmokeScenario.queueName(runId));
+        model.addAttribute("scenarios", runs.runnable());
+        model.addAttribute("workers", runs.workers(runId));
+        model.addAttribute("ran", ran(run));
+        model.addAttribute("marked", run.sent().stream().filter(m -> !m.note().isBlank()).limit(SENT_SHOWN).toList());
         model.addAttribute("cases", catalog.cases());
         model.addAttribute("statuses", CaseResult.Status.values());
         model.addAttribute("limits", limits);
@@ -147,10 +158,25 @@ public class LabController
 
     @PostMapping("/runs/{runId}/scenarios/{scenarioId}")
     public String runScenario(@PathVariable String runId, @PathVariable String scenarioId,
-            @RequestParam(defaultValue = "10") int count, @RequestParam(defaultValue = "100") int bodyBytes,
+            @RequestParam Map<String, String> form, RedirectAttributes redirect)
+    {
+        return act(redirect, "/runs/" + runId,
+                () -> runs.runScenario(runId, scenarioId, form, form.getOrDefault("token", "")));
+    }
+
+    @PostMapping("/runs/{runId}/scenarios/{scenarioId}/steps/{stepId}")
+    public String runStep(@PathVariable String runId, @PathVariable String scenarioId, @PathVariable String stepId,
+            @RequestParam Map<String, String> form, RedirectAttributes redirect)
+    {
+        return act(redirect, "/runs/" + runId,
+                () -> runs.runStep(runId, scenarioId, stepId, form, form.getOrDefault("token", "")));
+    }
+
+    @PostMapping("/runs/{runId}/workers/{workerId}/{action}")
+    public String workerAction(@PathVariable String runId, @PathVariable String workerId, @PathVariable String action,
             @RequestParam String token, RedirectAttributes redirect)
     {
-        return act(redirect, "/runs/" + runId, () -> runs.runScenario(runId, scenarioId, count, bodyBytes, token));
+        return act(redirect, "/runs/" + runId, () -> runs.workerAction(runId, workerId, action, token));
     }
 
     @PostMapping("/runs/{runId}/jobs/{jobId}/cancel")
@@ -181,6 +207,16 @@ public class LabController
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"lab-run-" + run.runId() + ".json\"")
                 .contentType(MediaType.APPLICATION_JSON).body(store.json(run));
+    }
+
+    /**
+     * Recipes that have prepared this run, by the actions recorded for them — so their steps are offered only after.
+     */
+    static java.util.Set<String> ran(RunManifest run)
+    {
+        return run.history().stream()
+                .filter(a -> a.outcome() == com.culberth.tools.artemislab.run.ActionRecord.Outcome.SUCCEEDED)
+                .map(a -> a.action().split(" ", 2)[0]).collect(java.util.stream.Collectors.toSet());
     }
 
     @FunctionalInterface

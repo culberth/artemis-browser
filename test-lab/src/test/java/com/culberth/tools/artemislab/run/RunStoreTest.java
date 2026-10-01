@@ -28,9 +28,8 @@ class RunStoreTest
 
     static RunManifest manifest(String runId, Instant at)
     {
-        return new RunManifest(RunManifest.SCHEMA, runId, "rev", at, "UTC", "abc123",
-                new BrokerRef("b1", "apache/artemis:2.55.0-alpine", "2.55.0", "node-1", "127.0.0.1:62616"),
-                RunState.OPEN, 0, List.of(), List.of(), 0, List.of());
+        return RunManifest.open(runId, "rev", at, "UTC", "abc123",
+                new BrokerRef("b1", "apache/artemis:2.55.0-alpine", "2.55.0", "node-1", "127.0.0.1:62616"));
     }
 
     private static LabLimits limits(int maxRuns)

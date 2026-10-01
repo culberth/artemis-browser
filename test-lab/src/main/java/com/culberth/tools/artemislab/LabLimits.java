@@ -2,6 +2,7 @@ package com.culberth.tools.artemislab;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
@@ -16,12 +17,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param operationTimeout  one management call, send or receive
  * @param readinessDeadline how long a fixture may take to reach its asserted state
  * @param maxRuns           run manifests kept on disk
+ * @param maxLiveWorkers    consumers, clients and traffic kept running between actions, across the lab
+ * @param maxRate           messages per second one traffic worker may target
+ * @param maxTraffic        how long one traffic worker may run
  */
 @ConfigurationProperties("lab.limits")
-public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("65536") int maxBodyBytes,
+public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("262144") int maxBodyBytes,
         @DefaultValue("2") int maxWorkers, @DefaultValue("52428800") long maxRunBytes,
         @DefaultValue("10s") Duration operationTimeout, @DefaultValue("30s") Duration readinessDeadline,
-        @DefaultValue("50") int maxRuns)
+        @DefaultValue("50") int maxRuns, @DefaultValue("10") int maxLiveWorkers, @DefaultValue("200") int maxRate,
+        @DefaultValue("5m") Duration maxTraffic)
 {
 
     static final int CEILING_MESSAGES = 100_000;
@@ -31,7 +36,11 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("65
     static final Duration CEILING_OPERATION_TIMEOUT = Duration.ofMinutes(2);
     static final Duration CEILING_READINESS = Duration.ofMinutes(10);
     static final int CEILING_RUNS = 500;
+    static final int CEILING_LIVE_WORKERS = 50;
+    static final int CEILING_RATE = 2000;
+    static final Duration CEILING_TRAFFIC = Duration.ofHours(1);
 
+    @ConstructorBinding
     public LabLimits
     {
         within("lab.limits.max-messages", maxMessages, CEILING_MESSAGES);
@@ -41,12 +50,23 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("65
         within("lab.limits.max-runs", maxRuns, CEILING_RUNS);
         within("lab.limits.operation-timeout", operationTimeout, CEILING_OPERATION_TIMEOUT);
         within("lab.limits.readiness-deadline", readinessDeadline, CEILING_READINESS);
+        within("lab.limits.max-live-workers", maxLiveWorkers, CEILING_LIVE_WORKERS);
+        within("lab.limits.max-rate", maxRate, CEILING_RATE);
+        within("lab.limits.max-traffic", maxTraffic, CEILING_TRAFFIC);
+    }
+
+    /** The P0 limits with the worker limits at their defaults. */
+    public LabLimits(int maxMessages, int maxBodyBytes, int maxWorkers, long maxRunBytes, Duration operationTimeout,
+            Duration readinessDeadline, int maxRuns)
+    {
+        this(maxMessages, maxBodyBytes, maxWorkers, maxRunBytes, operationTimeout, readinessDeadline, maxRuns, 10, 200,
+                Duration.ofMinutes(5));
     }
 
     /** The defaults, for tests and anything constructed outside Spring. */
     public static LabLimits defaults()
     {
-        return new LabLimits(1000, 65536, 2, 52428800L, Duration.ofSeconds(10), Duration.ofSeconds(30), 50);
+        return new LabLimits(1000, 262144, 2, 52428800L, Duration.ofSeconds(10), Duration.ofSeconds(30), 50);
     }
 
     /** A requested message count, refused rather than clamped: a silently smaller fixture is a wrong fixture. */

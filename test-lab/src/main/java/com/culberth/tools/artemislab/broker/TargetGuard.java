@@ -60,9 +60,22 @@ public final class TargetGuard
     /** A started connection verified to reach the owned broker; the caller closes it. */
     public Connection open() throws JMSException
     {
+        return open(null);
+    }
+
+    /**
+     * As {@link #open()}, with a JMS client id set first — it has to be, since JMS refuses a client id on a connection
+     * that has been used, and verifying it uses it.
+     */
+    public Connection open(String clientId) throws JMSException
+    {
         Connection connection = factory.createConnection(user, password);
         try
         {
+            if (clientId != null && !clientId.isBlank())
+            {
+                connection.setClientID(clientId);
+            }
             connection.start();
             String actual = reader.nodeId(connection);
             if (!expectedNodeId.equals(actual))

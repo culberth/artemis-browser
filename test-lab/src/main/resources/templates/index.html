@@ -30,6 +30,12 @@
                 reports the node id above: a queue name starting with <code>lab.</code> alone does not prove you are
                 looking at this broker.
             </p>
+            <form method="post" th:action="@{/broker/restart}" class="field-row">
+                <input type="hidden" name="token" th:value="${token}">
+                <button class="secondary" type="submit" th:disabled="${busy}">Restart broker</button>
+                <span class="note">Stops every worker, restarts the container in place and checks it comes back as the
+                    same node. Durable messages survive; counters restart &mdash; a discontinuity for rates.</span>
+            </form>
             <form method="post" th:action="@{/broker/stop}" class="field-row">
                 <input type="hidden" name="token" th:value="${token}">
                 <div th:if="${!affected.isEmpty()}">

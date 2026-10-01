@@ -15,7 +15,11 @@ import com.culberth.tools.artemislab.run.OwnedResource.State;
 import com.culberth.tools.artemislab.run.RunManifest.BrokerRef;
 import com.culberth.tools.artemislab.run.RunManifest.RunState;
 import com.culberth.tools.artemislab.scenario.ScenarioCatalog;
-import com.culberth.tools.artemislab.scenario.SmokeScenario;
+import com.culberth.tools.artemislab.scenario.Fixture;
+import com.culberth.tools.artemislab.scenario.Recipe;
+import com.culberth.tools.artemislab.worker.HeldConsumer;
+import com.culberth.tools.artemislab.worker.Worker;
+import com.culberth.tools.artemislab.worker.WorkerRegistry;
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
 import java.time.Instant;
@@ -24,9 +28,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.stereotype.Service;
 
@@ -46,18 +54,64 @@ public class RunService
     private final JobRunner runner;
     private final BrokerService brokers;
     private final ScenarioCatalog catalog;
-    private final SmokeScenario smoke;
+    private final Map<String, Recipe> recipes;
     private final LabLimits limits;
+    private final WorkerRegistry workers;
 
     public RunService(RunStore store, JobRunner runner, BrokerService brokers, ScenarioCatalog catalog,
-            SmokeScenario smoke, LabLimits limits)
+            List<Recipe> recipes, LabLimits limits, WorkerRegistry workers)
     {
+        this.workers = workers;
         this.store = store;
         this.runner = runner;
         this.brokers = brokers;
         this.catalog = catalog;
-        this.smoke = smoke;
+        this.recipes = registry(recipes, catalog);
         this.limits = limits;
+    }
+
+    /**
+     * Recipes by id, which must be exactly the catalog's runnable cards: a card marked runnable with nothing behind it,
+     * or a recipe the catalog still calls unimplemented, fails startup rather than a click.
+     */
+    static Map<String, Recipe> registry(List<Recipe> recipes, ScenarioCatalog catalog)
+    {
+        Map<String, Recipe> byId = new LinkedHashMap<>();
+        for (Recipe recipe : recipes)
+        {
+            if (byId.put(recipe.id(), recipe) != null)
+            {
+                throw new IllegalStateException("Two recipes claim " + recipe.id());
+            }
+        }
+        Set<String> runnable = catalog.scenarios().stream().filter(ScenarioCatalog.Scenario::runnable)
+                .map(ScenarioCatalog.Scenario::id).collect(Collectors.toSet());
+        if (!runnable.equals(byId.keySet()))
+        {
+            throw new IllegalStateException(
+                    "Catalog runnable cards " + runnable + " do not match the implemented recipes " + byId.keySet());
+        }
+        return Map.copyOf(byId);
+    }
+
+    /** The runnable scenarios, in catalog order, with their parameters. */
+    public List<RunnableScenario> runnable()
+    {
+        return catalog.scenarios().stream().filter(ScenarioCatalog.Scenario::runnable)
+                .map(card -> new RunnableScenario(card, recipes.get(card.id()).params(limits),
+                        recipes.get(card.id()).steps(limits)))
+                .toList();
+    }
+
+    /**
+     * A runnable catalog card and its form parameters.
+     *
+     * @param card   the catalog card
+     * @param params what its form asks for
+     * @param steps  follow-up actions once it has run
+     */
+    public record RunnableScenario(ScenarioCatalog.Scenario card, List<Recipe.Param> params, List<Recipe.Step> steps)
+    {
     }
 
     /** A new run bound to the current broker by identity. */
@@ -72,16 +126,16 @@ public class RunService
         {
             throw new LabException("The Browser commit field takes a revision, at most 80 characters.");
         }
-        RunManifest manifest = new RunManifest(RunManifest.SCHEMA, runId, catalog.revision(), Instant.now(),
+        RunManifest manifest = RunManifest.open(runId, catalog.revision(), Instant.now(),
                 ZoneId.systemDefault().getId(), commit, new BrokerRef(broker.brokerId(), broker.image(),
-                        broker.reportedVersion(), broker.nodeId(), broker.endpoint()),
-                RunState.OPEN, 0, List.of(), List.of(), 0, List.of());
+                        broker.reportedVersion(), broker.nodeId(), broker.endpoint()));
         store.create(manifest);
         return store.update(runId, r -> r.withAction(ActionRecord.now("", "create run", Outcome.SUCCEEDED,
                 "bound to broker " + broker.brokerId() + ", node " + broker.nodeId())));
     }
 
-    public Job runScenario(String runId, String scenarioId, int count, int bodyBytes, String token)
+    /** Runs a catalogued recipe in the run, with its parameters validated server-side. */
+    public Job runScenario(String runId, String scenarioId, Map<String, String> form, String token)
     {
         RunManifest run = store.get(runId);
         catalog.runnable(scenarioId);
@@ -89,19 +143,130 @@ public class RunService
         {
             throw new LabException("Run " + runId + " is " + run.state() + "; it accepts no more scenarios.");
         }
-        if (!SmokeScenario.ID.equals(scenarioId))
-        {
-            throw new LabException("No implementation is wired for " + scenarioId + ".");
-        }
-        limits.checkCount(count);
-        limits.checkBodyBytes(bodyBytes);
+        Recipe recipe = recipes.get(scenarioId);
+        Map<String, Integer> params = parameters(recipe.params(limits), form);
         LabBroker broker = boundBroker(run);
-        String action = scenarioId + " (" + count + " x " + bodyBytes + " bytes)";
+        String action = params.isEmpty() ? scenarioId : scenarioId + " " + params;
         return runner.submit(runId, token, action, job -> recorded(runId, job, action, () ->
         {
-            TargetGuard guard = brokers.guard(broker);
-            return smoke.run(job, runId, guard, count, bodyBytes);
+            try (Fixture fixture = fixture(job, runId, broker))
+            {
+                return recipe.run(fixture, params);
+            }
         }));
+    }
+
+    /** Runs one of a recipe's follow-up steps in the run, once the recipe has prepared it. */
+    public Job runStep(String runId, String scenarioId, String stepId, Map<String, String> form, String token)
+    {
+        RunManifest run = store.get(runId);
+        catalog.runnable(scenarioId);
+        if (!run.acceptsScenarios())
+        {
+            throw new LabException("Run " + runId + " is " + run.state() + "; it accepts no more steps.");
+        }
+        Recipe recipe = recipes.get(scenarioId);
+        Recipe.Step step = recipe.steps(limits).stream().filter(s -> s.id().equals(stepId)).findFirst()
+                .orElseThrow(() -> new LabException(scenarioId + " has no step " + stepId + "."));
+        Map<String, Integer> params = parameters(step.params(), form);
+        LabBroker broker = boundBroker(run);
+        String action = scenarioId + ": " + step.label() + (params.isEmpty() ? "" : " " + params);
+        return runner.submit(runId, token, action, job -> recorded(runId, job, action, () ->
+        {
+            try (Fixture fixture = fixture(job, runId, broker))
+            {
+                return recipe.step(fixture, stepId, params);
+            }
+        }));
+    }
+
+    /**
+     * Acts on one of the run's workers: {@code acknowledge} what a held consumer holds, or {@code stop} it — which
+     * returns anything it held to its queue unacknowledged.
+     */
+    public Job workerAction(String runId, String workerId, String action, String token)
+    {
+        Worker worker = workers.find(runId, workerId)
+                .orElseThrow(() -> new LabException("No worker " + workerId + " in run " + runId + "."));
+        String label = action + " " + worker.description();
+        return runner.submit(runId, token, label, job -> recorded(runId, job, label, () -> switch (action)
+        {
+            case "acknowledge" ->
+            {
+                if (!(worker instanceof HeldConsumer held))
+                {
+                    throw new LabException(worker.description() + " holds nothing to acknowledge.");
+                }
+                yield "Acknowledged " + held.acknowledge() + " held by " + worker.description() + ".";
+            }
+            case "stop" -> worker.stop("stopped from the run page");
+            default -> throw new LabException("Unknown worker action " + action + ".");
+        }));
+    }
+
+    public List<Worker> workers(String runId)
+    {
+        return workers.of(runId);
+    }
+
+    /**
+     * Restarts the broker in place. Every live worker is stopped first — held deliveries return to their queues — and
+     * each open run on the broker records the restart, which is a discontinuity for any rate measured across it.
+     */
+    public Job restartBroker(String token)
+    {
+        LabBroker broker = brokers.current().orElseThrow(() -> new LabException("No lab broker is running."));
+        return runner.submit(JobRunner.BROKER_SCOPE, token, "restart broker " + broker.brokerId(), job ->
+        {
+            List<String> stopped = workers.stopEverything("broker restart");
+            LabBroker restarted = brokers.restart();
+            String outcome = "Restarted broker " + broker.brokerId() + "; node " + restarted.nodeId()
+                    + " unchanged. Stopped " + stopped.size() + " worker(s) first.";
+            for (RunManifest run : runsOn(broker))
+            {
+                store.update(run.runId(),
+                        r -> r.withAction(ActionRecord.now(job.id(), "restart broker", Outcome.SUCCEEDED, outcome)));
+            }
+            return outcome;
+        });
+    }
+
+    private Fixture fixture(Job job, String runId, LabBroker broker) throws JMSException
+    {
+        return Fixture.open(job, runId, brokers.guard(broker), brokers.guard(broker, true), store, limits, workers);
+    }
+
+    /** Each declared parameter from the form, or its default; anything else in the form is ignored. */
+    static Map<String, Integer> parameters(List<Recipe.Param> declared, Map<String, String> form)
+    {
+        Map<String, Integer> values = new LinkedHashMap<>();
+        for (Recipe.Param param : declared)
+        {
+            String raw = form == null ? null : form.get(param.name());
+            int value;
+            if (raw == null || raw.isBlank())
+            {
+                value = param.defaultValue();
+            }
+            else
+            {
+                try
+                {
+                    value = Integer.parseInt(raw.strip());
+                }
+                catch (NumberFormatException e)
+                {
+                    throw new LabException(param.label() + " must be a whole number; got \"" + raw + "\".");
+                }
+            }
+            if (value < param.min() || value > param.max())
+            {
+                throw new LabException(param.label() + " must be between " + param.min() + " and " + param.max()
+                        + "; got " + value + ".");
+            }
+            values.put(param.name(), value);
+        }
+        return values;
     }
 
     /**
@@ -116,6 +281,10 @@ public class RunService
             throw new LabException("Run " + runId + " is " + run.state() + "; there is nothing to clean up.");
         }
         runner.cancelAll(runId);
+        for (String line : workers.stopAll(runId, "cleanup"))
+        {
+            store.update(runId, r -> r.withAction(ActionRecord.now("", "worker", Outcome.SUCCEEDED, line)));
+        }
         if (!runner.awaitIdle(runId, limits.operationTimeout()))
         {
             throw new LabException("A job in this run did not stop within " + limits.operationTimeout()
@@ -138,6 +307,7 @@ public class RunService
         LabBroker broker = brokers.current().orElseThrow(() -> new LabException("No lab broker is running."));
         return runner.submit(JobRunner.BROKER_SCOPE, token, "stop broker " + broker.brokerId(), job ->
         {
+            workers.stopEverything("broker stopped");
             for (RunManifest run : runsOn(broker))
             {
                 store.update(run.runId(),
@@ -197,8 +367,9 @@ public class RunService
         try (Connection connection = guard.open();
                 ManagementClient management = new ManagementClient(connection, limits.operationTimeout()))
         {
-            // Queues before addresses: an address with a queue bound cannot go first.
-            for (Kind kind : List.of(Kind.QUEUE, Kind.ADDRESS))
+            // Diverts, then queues, then addresses: an address with a binding cannot go first. Settings last, so the
+            // addresses keep their own behaviour until they are gone.
+            for (Kind kind : List.of(Kind.DIVERT, Kind.QUEUE, Kind.ADDRESS, Kind.ADDRESS_SETTINGS))
             {
                 for (OwnedResource resource : store.get(runId).resources())
                 {
@@ -228,30 +399,41 @@ public class RunService
     {
         try
         {
-            boolean exists = resource.kind() == Kind.QUEUE ? management.queueNames().contains(resource.name())
-                    : management.addressNames().contains(resource.name());
-            if (!exists)
+            if (resource.kind() == Kind.ADDRESS_SETTINGS)
+            {
+                // Settings for an exact owned name; once removed, the broker resolves the address against its
+                // wildcards again. There is no listing to prove it by, so the broker's acceptance is the evidence.
+                management.invoke(ResourceNames.BROKER, "removeAddressSettings", resource.name());
+                return resource.with(State.DELETED, "removed " + Instant.now());
+            }
+            if (!listed(management, resource))
             {
                 return resource.state() == State.PLANNED ? resource.with(State.NOT_CREATED, "never created")
                         : resource.with(State.DELETED, "already gone");
             }
-            if (resource.kind() == Kind.QUEUE)
+            switch (resource.kind())
             {
-                management.invoke(ResourceNames.BROKER, "destroyQueue", resource.name(), true, false);
+                case DIVERT -> management.invoke(ResourceNames.BROKER, "destroyDivert", resource.name());
+                case QUEUE -> management.invoke(ResourceNames.BROKER, "destroyQueue", resource.name(), true, false);
+                default -> management.invoke(ResourceNames.BROKER, "deleteAddress", resource.name());
             }
-            else
-            {
-                management.invoke(ResourceNames.BROKER, "deleteAddress", resource.name());
-            }
-            boolean still = resource.kind() == Kind.QUEUE ? management.queueNames().contains(resource.name())
-                    : management.addressNames().contains(resource.name());
-            return still ? resource.with(State.DELETE_FAILED, "still listed after deletion")
+            return listed(management, resource) ? resource.with(State.DELETE_FAILED, "still listed after deletion")
                     : resource.with(State.DELETED, "deleted " + Instant.now());
         }
         catch (LabException e)
         {
             return resource.with(State.DELETE_FAILED, e.getMessage());
         }
+    }
+
+    private static boolean listed(ManagementClient management, OwnedResource resource) throws JMSException
+    {
+        return switch (resource.kind())
+        {
+            case QUEUE -> management.queueNames().contains(resource.name());
+            case DIVERT -> management.divertNames().contains(resource.name());
+            default -> management.addressNames().contains(resource.name());
+        };
     }
 
     @FunctionalInterface

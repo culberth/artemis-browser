@@ -70,6 +70,12 @@ public final class ManagementClient implements AutoCloseable
         return names(attribute(ResourceNames.BROKER, "addressNames"));
     }
 
+    /** The broker's divert names; there is no listing operation, only this attribute. */
+    public Set<String> divertNames() throws JMSException
+    {
+        return names(attribute(ResourceNames.BROKER, "divertNames"));
+    }
+
     public String nodeId() throws JMSException
     {
         return String.valueOf(attribute(ResourceNames.BROKER, "nodeID"));
@@ -80,15 +86,21 @@ public final class ManagementClient implements AutoCloseable
         return String.valueOf(attribute(ResourceNames.BROKER, "version"));
     }
 
-    /** A queue's {@code messageCount}; the queue resource takes the bare name, never the FQQN. */
+    /** A queue's {@code messageCount}. */
     public long messageCount(String queue) throws JMSException
     {
-        Object value = attribute(ResourceNames.QUEUE + queue, "messageCount");
+        return queueAttribute(queue, "messageCount");
+    }
+
+    /** A numeric queue attribute; the queue resource takes the bare name, never the FQQN. */
+    public long queueAttribute(String queue, String name) throws JMSException
+    {
+        Object value = attribute(ResourceNames.QUEUE + queue, name);
         if (value instanceof Number number)
         {
             return number.longValue();
         }
-        throw new LabException("Unexpected messageCount for " + queue + ": " + value);
+        throw new LabException("Unexpected " + name + " for " + queue + ": " + value);
     }
 
     private Object call(Message request, String what) throws JMSException
