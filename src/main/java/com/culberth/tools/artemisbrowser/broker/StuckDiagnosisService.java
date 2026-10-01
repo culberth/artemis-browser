@@ -136,7 +136,7 @@ public class StuckDiagnosisService
         Transactions prepared = transactions != null ? transactions : transactionService.collect();
         for (QueueOverview queue : queues)
         {
-            queueLevel(findings, unchecked, queue, consumers, rates, settings, prepared);
+            queueLevel(findings, unchecked, queue, consumerReading, rates, settings, prepared);
         }
         if (consumerReading.available())
         {
@@ -365,9 +365,11 @@ public class StuckDiagnosisService
     }
 
     private void queueLevel(List<Finding> findings, List<String> unchecked, QueueOverview queue,
-            List<BrokerConsumer> consumers, Rates rates, Map<String, Reading<AddressSettings>> settings,
+            Reading<List<BrokerConsumer>> consumerReading, Rates rates, Map<String, Reading<AddressSettings>> settings,
             Transactions transactions)
     {
+        // Null when the listing could not be read: not having looked is never "no browser".
+        Long browsers = consumerReading.available() ? browsersOn(queue, consumerReading.value()) : null;
         if (queue.paused())
         {
             findings.add(Finding.stuck("'" + queue.name() + "' is paused",
@@ -383,20 +385,21 @@ public class StuckDiagnosisService
                             + " to '" + queue.address() + "' for this subscription until its subscriber reconnects"
                             + " or the subscription is removed — so a subscriber that has gone for good leaves a"
                             + " queue that only grows, and on a busy address that is how a disk fills."
+                            + (browsers != null && browsers > 0
+                                    ? " " + browsers + " browse-only client(s) are reading it, and a browser never"
+                                            + " takes a message."
+                                    : "")
                             + growth(queue, rates),
                     queue.name(), queue.address()));
         }
         else if (queue.messageCount() > 0 && queue.consumerCount() == 0)
         {
-            findings.add(unread(queue, transactions));
+            findings.add(unread(queue, transactions, browsers));
         }
-        else if (queue.messageCount() > 0 && onlyBrowsersAttached(queue, consumers))
+        else if (queue.messageCount() > 0 && consumerReading.available()
+                && onlyBrowsersAttached(queue, consumerReading.value()))
         {
-            findings.add(Finding.stuck("Only browsers are attached to '" + queue.name() + "'",
-                    queue.messageCount() + " message(s) waiting, and every consumer on this queue is browse-only. A"
-                            + " browser reads copies and never takes a message, so the queue has consumers by the"
-                            + " count and nothing that will ever drain it.",
-                    queue.name()));
+            findings.add(onlyBrowsers(queue, queue.messageCount(), browsers, ""));
         }
         else if (queue.messageCount() > 0 && queue.deliveringCount() == 0
                 && queue.behavior().dispatchGated(queue.consumerCount()))
@@ -445,7 +448,7 @@ public class StuckDiagnosisService
      * transaction also stays on its queue, counted as delivering, with no consumer holding it — measured on 2.55.0 and
      * 2.57.0 — so delivering with no consumer is told apart, and linked to the transactions when they hold some.
      */
-    private Finding unread(QueueOverview queue, Transactions transactions)
+    private Finding unread(QueueOverview queue, Transactions transactions, Long browsers)
     {
         long waiting = Math.max(0, queue.messageCount() - queue.deliveringCount());
         long held = transactions.heldFrom(queue.address());
@@ -464,23 +467,37 @@ public class StuckDiagnosisService
                             + " way; so, for a moment, does a consumer that has just closed.",
                     queue.name()).explainedBy(explanation);
         }
+        String delivering = queue.deliveringCount() > 0
+                ? ", and " + queue.deliveringCount() + " more counted as delivering with none to hold them"
+                : "";
+        if (browsers != null && browsers > 0)
+        {
+            return onlyBrowsers(queue, waiting, browsers, delivering).explainedBy(explanation);
+        }
         return Finding.stuck("Nothing is reading '" + queue.name() + "'", waiting
-                + " message(s) waiting with no consumer attached"
-                + (queue.deliveringCount() > 0
-                        ? ", and " + queue.deliveringCount() + " more counted as delivering with none to" + " hold them"
-                        : "")
-                + ". Either the consumer is not running, or it is connected somewhere other than where you" + " think.",
+                + " message(s) waiting with no consumer attached" + delivering
+                + ". Either the consumer is not running, or it is connected somewhere other than where you think."
+                + (browsers == null
+                        ? " Whether a browser is attached was not checked: the consumer listing could not be read."
+                        : ""),
                 queue.name()).explainedBy(explanation);
     }
 
     /**
-     * True when the queue has consumers but every one of them is a browser.
-     *
-     * <p>
-     * A browse-only consumer counts towards {@code consumerCount} exactly like a real one, so the overview's "no
-     * consumer" flag stays off while nothing is draining the queue. This tool's own browser is excluded — it is
-     * attached for the length of a request, and reporting it would mean the page accused itself.
+     * Messages waiting with browsers attached and nothing consuming. Said as such rather than "no consumer attached":
+     * someone who can see a client on the queue in the consumer listing would rightly distrust a page that says there
+     * is none.
      */
+    private Finding onlyBrowsers(QueueOverview queue, long waiting, long browsers, String delivering)
+    {
+        return Finding.stuck("Only browsers are attached to '" + queue.name() + "' — nothing is consuming it",
+                waiting + " message(s) waiting" + delivering + ", and the only client(s) on this queue are " + browsers
+                        + " browse-only consumer(s). A browser reads copies and never takes a message, so something"
+                        + " is reading this queue and nothing will ever drain it. Either the consumer is not running,"
+                        + " or it is connected somewhere other than where you think.",
+                queue.name());
+    }
+
     private Boolean nonDestructiveDefault(String address, Map<String, Reading<AddressSettings>> settings,
             List<String> unchecked)
     {
@@ -498,6 +515,26 @@ public class StuckDiagnosisService
         return read.value().nonDestructiveDefault();
     }
 
+    /**
+     * Browse-only consumers on the queue, from the consumer listing, leaving out this tool's own.
+     *
+     * <p>
+     * Measured on 2.55.0: a JMS {@code QueueBrowser} held open on a queue is listed with {@code browseOnly} true while
+     * {@code listQueues} reports that queue's {@code consumerCount} as 0 — the count leaves browsers out, so only the
+     * listing can tell "nothing attached" from "only a browser attached".
+     */
+    private static long browsersOn(QueueOverview queue, List<BrokerConsumer> consumers)
+    {
+        return consumers.stream().filter(
+                consumer -> queue.name().equals(consumer.queueName()) && consumer.browseOnly() && !consumer.self())
+                .count();
+    }
+
+    /**
+     * True when the queue's count shows consumers and every one the listing names is a browser — kept for a broker
+     * whose count does include browsers. This tool's own consumer is excluded: reporting it would mean the page accused
+     * itself.
+     */
     private boolean onlyBrowsersAttached(QueueOverview queue, List<BrokerConsumer> consumers)
     {
         List<BrokerConsumer> attached = consumers.stream()

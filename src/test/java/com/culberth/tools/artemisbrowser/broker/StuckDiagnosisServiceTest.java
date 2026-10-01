@@ -130,6 +130,84 @@ class StuckDiagnosisServiceTest
     }
 
     @Test
+    @DisplayName("a browser the queue's count leaves out is named, not reported as no client at all")
+    void namesABrowserTheCountLeavesOut()
+    {
+        // Measured on 2.55.0: consumerCount 0 while the listing shows a browse-only consumer.
+        given(queues.overview()).willReturn(List.of(queue("orders", 5, 0, 0, 0)));
+        given(brokerInfo.consumers()).willReturn(List.of(consumer("orders", true, false)));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.isStuck());
+        assertEquals("Only browsers are attached to 'orders' — nothing is consuming it", finding.title());
+        assertTrue(finding.detail().startsWith(
+                "5 message(s) waiting, and the only client(s) on this queue are 1" + " browse-only consumer(s)."),
+                finding.detail());
+        assertFalse(finding.detail().contains("no consumer attached"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("with no browser listed either, no consumer attached stays the finding")
+    void saysNoConsumerWhenTheListingShowsNoBrowser()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 5, 0, 0, 0)));
+        // A browser on another queue, and this tool's own: neither is reading 'orders'.
+        given(brokerInfo.consumers())
+                .willReturn(List.of(consumer("other", true, false), consumer("orders", true, true)));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.title().contains("Nothing is reading 'orders'"), finding.title());
+        assertTrue(finding.detail().contains("5 message(s) waiting with no consumer attached"), finding.detail());
+        assertFalse(finding.detail().contains("not checked"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("an unreadable consumer listing is not 'no browser': the finding says it did not look")
+    void doesNotClaimNoBrowserWithoutTheListing()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 5, 0, 0, 0)));
+        given(brokerInfo.consumers()).willThrow(new ManagementRefusal(Availability.DENIED, "AMQ229032 consumers"));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.title().contains("Nothing is reading 'orders'"), finding.title());
+        assertTrue(finding.detail().contains("Whether a browser is attached was not checked"), finding.detail());
+    }
+
+    @Test
+    @DisplayName("a browser beside messages held by a prepared transaction keeps both in the finding")
+    void keepsDeliveringAndTransactionsBesideABrowser()
+    {
+        given(queues.overview()).willReturn(List.of(queue("orders", 3, 1, 0, 0)));
+        given(transactions.collect()).willReturn(TransactionFixtures.held("orders", "shipped"));
+        given(brokerInfo.consumers()).willReturn(List.of(consumer("orders", true, false)));
+
+        Finding finding = service().diagnose(false).stream().filter(f -> "orders".equals(f.queue())).findFirst()
+                .orElseThrow();
+
+        assertTrue(finding.title().startsWith("Only browsers"), finding.title());
+        assertTrue(finding.detail().startsWith("2 message(s) waiting, and 1 more counted as delivering"),
+                finding.detail());
+        assertTrue(finding.explanation().contains("prepared XA transaction"), finding.explanation());
+    }
+
+    @Test
+    @DisplayName("a durable subscription with only a browser says the browser takes nothing")
+    void notesABrowserOnAnAbandonedSubscription()
+    {
+        given(queues.overview()).willReturn(
+                List.of(new QueueOverview("audit-sub", "events", "MULTICAST", 4, 0, 0, 0, 4, 0, true, false, false)));
+        given(brokerInfo.consumers()).willReturn(List.of(consumer("audit-sub", true, false)));
+
+        Finding finding = only(service().diagnose(false));
+
+        assertTrue(finding.title().contains("has no subscriber attached"), finding.title());
+        assertTrue(finding.detail().contains("1 browse-only client(s) are reading it"), finding.detail());
+    }
+
+    @Test
     @DisplayName("this tool's own browser does not count as the thing blocking the queue")
     void ignoresItsOwnBrowser()
     {
