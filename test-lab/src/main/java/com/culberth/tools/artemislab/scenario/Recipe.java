@@ -15,6 +15,12 @@ public interface Recipe
     /** The catalog card id it implements. */
     String id();
 
+    /** The broker profiles it needs; empty for any. */
+    default java.util.Set<com.culberth.tools.artemislab.broker.BrokerProfile> profiles()
+    {
+        return java.util.Set.of();
+    }
+
     /** Its form parameters; most recipes are fixed presets and take none. */
     default List<Param> params(LabLimits limits)
     {

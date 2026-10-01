@@ -15,9 +15,10 @@ import java.time.Instant;
  * @param reportedVersion what the broker says its version is
  * @param nodeId          what the broker says its node id is
  * @param startedAt       when it became ready
+ * @param profile         how it was configured at startup
  */
 public record LabBroker(String brokerId, String image, String containerId, String host, int port, String user,
-        String reportedVersion, String nodeId, Instant startedAt)
+        String reportedVersion, String nodeId, Instant startedAt, BrokerProfile profile)
 {
 
     /** For Artemis Browser's connect form and the manifest; carries no credentials. */

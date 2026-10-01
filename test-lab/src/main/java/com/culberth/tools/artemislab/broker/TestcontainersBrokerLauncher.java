@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -34,6 +35,7 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
 
     private static final Logger LOG = LoggerFactory.getLogger(TestcontainersBrokerLauncher.class);
     private static final int BROKER_PORT = 61616;
+    private static final String PROFILE_LABEL = "artemis-lab.profile";
 
     /**
      * Broker ids this process launched, recorded before the container is created, so a broker still starting is never
@@ -42,8 +44,8 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
     private final Set<String> launchedHere = ConcurrentHashMap.newKeySet();
 
     @Override
-    public Launched launch(String brokerId, String image, int hostPort, String user, String password,
-            Duration startupTimeout)
+    public Launched launch(String brokerId, String image, BrokerProfile profile, int hostPort, String user,
+            String password, Duration startupTimeout)
     {
         PortProbe.ensureFree(hostPort);
         launchedHere.add(brokerId);
@@ -55,9 +57,15 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
                             : cmd.getHostConfig();
                     cmd.withHostConfig(hostConfig.withPortBindings(new PortBinding(
                             Ports.Binding.bindIpAndPort("127.0.0.1", hostPort), ExposedPort.tcp(BROKER_PORT))));
-                })
+                }).withLabel(PROFILE_LABEL, profile.name())
                 // "Server is now active" — not "live", which the log does not say.
                 .waitingFor(Wait.forLogMessage(".*Server is now active.*\\n", 1)).withStartupTimeout(startupTimeout);
+        if (!profile.standard())
+        {
+            container.withCopyToContainer(Transferable.of(profile.entrypoint(), 0755), "/tmp/lab-profile.sh")
+                    .withCreateContainerCmdModifier(
+                            create -> create.withEntrypoint("/bin/bash", "/tmp/lab-profile.sh"));
+        }
         try
         {
             container.start();
@@ -101,11 +109,31 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
             }
 
             @Override
-            public void restart(Duration startupTimeout)
+            public void interrupt(Duration down, Duration startupTimeout)
             {
                 // Readiness is read from the container's whole log, so after a restart it is the next occurrence.
                 long before = activeLines(container.getLogs());
-                container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
+                var docker = container.getDockerClient();
+                if (down.isZero())
+                {
+                    docker.restartContainerCmd(container.getContainerId()).exec();
+                }
+                else
+                {
+                    docker.stopContainerCmd(container.getContainerId()).exec();
+                    try
+                    {
+                        Thread.sleep(down.toMillis());
+                    }
+                    catch (InterruptedException e)
+                    {
+                        Thread.currentThread().interrupt();
+                    }
+                    finally
+                    {
+                        docker.startContainerCmd(container.getContainerId()).exec();
+                    }
+                }
                 long deadline = System.nanoTime() + startupTimeout.toNanos();
                 while (activeLines(container.getLogs()) <= before)
                 {

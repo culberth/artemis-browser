@@ -2,7 +2,6 @@ package com.culberth.tools.artemislab.job;
 
 import java.time.Instant;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.Future;
 
 /**
  * One bounded piece of lab work — provisioning, a scenario, a cleanup — and its outcome. Also the context the work
@@ -32,7 +31,8 @@ public final class Job
     private volatile String progress = "";
     private volatile Instant finishedAt;
     private volatile boolean cancelRequested;
-    private volatile Future<?> future;
+    /** The worker thread running it, once it has started; interrupted on cancellation. */
+    private Thread runner;
 
     Job(String id, String scope, String description)
     {
@@ -105,18 +105,35 @@ public final class Job
         return cancelRequested;
     }
 
-    void attach(Future<?> running)
+    /**
+     * Called on the worker thread as it starts. False if the job was cancelled before it got a thread, in which case it
+     * is finished here and must not run: cancelling through the executor's {@code Future} instead would stop the task
+     * from ever running, leaving the job "running" forever and its run blocked.
+     */
+    synchronized boolean begin()
     {
-        this.future = running;
+        if (cancelRequested)
+        {
+            finish(State.CANCELLED, "Cancelled before it started.");
+            return false;
+        }
+        runner = Thread.currentThread();
+        return true;
     }
 
-    void requestCancel()
+    /** Called on the worker thread as it ends, so a late cancellation does not interrupt the thread's next job. */
+    synchronized void end()
+    {
+        runner = null;
+        Thread.interrupted();
+    }
+
+    synchronized void requestCancel()
     {
         cancelRequested = true;
-        Future<?> running = future;
-        if (running != null)
+        if (runner != null)
         {
-            running.cancel(true);
+            runner.interrupt();
         }
     }
 

@@ -20,13 +20,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param maxLiveWorkers    consumers, clients and traffic kept running between actions, across the lab
  * @param maxRate           messages per second one traffic worker may target
  * @param maxTraffic        how long one traffic worker may run
+ * @param maxScaleMessages  messages one scale preset may send in all
  */
 @ConfigurationProperties("lab.limits")
 public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("262144") int maxBodyBytes,
         @DefaultValue("2") int maxWorkers, @DefaultValue("52428800") long maxRunBytes,
         @DefaultValue("10s") Duration operationTimeout, @DefaultValue("30s") Duration readinessDeadline,
-        @DefaultValue("50") int maxRuns, @DefaultValue("10") int maxLiveWorkers, @DefaultValue("200") int maxRate,
-        @DefaultValue("5m") Duration maxTraffic)
+        @DefaultValue("50") int maxRuns, @DefaultValue("20") int maxLiveWorkers, @DefaultValue("200") int maxRate,
+        @DefaultValue("5m") Duration maxTraffic, @DefaultValue("100000") int maxScaleMessages)
 {
 
     static final int CEILING_MESSAGES = 100_000;
@@ -39,6 +40,7 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("26
     static final int CEILING_LIVE_WORKERS = 50;
     static final int CEILING_RATE = 2000;
     static final Duration CEILING_TRAFFIC = Duration.ofHours(1);
+    static final int CEILING_SCALE_MESSAGES = 1_000_000;
 
     @ConstructorBinding
     public LabLimits
@@ -53,14 +55,15 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("26
         within("lab.limits.max-live-workers", maxLiveWorkers, CEILING_LIVE_WORKERS);
         within("lab.limits.max-rate", maxRate, CEILING_RATE);
         within("lab.limits.max-traffic", maxTraffic, CEILING_TRAFFIC);
+        within("lab.limits.max-scale-messages", maxScaleMessages, CEILING_SCALE_MESSAGES);
     }
 
     /** The P0 limits with the worker limits at their defaults. */
     public LabLimits(int maxMessages, int maxBodyBytes, int maxWorkers, long maxRunBytes, Duration operationTimeout,
             Duration readinessDeadline, int maxRuns)
     {
-        this(maxMessages, maxBodyBytes, maxWorkers, maxRunBytes, operationTimeout, readinessDeadline, maxRuns, 10, 200,
-                Duration.ofMinutes(5));
+        this(maxMessages, maxBodyBytes, maxWorkers, maxRunBytes, operationTimeout, readinessDeadline, maxRuns, 20, 200,
+                Duration.ofMinutes(5), 100_000);
     }
 
     /** The defaults, for tests and anything constructed outside Spring. */

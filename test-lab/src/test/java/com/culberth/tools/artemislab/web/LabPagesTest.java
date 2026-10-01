@@ -110,7 +110,7 @@ class LabPagesTest
     {
         mvc.perform(post("/broker/provision").header("Host", "localhost").param("image", "apache/artemis:2.55.0-alpine")
                 .param("token", "t1")).andExpect(status().isForbidden());
-        verify(launcher, never()).launch(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
+        verify(launcher, never()).launch(anyString(), anyString(), any(), anyInt(), anyString(), anyString(), any());
     }
 
     @Test
@@ -120,7 +120,7 @@ class LabPagesTest
         mvc.perform(post("/broker/provision").header("Host", "localhost").with(csrf())
                 .param("image", "apache/artemis:latest").param("token", "t2")).andExpect(status().is3xxRedirection())
                 .andExpect(flash().attribute("error", containsString("Not a supported image")));
-        verify(launcher, never()).launch(anyString(), anyString(), anyInt(), anyString(), anyString(), any());
+        verify(launcher, never()).launch(anyString(), anyString(), any(), anyInt(), anyString(), anyString(), any());
     }
 
     @Test

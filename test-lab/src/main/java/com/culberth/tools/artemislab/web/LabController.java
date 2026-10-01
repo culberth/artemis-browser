@@ -2,6 +2,7 @@ package com.culberth.tools.artemislab.web;
 
 import com.culberth.tools.artemislab.LabException;
 import com.culberth.tools.artemislab.LabLimits;
+import com.culberth.tools.artemislab.broker.BrokerProfile;
 import com.culberth.tools.artemislab.broker.BrokerService;
 import com.culberth.tools.artemislab.broker.LabBroker;
 import com.culberth.tools.artemislab.job.Job;
@@ -60,6 +61,7 @@ public class LabController
         List<Job> brokerJobs = runner.jobs(JobRunner.BROKER_SCOPE);
         model.addAttribute("broker", broker);
         model.addAttribute("images", brokers.supportedImages());
+        model.addAttribute("profiles", BrokerProfile.values());
         model.addAttribute("brokerPort", brokers.properties().port());
         model.addAttribute("brokerJobs", brokerJobs.stream().limit(5).toList());
         model.addAttribute("busy", runner.active(JobRunner.BROKER_SCOPE));
@@ -71,7 +73,8 @@ public class LabController
     }
 
     @PostMapping("/broker/provision")
-    public String provision(@RequestParam String image, @RequestParam String token, RedirectAttributes redirect)
+    public String provision(@RequestParam String image, @RequestParam(defaultValue = "STANDARD") String profile,
+            @RequestParam String token, RedirectAttributes redirect)
     {
         return act(redirect, "/", () ->
         {
@@ -79,11 +82,13 @@ public class LabController
             {
                 throw new LabException("Not a supported image: " + image + ".");
             }
-            runner.submit(JobRunner.BROKER_SCOPE, token, "provision " + image, job ->
+            BrokerProfile chosen = java.util.Arrays.stream(BrokerProfile.values()).filter(p -> p.name().equals(profile))
+                    .findFirst().orElseThrow(() -> new LabException("Not a broker profile: " + profile + "."));
+            runner.submit(JobRunner.BROKER_SCOPE, token, "provision " + image + " (" + chosen.label() + ")", job ->
             {
-                LabBroker started = brokers.provision(image);
+                LabBroker started = brokers.provision(image, chosen);
                 return "Broker " + started.brokerId() + " ready: Artemis " + started.reportedVersion() + ", node "
-                        + started.nodeId() + ", at " + started.endpoint() + ".";
+                        + started.nodeId() + ", at " + started.endpoint() + ", profile " + chosen.label() + ".";
             });
         });
     }
@@ -100,6 +105,13 @@ public class LabController
             }
             runs.stopBroker(token);
         });
+    }
+
+    @PostMapping("/broker/interrupt")
+    public String interruptBroker(@RequestParam(defaultValue = "30") int seconds, @RequestParam String token,
+            RedirectAttributes redirect)
+    {
+        return act(redirect, "/", () -> runs.interruptBroker(seconds, token));
     }
 
     @PostMapping("/broker/restart")

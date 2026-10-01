@@ -38,7 +38,7 @@ class WorkerRegistryTest
     }
 
     private final WorkerRegistry registry = new WorkerRegistry(new LabLimits(1000, 262144, 2, 52428800L,
-            Duration.ofSeconds(10), Duration.ofSeconds(30), 50, 2, 200, Duration.ofMinutes(5)));
+            Duration.ofSeconds(10), Duration.ofSeconds(30), 50, 2, 200, Duration.ofMinutes(5), 100_000));
 
     @Test
     @DisplayName("Live workers are bounded across the lab; stopped ones free their place")

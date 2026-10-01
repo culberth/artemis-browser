@@ -15,7 +15,8 @@ public interface BrokerLauncher
      *
      * @throws com.culberth.tools.artemislab.LabException if the port is taken or the broker does not become ready
      */
-    Launched launch(String brokerId, String image, int hostPort, String user, String password, Duration startupTimeout);
+    Launched launch(String brokerId, String image, BrokerProfile profile, int hostPort, String user, String password,
+            Duration startupTimeout);
 
     /** Lab-labelled containers that this process did not launch. Empty, with no error, when Docker is unreachable. */
     List<Leftover> leftovers();
@@ -34,8 +35,11 @@ public interface BrokerLauncher
 
         void stop();
 
-        /** Restarts the container in place (same port, same journal) and waits until the broker is active again. */
-        void restart(Duration startupTimeout);
+        /**
+         * Stops the container, keeps it down for {@code down} (zero for a plain restart), starts it again in place —
+         * same port, same journal — and waits until the broker is active again.
+         */
+        void interrupt(Duration down, Duration startupTimeout);
     }
 
     /** A labelled container from an earlier lab process. */

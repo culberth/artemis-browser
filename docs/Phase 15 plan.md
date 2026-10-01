@@ -1,7 +1,8 @@
 # Phase 15 — Interactive regression lab
 
 Status: specified 2026-09-29; **P0 merged 2026-09-30** (PR #50) as the standalone Maven
-project `test-lab/`; **P1 merged 2026-09-30** (PR #52). P2–P3 are not started.
+project `test-lab/`; **P1 merged 2026-09-30** (PR #52); **P2 implemented 2026-09-30** on branch
+`phase15-p2-behavior-failures`. P3 is not started.
 
 ## Purpose
 
@@ -170,6 +171,50 @@ refused, container removed); live, a double-submitted smoke form produced one jo
 messages, and Artemis Browser connected to the lab broker showed the lab's node id on `/broker`
 and the smoke queue with 40 on `/overview`.
 
+## Implemented (P2, 2026-09-30)
+
+Branch `phase15-p2-behavior-failures`. Every current procedure case now has a runnable recipe or a
+written harness procedure.
+
+- **BEHAVIOR** (Q01–Q04) and **PRESSURE** (P01–P03) — ported from Browser's `QueueBehaviorIT` and
+  `AddressPressureIT`, which verified them on both broker versions. Steps resume/pause, add the
+  gate's second consumer, and unblock/block the operator-blocked address.
+- **Broker profiles** at provisioning, for conditions only startup configuration can make: *Restricted
+  users* (`management-message-rbac` with test users `viewer` and `nomanage`, passwords as names),
+  *Low global memory* (global-max-size 2MB) and *Disk threshold reached* (max-disk-usage 1%, already
+  exceeded — nothing fills the disk). A replacement entrypoint creates the instance once and edits
+  it, so a restart or interrupt keeps the configuration. A recipe that needs a profile is refused on
+  any other broker.
+- **FAILURES** (E01, E02) proves, as each test user, exactly what the profile refuses; **Interrupt
+  broker** (E03, lab page) stops the container for chosen seconds and accepts it back only as the
+  same node. **LOW-LIMITS** (P04) reads global memory or disk against the lowered limit.
+- **READONLY** (E04) reads every owned queue's counters as a baseline; *Compare* after using Browser
+  lists any change. Its IT shows it passes after browsing and catches a single consumed message.
+- **SCALE** (E07) seeds queues × messages from the form, bounded by `lab.limits.max-scale-messages`
+  (100,000).
+- **E05/E06** are written harness procedures (in the regression procedure), not lab recipes.
+
+Found along the way, recorded in `.claude/memory.md`:
+
+- A job cancelled before its thread started never ran and never finished, blocking its run — fixed,
+  with a regression test that fails on the old code.
+- RBAC-denied *attributes* answer "Problem while retrieving attribute", like a missing one, so
+  FAILURES confirms the admin can read each attribute before counting the viewer's failure as a
+  refusal. Disk usage reads 0 until the broker's first periodic disk check.
+
+**Browser defects found** (procedure results recorded in lab runs; each handled as its own task):
+
+| Case | Defect | Status |
+|---|---|---|
+| Q01 | Diagnose calls a queue whose only client is a browse-only `QueueBrowser` "no consumer attached": the queue's `consumerCount` excludes browse-only consumers, though `/broker` lists it as "browse only". | Fixed: Diagnose now says only browsers are attached (PR #54). |
+| E02 | For a user without `manage`, `/overview` explains the refusal correctly but also renders "Queues (0) … This broker reported no queues" — a zero in place of a refused reading. | Open. |
+
+Verified 2026-09-30: `LabBrokerIT` 11/11 and `LabProfilesIT` 4/4 on 2.55.0 and 2.57.0. Live, Browser
+showed the behavior and pressure findings and badges listed in each card (the non-destructive flag is
+not readable per queue on these versions, as already recorded), the operator block clearing after
+*Unblock*, `viewer`'s denied panel beside the panels that stand, a clear connection-loss path during a
+20s interrupt and a working reconnect, and the two defects above.
+
 ## Delivery increments
 
 ### P0 — Catalog, isolation and repeatable startup
@@ -191,14 +236,17 @@ and the smoke queue with 40 on `/overview`.
 
 ### P2 — Broker behavior and failure fixtures
 
-- [ ] Queue pause, browse-only clients, last-value/ring/non-destructive/purge behavior, exclusive/
-      grouped consumers and dispatch gating.
-- [ ] PAGE/BLOCK/FAIL/DROP policies and explicit operator block, with independently measured results.
-- [ ] Restricted permissions, unavailable optional reads, broker interruption/restart and partial
+- [x] Queue pause, browse-only clients, last-value/ring/non-destructive/purge behavior, exclusive/
+      grouped consumers and dispatch gating. (`BEHAVIOR`)
+- [x] PAGE/BLOCK/FAIL/DROP policies and explicit operator block, with independently measured results.
+      (`PRESSURE`; global limits in `LOW-LIMITS` on a broker profile)
+- [x] Restricted permissions, unavailable optional reads, broker interruption/restart and partial
       availability. Where real brokers cannot produce a failure deterministically, label an
-      automated test fixture as such; never claim it was a live demonstration.
-- [ ] Scale presets and non-destructive observation checks, plus the application authentication,
+      automated test fixture as such; never claim it was a live demonstration. (`FAILURES`,
+      *Interrupt broker*; unsupported optional reads stay covered by Browser's automated tests)
+- [x] Scale presets and non-destructive observation checks, plus the application authentication,
       host/TLS and deployment checks that require a harness outside broker traffic generation.
+      (`SCALE`, `READONLY`; E05/E06 as written harness procedures)
 
 ### P3 — Complete current-feature regression and extend as features land
 

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.culberth.tools.artemislab.broker.BrokerLauncher;
+import com.culberth.tools.artemislab.broker.BrokerProfile;
 import com.culberth.tools.artemislab.broker.BrokerService;
 import com.culberth.tools.artemislab.broker.LabBroker;
 import com.culberth.tools.artemislab.broker.ManagementClient;
@@ -300,6 +301,80 @@ class LabBrokerIT
 
     @Test
     @Order(6)
+    @DisplayName("BEHAVIOR and PRESSURE: configured queues and full addresses, and their steps, checked independently")
+    void behaviorAndPressure() throws Exception
+    {
+        for (String id : List.of("BEHAVIOR", "PRESSURE"))
+        {
+            Job job = runs.runScenario(runId, id, Map.of(), JobRunner.newToken());
+            runner.awaitIdle(runId, Duration.ofSeconds(180));
+            assertEquals(Job.State.SUCCEEDED, job.state(), id + ": " + job.detail());
+        }
+        String p = "lab." + runId + ".";
+
+        assertEquals(1, independentCount(p + "lvq"));
+        assertEquals(3, independentCount(p + "ring"));
+        assertEquals(3, independentCount(p + "keep"));
+        assertEquals(3, independentAttribute(p + "purge", "messagesKilled"));
+        assertEquals(20, independentAttribute(p + "exclusive", "deliveringCount"));
+        assertEquals(0, independentAttribute(p + "gated", "deliveringCount"));
+        assertEquals(Boolean.TRUE, independentQueueValue(p + "paused", "paused"));
+
+        step("BEHAVIOR", "resume", Map.of());
+        assertEquals(Boolean.FALSE, independentQueueValue(p + "paused", "paused"));
+        step("BEHAVIOR", "gate", Map.of());
+        assertEquals(3, waitFor(p + "gated", "deliveringCount", 3), "dispatch starts at two consumers");
+
+        assertEquals(40, independentCount(p + "page"));
+        assertTrue(independentCount(p + "fail") < 40);
+        assertTrue(independentCount(p + "block") < 40);
+        assertEquals(Boolean.TRUE, independentAddressValue(p + "blocked", "blockedViaManagement"));
+        step("PRESSURE", "unblock", Map.of());
+        assertEquals(Boolean.FALSE, independentAddressValue(p + "blocked", "blockedViaManagement"));
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("READONLY passes when only browsing happened and catches a consume; SCALE seeds its preset")
+    void readOnlyAndScale() throws Exception
+    {
+        String p = "lab." + runId + ".";
+        Job baseline = runs.runScenario(runId, "READONLY", Map.of(), JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.SUCCEEDED, baseline.state(), baseline.detail());
+
+        // Browse as Artemis Browser's detail path does: nothing may change.
+        independentBrowse(p + "bodies", null);
+        independentBrowse(p + "search-a", "marker = 'late'");
+        assertTrue(step("READONLY", "compare", Map.of()).detail().startsWith("No counter changed"));
+
+        // Consume one message: the check must notice.
+        try (ActiveMQConnectionFactory factory = independentFactory();
+                Connection connection = factory.createConnection("artemis", "artemis"))
+        {
+            connection.start();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            assertTrue(session.createConsumer(session.createQueue(p + "one")).receive(5000) != null);
+        }
+        Job caught = runs.runStep(runId, "READONLY", "compare", Map.of(), JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.FAILED, caught.state());
+        assertTrue(caught.detail().contains(p + "one messageCount 1 -> 0"), caught.detail());
+
+        Job scale = runs.runScenario(runId, "SCALE", Map.of("queues", "3", "perQueue", "50", "bodyBytes", "100"),
+                JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.SUCCEEDED, scale.state(), scale.detail());
+        assertEquals(50, independentCount(p + "scale-0003"));
+        Job tooBig = runs.runScenario(runId, "SCALE", Map.of("queues", "1000", "perQueue", "1000"),
+                JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(30));
+        assertEquals(Job.State.FAILED, tooBig.state(), "1,000,000 messages is over max-scale-messages");
+        assertTrue(tooBig.detail().contains("max-scale-messages"), tooBig.detail());
+    }
+
+    @Test
+    @Order(8)
     @DisplayName("A restart stops every worker, keeps durable messages, and the broker comes back as the same node")
     void restart() throws Exception
     {
@@ -314,7 +389,7 @@ class LabBrokerIT
     }
 
     @Test
-    @Order(7)
+    @Order(9)
     @DisplayName("Cleanup removes exactly the manifest's queue and address and proves them gone")
     void cleanup() throws Exception
     {
@@ -347,7 +422,7 @@ class LabBrokerIT
     }
 
     @Test
-    @Order(9)
+    @Order(11)
     @DisplayName("A taken port is refused, not moved")
     void takenPortRefused() throws Exception
     {
@@ -355,13 +430,13 @@ class LabBrokerIT
         {
             holder.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
             LabException refused = assertThrows(LabException.class, () -> launcher.launch("bport", IMAGE,
-                    holder.getLocalPort(), "artemis", "artemis", Duration.ofMinutes(1)));
+                    BrokerProfile.STANDARD, holder.getLocalPort(), "artemis", "artemis", Duration.ofMinutes(1)));
             assertTrue(refused.getMessage().contains("already in use"), refused.getMessage());
         }
     }
 
     @Test
-    @Order(10)
+    @Order(12)
     @DisplayName("Stopping the broker removes its container")
     void stopRemovesContainer() throws Exception
     {
@@ -417,6 +492,30 @@ class LabBrokerIT
     private ActiveMQConnectionFactory independentFactory()
     {
         return new ActiveMQConnectionFactory("tcp://127.0.0.1:" + PORT + "?useTopologyForLoadBalancing=false");
+    }
+
+    private Object independentQueueValue(String queue, String attribute) throws Exception
+    {
+        return independentValue(org.apache.activemq.artemis.api.core.management.ResourceNames.QUEUE + queue, attribute);
+    }
+
+    private Object independentAddressValue(String address, String attribute) throws Exception
+    {
+        return independentValue(org.apache.activemq.artemis.api.core.management.ResourceNames.ADDRESS + address,
+                attribute);
+    }
+
+    private Object independentValue(String resource, String attribute) throws Exception
+    {
+        try (ActiveMQConnectionFactory factory = independentFactory();
+                Connection connection = factory.createConnection("artemis", "artemis"))
+        {
+            connection.start();
+            try (ManagementClient management = new ManagementClient(connection, Duration.ofSeconds(10)))
+            {
+                return management.attribute(resource, attribute);
+            }
+        }
     }
 
     private long independentAttribute(String queue, String attribute) throws Exception

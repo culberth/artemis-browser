@@ -2,7 +2,7 @@
 
 Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
 complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 merged (PR #46), optional P5 merged (PR #48). Phase 15 specified
-2026-09-29: interactive regression lab; P0 merged 2026-09-30 (PR #50), P1 merged (PR #52), P2–P3 not started.**
+2026-09-29: interactive regression lab; P0 merged 2026-09-30 (PR #50), P1 merged (PR #52), P2 implemented, P3 not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
@@ -1113,7 +1113,8 @@ the acceptance checks, as of 2026-09-30; the optional P4 and P5 are merged as we
 ## Phase 15 — Interactive regression lab and regression procedure
 
 Specified 2026-09-29. **P0 merged 2026-09-30** (`test-lab/`, PR #50); **P1 merged
-2026-09-30** (PR #52); P2–P3 not started.
+2026-09-30** (PR #52); **P2 implemented** on branch
+`phase15-p2-behavior-failures`; P3 not started.
 Create separate test services with a web interface that prepares repeatable conditions on a test
 broker, so every implemented Artemis Browser feature can be demonstrated and regression tested.
 The lab may produce, consume, acknowledge and configure its owned disposable brokers; Artemis
@@ -1135,9 +1136,11 @@ as the test servers and their controls are refined.
       subscriptions, routing, rates and client identities. *Merged (PR #52), all six recipes:
       `BASIC`, `BODIES`, `SEARCH`, `DELIVERY`, `SUBSCRIPTIONS`,
       `RATES`, with long-lived workers and steps.*
-- [ ] **P2 — Behavior and failure services.** Create queue-behavior and pressure scenarios, restricted
+- [x] **P2 — Behavior and failure services.** Create queue-behavior and pressure scenarios, restricted
       reads, connection failures and bounded scale; cover security/deployment through an explicit
-      external harness where broker traffic alone cannot test the feature.
+      external harness where broker traffic alone cannot test the feature. *Branch
+      `phase15-p2-behavior-failures`: six recipes, broker profiles, Interrupt broker, E05/E06 harness.
+      Two Browser defects found (Q01, E02), listed in the Phase 15 plan.*
 - [ ] **P3 — Executed regression coverage.** Run all current-feature cases against the supported
       matrix, retain results/evidence, and refine the first-draft procedure into verified instructions.
       Extend fixtures and cases as the remaining Phase 13 and Phase 14 features land.

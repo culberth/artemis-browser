@@ -5,6 +5,7 @@ import com.culberth.tools.artemislab.LabLimits;
 import jakarta.annotation.PreDestroy;
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -64,8 +65,14 @@ public class BrokerService
         return properties;
     }
 
-    /** Starts a broker from a supported image and identifies it. Refused while one is already running. */
+    /** Starts a standard broker from a supported image and identifies it. */
     public synchronized LabBroker provision(String image)
+    {
+        return provision(image, BrokerProfile.STANDARD);
+    }
+
+    /** Starts a broker from a supported image, configured by a profile, and identifies it. Refused while one runs. */
+    public synchronized LabBroker provision(String image, BrokerProfile profile)
     {
         if (current != null)
         {
@@ -76,14 +83,14 @@ public class BrokerService
             throw new LabException("Not a supported image: " + image + ". Choose one of " + properties.images() + ".");
         }
         String brokerId = "b" + HexFormat.of().toHexDigits(ThreadLocalRandom.current().nextInt());
-        BrokerLauncher.Launched started = launcher.launch(brokerId, image, properties.port(), properties.user(),
-                properties.password(), properties.startupTimeout());
+        BrokerLauncher.Launched started = launcher.launch(brokerId, image, profile, properties.port(),
+                properties.user(), properties.password(), properties.startupTimeout());
         ActiveMQConnectionFactory startedFactory = new ActiveMQConnectionFactory(url(started.host(), started.port()));
         try
         {
             Identity identity = identify(startedFactory);
             LabBroker broker = new LabBroker(brokerId, image, started.containerId(), started.host(), started.port(),
-                    properties.user(), identity.version(), identity.nodeId(), Instant.now());
+                    properties.user(), identity.version(), identity.nodeId(), Instant.now(), profile);
             this.launched = started;
             this.factory = startedFactory;
             this.holdingFactory = new ActiveMQConnectionFactory(
@@ -145,6 +152,39 @@ public class BrokerService
     }
 
     /**
+     * A guard that connects as one of the profile's test users rather than the admin — to check what that user is
+     * refused. Its password is its name.
+     */
+    public synchronized TargetGuard guardAs(LabBroker broker, String user)
+    {
+        LabBroker now = current;
+        if (now == null || !now.brokerId().equals(broker.brokerId()) || !now.profile().users().contains(user))
+        {
+            throw new LabException("No test user " + user + " on the lab's current broker.");
+        }
+        TargetGuard.IdentityReader management = TargetGuard.managementReader(limits.operationTimeout());
+        // Verified like every connection when the user may read the node id. A user refused management altogether
+        // (nomanage) cannot be identified through it; such connections are only used to observe that refusal and never
+        // send anything, so the refusal itself is accepted in place of the check.
+        return new TargetGuard(factory, user, user, now.nodeId(), connection ->
+        {
+            try
+            {
+                return management.nodeId(connection);
+            }
+            catch (JMSException | LabException e)
+            {
+                String why = String.valueOf(e.getMessage());
+                if (why.contains("AMQ229032") || why.toLowerCase().contains("permission"))
+                {
+                    return now.nodeId();
+                }
+                throw e;
+            }
+        });
+    }
+
+    /**
      * Restarts the broker's container and checks it comes back as the same broker. Closing the factories first drops
      * every lab connection, so the caller stops the workers before this. The journal lives in the container, so durable
      * messages and the node id survive; non-durable ones and counters that are not reloaded do not. A different node id
@@ -152,13 +192,22 @@ public class BrokerService
      */
     public synchronized LabBroker restart()
     {
+        return interrupt(Duration.ZERO);
+    }
+
+    /**
+     * As {@link #restart()}, with the broker down for {@code down} first — long enough for a client to see the
+     * connection fail, which is what a restart alone may be too quick for (E03).
+     */
+    public synchronized LabBroker interrupt(Duration down)
+    {
         LabBroker broker = current;
         if (broker == null)
         {
             throw new LabException("No lab broker is running.");
         }
         closeFactories();
-        launched.restart(properties.startupTimeout());
+        launched.interrupt(down, properties.startupTimeout());
         ActiveMQConnectionFactory restarted = new ActiveMQConnectionFactory(url(broker.host(), broker.port()));
         Identity identity;
         try
@@ -182,7 +231,7 @@ public class BrokerService
         factory = restarted;
         holdingFactory = new ActiveMQConnectionFactory(url(broker.host(), broker.port()) + "&consumerWindowSize=0");
         current = new LabBroker(broker.brokerId(), broker.image(), broker.containerId(), broker.host(), broker.port(),
-                broker.user(), identity.version(), identity.nodeId(), broker.startedAt());
+                broker.user(), identity.version(), identity.nodeId(), broker.startedAt(), broker.profile());
         return current;
     }
 

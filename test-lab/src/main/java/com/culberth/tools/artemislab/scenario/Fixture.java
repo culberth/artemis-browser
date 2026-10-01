@@ -2,6 +2,7 @@ package com.culberth.tools.artemislab.scenario;
 
 import com.culberth.tools.artemislab.LabException;
 import com.culberth.tools.artemislab.LabLimits;
+import com.culberth.tools.artemislab.broker.BrokerProfile;
 import com.culberth.tools.artemislab.broker.ManagementClient;
 import com.culberth.tools.artemislab.broker.TargetGuard;
 import com.culberth.tools.artemislab.job.Job;
@@ -12,6 +13,7 @@ import com.culberth.tools.artemislab.run.OwnedResource.Kind;
 import com.culberth.tools.artemislab.run.OwnedResource.State;
 import com.culberth.tools.artemislab.run.RunStore;
 import com.culberth.tools.artemislab.run.SentMessage;
+import com.culberth.tools.artemislab.worker.BrowsingClient;
 import com.culberth.tools.artemislab.worker.HeldConsumer;
 import com.culberth.tools.artemislab.worker.OpenClient;
 import com.culberth.tools.artemislab.worker.Traffic;
@@ -62,12 +64,17 @@ public final class Fixture implements AutoCloseable
     private final RunStore store;
     private final LabLimits limits;
     private final WorkerRegistry workers;
+    private final BrokerProfile profile;
+    private final java.util.function.Function<String, TargetGuard> userGuards;
     private final Connection admin;
     private final ManagementClient management;
 
     private Fixture(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
-            LabLimits limits, WorkerRegistry workers, Connection admin, ManagementClient management)
+            LabLimits limits, WorkerRegistry workers, BrokerProfile profile,
+            java.util.function.Function<String, TargetGuard> userGuards, Connection admin, ManagementClient management)
     {
+        this.profile = profile;
+        this.userGuards = userGuards;
         this.job = job;
         this.runId = runId;
         this.guard = guard;
@@ -86,10 +93,24 @@ public final class Fixture implements AutoCloseable
     public static Fixture open(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
             LabLimits limits, WorkerRegistry workers) throws JMSException
     {
+        return open(job, runId, guard, holdingGuard, store, limits, workers, BrokerProfile.STANDARD, user ->
+        {
+            throw new LabException("This broker has no test user " + user + ".");
+        });
+    }
+
+    /**
+     * @param profile    how the broker was configured at startup
+     * @param userGuards a guard connecting as one of the profile's test users
+     */
+    public static Fixture open(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
+            LabLimits limits, WorkerRegistry workers, BrokerProfile profile,
+            java.util.function.Function<String, TargetGuard> userGuards) throws JMSException
+    {
         Connection admin = guard.open();
         try
         {
-            return new Fixture(job, runId, guard, holdingGuard, store, limits, workers, admin,
+            return new Fixture(job, runId, guard, holdingGuard, store, limits, workers, profile, userGuards, admin,
                     new ManagementClient(admin, limits.operationTimeout()));
         }
         catch (JMSException | RuntimeException e)
@@ -117,6 +138,63 @@ public final class Fixture implements AutoCloseable
     public ManagementClient management()
     {
         return management;
+    }
+
+    public BrokerProfile profile()
+    {
+        return profile;
+    }
+
+    /** A verified connection as one of the profile's test users; the caller closes it. */
+    public Connection connectionAs(String user) throws JMSException
+    {
+        return userGuards.apply(user).open();
+    }
+
+    /** Whether any of this run's traffic workers is still sending or receiving. */
+    public boolean trafficRunning()
+    {
+        return workers.active(runId).stream().anyMatch(w -> w instanceof Traffic);
+    }
+
+    /** Every queue this run created and still owns, by exact name. */
+    public List<String> ownedQueues()
+    {
+        return store.get(runId).resources().stream().filter(r -> r.kind() == Kind.QUEUE && r.state() == State.CREATED)
+                .map(OwnedResource::name).toList();
+    }
+
+    /** Reads these attributes of every owned queue. */
+    public Map<String, Map<String, Long>> readQueues(List<String> attributes) throws JMSException
+    {
+        Map<String, Map<String, Long>> reading = new java.util.TreeMap<>();
+        for (String queue : ownedQueues())
+        {
+            job.checkCancelled();
+            Map<String, Long> values = new LinkedHashMap<>();
+            for (String attribute : attributes)
+            {
+                values.put(attribute, management.queueAttribute(queue, attribute));
+            }
+            reading.put(queue, values);
+        }
+        return reading;
+    }
+
+    public void saveBaseline(com.culberth.tools.artemislab.run.RunManifest.Reading reading)
+    {
+        store.update(runId, r -> r.withBaseline(reading));
+    }
+
+    public com.culberth.tools.artemislab.run.RunManifest.Reading baseline()
+    {
+        return store.get(runId).baseline();
+    }
+
+    /** Records an automatic assertion's outcome, passed or failed; a failure throws. */
+    public String assertThat(boolean held, String text)
+    {
+        return held ? passed(text) : failed(text);
     }
 
     /** {@code lab.<runId>.<suffix>}. */
@@ -211,6 +289,22 @@ public final class Fixture implements AutoCloseable
      */
     public void createQueue(String name, String address, String routingType) throws JMSException
     {
+        createQueue(name, address, routingType, Map.of());
+    }
+
+    /**
+     * An owned durable anycast queue on an address of the same name, with queue configuration in the broker's
+     * {@code createQueue} JSON keys, e.g. {@code last-value-key}, {@code ring-size}, {@code non-destructive},
+     * {@code exclusive}, {@code purge-on-no-consumers}, {@code consumers-before-dispatch}.
+     */
+    public void createQueue(String name, Map<String, Object> queueConfiguration) throws JMSException
+    {
+        createQueue(name, name, "ANYCAST", queueConfiguration);
+    }
+
+    private void createQueue(String name, String address, String routingType, Map<String, Object> extra)
+            throws JMSException
+    {
         boolean newAddress = !store.get(runId).owns(address);
         List<OwnedResource> planned = newAddress
                 ? List.of(resource(Kind.ADDRESS, address, address, routingType),
@@ -222,6 +316,7 @@ public final class Fixture implements AutoCloseable
         configuration.put("routing-type", routingType);
         configuration.put("durable", true);
         configuration.put("auto-create-address", newAddress);
+        configuration.putAll(extra);
         own(planned, () -> management.invoke(ResourceNames.BROKER, "createQueue",
                 JSON.writeValueAsString(configuration), false));
     }
@@ -394,11 +489,85 @@ public final class Fixture implements AutoCloseable
     public OpenClient openClient(String description, String clientId, String queue, OpenClient.Role role, int sessions)
             throws JMSException
     {
+        return openClient(description, clientId, queue, role, sessions, false);
+    }
+
+    /**
+     * As {@link #openClient(String, String, String, OpenClient.Role, int)}; {@code buffered} consumers use the default
+     * 1MB consumer window, so the broker dispatches into their buffers and the messages show as delivering to them —
+     * how an exclusive or grouped queue's distribution becomes visible without anything being received.
+     */
+    public OpenClient openClient(String description, String clientId, String queue, OpenClient.Role role, int sessions,
+            boolean buffered) throws JMSException
+    {
         workers.reserve(1);
+        TargetGuard chosen = buffered ? guard : holdingGuard;
         OpenClient client = workers.add(OpenClient.open(WorkerRegistry.newId(), runId, description, clientId,
-                holdingGuard.open(clientId), queue, role, sessions));
+                chosen.open(clientId), queue, role, sessions));
         recordWorker("started " + description);
         return client;
+    }
+
+    /** A browse-only client held open on a queue, registered as a worker of this run. */
+    public BrowsingClient browse(String description, String queue) throws JMSException
+    {
+        workers.reserve(1);
+        BrowsingClient client = workers
+                .add(BrowsingClient.open(WorkerRegistry.newId(), runId, description, guard.open(), queue));
+        recordWorker("started " + description);
+        return client;
+    }
+
+    /**
+     * Sends {@code count} bodies from a thread of its own and gives up after {@code wait}: under the BLOCK policy a
+     * send waits for credit that never comes, so the connection is closed under it. Returns how many sends the broker
+     * accepted; those are added to the send manifest.
+     */
+    public int sendBlocking(String queue, int count, int bodyBytes, Duration wait) throws Exception
+    {
+        limits.checkCount(count);
+        limits.checkBodyBytes(bodyBytes);
+        reserve((long) count * bodyBytes);
+        Connection connection = guard.open();
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.List<SentMessage> sent = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        Thread sender = new Thread(() ->
+        {
+            try
+            {
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                jakarta.jms.MessageProducer producer = session.createProducer(session.createQueue(queue));
+                for (int i = 1; i <= count; i++)
+                {
+                    jakarta.jms.TextMessage message = session.createTextMessage("x".repeat(bodyBytes));
+                    message.setStringProperty("labRun", runId);
+                    message.setIntProperty("labSeq", i);
+                    producer.send(message, jakarta.jms.DeliveryMode.PERSISTENT, 4, 0);
+                    sent.add(new SentMessage(queue, i, "text", message.getJMSMessageID(), bodyBytes, "accepted"));
+                    accepted.incrementAndGet();
+                }
+            }
+            catch (JMSException | RuntimeException e)
+            {
+                // Blocked and then cut off, or refused: what the broker accepted is what is counted.
+            }
+        }, "lab-blocking-sender");
+        sender.setDaemon(true);
+        sender.start();
+        sender.join(wait.toMillis());
+        try
+        {
+            connection.close();
+        }
+        catch (JMSException ignored)
+        {
+            // Closing under a blocked send may complain; the broker side is what is measured.
+        }
+        sender.join(limits.operationTimeout().toMillis());
+        recordSent(List.copyOf(sent));
+        record("blocking send", queue + ": " + accepted.get() + " of " + count + " accepted before giving up after "
+                + wait.toSeconds() + "s");
+        return accepted.get();
     }
 
     /** Bounded traffic on its own thread, registered as a worker of this run. */

@@ -1,9 +1,9 @@
 # Artemis Browser regression procedure — first draft
 
 Revision 0.2 · 2026-09-30 · **Design draft; not an executed test report.** The lab's P0 is
-implemented (`test-lab/`); P1's recipes are runnable — `BASIC`, `BODIES`, `SEARCH`, `DELIVERY`,
-`SUBSCRIPTIONS`, `RATES` — plus `LAB-SMOKE`. `BEHAVIOR`, `PRESSURE`, `FAILURES` and `SCALE` (P2)
-still need theirs.
+implemented (`test-lab/`); every current case has a runnable recipe — P1's six, P2's `BEHAVIOR`,
+`PRESSURE`, `LOW-LIMITS`, `FAILURES`, `READONLY`, `SCALE` — or, for E05/E06, a written harness
+procedure below. Some recipes need a broker *profile* chosen when provisioning.
 
 Companion: [Phase 15 plan](Phase%2015%20plan.md). The proposed lab controls and scenario names below
 are requirements for the test services, not controls that exist today. Startup commands, final
@@ -155,6 +155,41 @@ Blocked until P3 provides fixtures.
 | F07 Guided/saved searches (P14 P3) | Quoted/typed values, time-zone boundaries, save/reopen/rename/delete, missing scope and broker context change; compare generated core filters to known fixture matches. |
 | F08 Triage/message comparison (P14 P4–5, optional) | Heterogeneous/absent DLQ origin metadata, bounded samples and paired supported/truncated/unsupported bodies; preserve uncertainty and sample limits. |
 
+## External harness procedures (E05, E06)
+
+These cases test Artemis Browser's own deployment, not broker conditions, so the lab has no recipe
+for them. Run them against the revision under test and record results in the run sheet (a lab run's
+*Case results* form works too).
+
+### E05 — login, Host and CSRF, reachability
+
+1. Start Browser with the defaults (`mvn spring-boot:run`): it binds 127.0.0.1:8080 with no login.
+   `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/` → **200**, no sign-in.
+2. Hostile Host headers — both must be **403**:
+   `curl -s -o /dev/null -w "%{http_code}" -H "Host: evil.example" http://127.0.0.1:8080/` and the
+   same with `-H "Host: 127.0.0.1.evil.example"` (a prefix match would accept it).
+3. A protected POST without a CSRF token → **403**:
+   `curl -s -o /dev/null -w "%{http_code}" -X POST -d "host=127.0.0.1&port=62616&username=x&password=x" http://127.0.0.1:8080/connect`.
+4. Login: generate a hash with `--hash-password=<test password>`, restart with
+   `artemis.auth.username` and `artemis.auth.password-hash` set; a wrong password returns to
+   `/login?failed`, the right one signs in, *Sign out* returns to `/login?signedOut`. Use a test
+   password only, never one used elsewhere.
+5. Reachability: binding beyond loopback without both a login and TLS must refuse to start. This is
+   covered by `ReachabilityGuardTest`, `SecurityConfigTest`, `AllowedHostFilterTest` and
+   `LocalWithoutLoginTest` in Browser's unit tests; prefer those to binding a real interface by hand.
+   A valid login + TLS profile is the cluster deployment in E06.
+
+Executed 2026-09-30 (steps 1–3, Browser on `main` after PR #53): 200, 403, 403, 403.
+
+### E06 — container and Helm
+
+Follow README's *Run it in Kubernetes*: build with `scripts/build-image.ps1`, install
+`charts/artemis-browser` with a login and the pod's TLS secret, `kubectl rollout restart` after
+rebuilding on the same tag. Check: the pod goes Ready (probes fetch `/app.css` with `Host:
+localhost`); login over the ingress URL does not loop (`server.forward-headers-strategy=native`);
+connect to a test broker; after a pod restart the session is gone and a reconnect is needed.
+Uninstall only the release you installed. *Not yet executed.*
+
 ## Execution order, evidence and completion
 
 Smoke subset: C01, C03, M01, M03, M05, M06, D01, D02, A01, A04, E03 and E04. A smoke pass is
@@ -183,6 +218,7 @@ cases into the appropriate execution group. Maintain a feature-to-case review at
 | Revision | Change | Execution status |
 |---|---|---|
 | 0.1 — 2026-09-29 | Initial current-feature catalog, proposed fixtures, expected observations, cleanup and future coverage | Not run; lab services pending |
+| 0.5 — 2026-09-30 | P2: BEHAVIOR, PRESSURE, LOW-LIMITS, FAILURES, READONLY, SCALE runnable; broker profiles (Restricted users, Low global memory, Disk threshold reached); Interrupt broker for E03; E05/E06 harness procedures | Partly executed live: Q01 Browser FAIL and E02 Browser FAIL (open defects), E01 and E03 PASS, E05 steps 1–3 PASS |
 | 0.4 — 2026-09-30 | DELIVERY, SUBSCRIPTIONS, RATES runnable with workers and steps; A02's durable subscriptions are named `lab-<run>.…` (Artemis escapes dots in a client id); A06 has *Recreate rate queue* and *Restart broker* | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |
 | 0.3 — 2026-09-30 | BASIC, BODIES, SEARCH runnable; M02 positions restated for priority order | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |
 | 0.2 — 2026-09-30 | Baseline moved to Phases 1–14; F01–F08 are shipped features awaiting recipes (Blocked, not Deferred); lab P0 start/verify commands | Not run; only LAB-SMOKE runnable (E08 partial) |

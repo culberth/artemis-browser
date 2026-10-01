@@ -94,6 +94,25 @@ class JobRunnerTest
     }
 
     @Test
+    @DisplayName("A job cancelled before its thread starts finishes as cancelled instead of staying 'running'")
+    void cancelBeforeStart() throws Exception
+    {
+        // Cancelling through the executor's Future used to stop such a job from ever running, so it never finished and
+        // blocked its run for good. Hit the window repeatedly.
+        for (int i = 0; i < 200; i++)
+        {
+            String scope = "race" + i;
+            Job job = runner.submit(scope, "token" + i, "short", j ->
+            {
+                j.checkCancelled();
+                return "ran";
+            });
+            runner.cancelAll(scope);
+            assertTrue(runner.awaitIdle(scope, Duration.ofSeconds(5)), "attempt " + i + " stayed " + job.state());
+        }
+    }
+
+    @Test
     @DisplayName("A failure is kept with its message")
     void failure() throws Exception
     {
