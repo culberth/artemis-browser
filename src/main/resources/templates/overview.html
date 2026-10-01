@@ -18,7 +18,7 @@
     <div class="panel">
         <h2>
             Queues
-            <span class="muted"
+            <span class="muted" th:if="${listed}"
                   th:text="${q.isEmpty()} ? '(' + ${queues.size()} + ')'
                            : '(' + ${queues.size()} + ' of ' + ${totalQueues} + ')'">(0)</span>
         </h2>
@@ -40,8 +40,11 @@
             </div>
         </form>
 
-        <p class="muted" th:if="${queues.isEmpty() and q.isEmpty()}">This broker reported no queues.</p>
-        <p class="muted" th:if="${queues.isEmpty() and !q.isEmpty()}">
+        <p class="unavailable" th:unless="${listed}">
+            Not shown: the broker did not list its queues (see above). That is not the same as having none.
+        </p>
+        <p class="muted" th:if="${listed and queues.isEmpty() and q.isEmpty()}">This broker reported no queues.</p>
+        <p class="muted" th:if="${listed and queues.isEmpty() and !q.isEmpty()}">
             No queue or address matches <code th:text="${q}">x</code>.
         </p>
         <div class="table-scroll" th:unless="${queues.isEmpty()}">

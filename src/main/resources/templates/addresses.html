@@ -13,8 +13,11 @@
     <div class="error" th:if="${error}" th:text="${error}">error</div>
 
     <div class="panel">
-        <h2>Addresses <span class="muted" th:text="'(' + ${addresses.size()} + ')'">(0)</span></h2>
-        <p class="muted" th:if="${addresses.isEmpty()}">This broker reported no addresses.</p>
+        <h2>Addresses <span class="muted" th:if="${listed}" th:text="'(' + ${addresses.size()} + ')'">(0)</span></h2>
+        <p class="unavailable" th:unless="${listed}">
+            Not shown: the broker did not list its addresses (see above). That is not the same as having none.
+        </p>
+        <p class="muted" th:if="${listed and addresses.isEmpty()}">This broker reported no addresses.</p>
         <p class="note">
             Producers send to an <em>address</em>; consumers read from a <em>queue</em>. For
             point-to-point traffic they line up one to one. Under multicast, one address fans out to

@@ -526,6 +526,28 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a refused address listing is not available, never a zero or an empty broker")
+    void rendersARefusedAddressesPageAsNotAvailable() throws Exception
+    {
+        given(addressDirectory.overview()).willThrow(new BrokerException(
+                "The broker refused broker.listAddresses(): AMQ229032: User: nomanage does not have permission='MANAGE'"));
+
+        page("/addresses").andExpect(content().string(containsString("AMQ229032")))
+                .andExpect(content().string(containsString("the broker did not list its addresses")))
+                .andExpect(content().string(not(containsString(">(0)<"))))
+                .andExpect(content().string(not(containsString("reported no addresses"))));
+    }
+
+    @Test
+    @DisplayName("a broker that lists no addresses still says so, with its count")
+    void rendersAnEmptyAddressesPage() throws Exception
+    {
+        page("/addresses").andExpect(content().string(containsString("This broker reported no addresses.")))
+                .andExpect(content().string(containsString(">(0)<")))
+                .andExpect(content().string(not(containsString("did not list its addresses"))));
+    }
+
+    @Test
     @DisplayName("one address renders its subscriptions, consumers and producers")
     void rendersTheAddressPage() throws Exception
     {
@@ -789,6 +811,30 @@ class PageRenderingTest
         given(queueDirectory.overview()).willThrow(new BrokerException("listQueues failed"));
 
         page("/overview").andExpect(content().string(containsString("listQueues failed")));
+    }
+
+    @Test
+    @DisplayName("a refused queue listing is not available on the overview, never a zero or an empty broker")
+    void rendersARefusedOverviewAsNotAvailable() throws Exception
+    {
+        given(queueDirectory.overview()).willThrow(new BrokerException(
+                "The broker refused broker.listQueues(): AMQ229032: User: nomanage does not have permission='MANAGE'"));
+
+        page("/overview").andExpect(content().string(containsString("AMQ229032")))
+                .andExpect(content().string(containsString("the broker did not list its queues")))
+                .andExpect(content().string(not(containsString(">(0)<"))))
+                .andExpect(content().string(not(containsString("reported no queues"))));
+    }
+
+    @Test
+    @DisplayName("a broker that lists no queues still says so, with its count")
+    void rendersAnEmptyOverview() throws Exception
+    {
+        given(queueDirectory.overview()).willReturn(List.of());
+
+        page("/overview").andExpect(content().string(containsString("This broker reported no queues.")))
+                .andExpect(content().string(containsString(">(0)<")))
+                .andExpect(content().string(not(containsString("did not list its queues"))));
     }
 
     @Test
@@ -1653,13 +1699,28 @@ class PageRenderingTest
     }
 
     @Test
+    @DisplayName("a diagnose page whose required read was refused says nothing was checked, not that nothing is blocked")
+    void rendersARefusedDiagnoseAsNotChecked() throws Exception
+    {
+        given(diagnosis.run(anyBoolean())).willThrow(new BrokerException(
+                "The broker refused broker.listQueues(): AMQ229032: User: nomanage does not have permission='MANAGE'"));
+
+        page("/diagnose").andExpect(content().string(containsString("AMQ229032")))
+                .andExpect(content().string(containsString("Nothing was checked")))
+                .andExpect(content().string(not(containsString("nothing is obviously blocked"))))
+                .andExpect(content().string(not(containsString("Nothing on this broker looks blocked")))).andExpect(
+                        content().string(not(containsString("Nothing looks blocked in what this page could check"))));
+    }
+
+    @Test
     @DisplayName("the diagnose page renders when it finds nothing")
     void rendersTheDiagnosePageWithNoFindings() throws Exception
     {
         given(diagnosis.run(anyBoolean())).willReturn(new Diagnosis(List.of(), 0, 0));
 
         page("/diagnose").andExpect(content().string(containsString("Nothing on this broker looks blocked")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("was not checked"))));
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("was not checked"))))
+                .andExpect(content().string(not(containsString("Nothing was checked"))));
     }
 
     @Test

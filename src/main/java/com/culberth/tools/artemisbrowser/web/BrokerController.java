@@ -189,10 +189,13 @@ public class BrokerController
         try
         {
             model.addAttribute("addresses", addressDirectory.overview());
+            model.addAttribute("listed", true);
         }
         catch (BrokerException e)
         {
+            // Not listed is not none: no count and no "reported no addresses" for a refused listing.
             model.addAttribute("addresses", List.of());
+            model.addAttribute("listed", false);
             model.addAttribute("error", e.getMessage());
         }
         return "addresses";

@@ -107,11 +107,14 @@ public class QueueController
                     .sorted(order(sortKey, descending)).toList();
             model.addAttribute("queues", shown);
             model.addAttribute("totalQueues", all.size());
+            model.addAttribute("listed", true);
         }
         catch (BrokerException e)
         {
+            // Not listed is not none: the page must not count, or call empty, a listing it never got.
             model.addAttribute("queues", List.of());
             model.addAttribute("totalQueues", 0);
+            model.addAttribute("listed", false);
             model.addAttribute("error", e.getMessage());
         }
         return "overview";

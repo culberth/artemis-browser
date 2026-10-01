@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.culberth.tools.artemisbrowser.web.BrokerController;
+import com.culberth.tools.artemisbrowser.web.DiagnoseController;
+import com.culberth.tools.artemisbrowser.web.QueueController;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.AfterAll;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.ui.ExtendedModelMap;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
@@ -217,6 +221,43 @@ class PartialAvailabilityIT
         assertTrue(noManage.isConnected());
         assertEquals(Availability.DENIED,
                 Reading.attempt(() -> new BrokerInfoService(noManage).acceptors()).availability());
+    }
+
+    @Test
+    @DisplayName("for a user without 'manage', the overview, addresses and diagnose say not listed — never none")
+    void showsARefusedListingAsNotListed()
+    {
+        BrokerSession noManage = connectAs("nomanage");
+        QueueDirectory queues = new QueueDirectory(noManage);
+        BrokerInfoService info = new BrokerInfoService(noManage);
+        AddressDirectory addresses = new AddressDirectory(noManage, queues);
+        QueueBrowseService browse = new QueueBrowseService(noManage, 200, 200000, 20000, 20_000_000L);
+        InFlightService inFlight = new InFlightService(noManage, info, 5000);
+        RateService rates = new RateService(noManage, new RateTracker(), queues);
+        TransactionService transactions = new TransactionService(noManage, 100);
+
+        // Procedure E02: the page rendered "Queues (0) ... This broker reported no queues" under the refusal.
+        ExtendedModelMap overview = new ExtendedModelMap();
+        new QueueController(noManage, queues, browse, inFlight, rates, addresses, transactions).overview(0, "name",
+                "asc", null, overview);
+        assertEquals(false, overview.get("listed"));
+        assertTrue(String.valueOf(overview.get("error")).contains("AMQ229032"), String.valueOf(overview.get("error")));
+
+        ExtendedModelMap addressPage = new ExtendedModelMap();
+        new BrokerController(noManage, info, addresses,
+                new AddressDetailService(addresses, queues, info, browse, new DivertDirectory(noManage), inFlight),
+                new ClientDirectory(noManage), new ConnectivityService(noManage), queues, transactions,
+                new PermissionService(noManage)).addresses(addressPage);
+        assertEquals(false, addressPage.get("listed"));
+        assertTrue(addressPage.containsAttribute("error"));
+
+        ExtendedModelMap diagnosePage = new ExtendedModelMap();
+        new DiagnoseController(noManage, new StuckDiagnosisService(queues, addresses, info, browse,
+                new DivertDirectory(noManage), inFlight, rates, new ConnectivityService(noManage), transactions))
+                .diagnose(false, diagnosePage);
+        assertEquals(false, diagnosePage.get("checked"));
+        assertTrue(diagnosePage.containsAttribute("error"));
+        assertTrue(noManage.isConnected());
     }
 
     private BrokerSession connectAs(String user)
