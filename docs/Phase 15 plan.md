@@ -1,8 +1,8 @@
 # Phase 15 — Interactive regression lab
 
 Status: specified 2026-09-29; **P0 merged 2026-09-30** (PR #50) as the standalone Maven
-project `test-lab/`; **P1 merged 2026-09-30** (PR #52); **P2 implemented 2026-09-30** on branch
-`phase15-p2-behavior-failures`. P3 is not started.
+project `test-lab/`; **P1 merged 2026-09-30** (PR #52); **P2 merged 2026-09-30** (PR #55). P3 is not
+started.
 
 ## Purpose
 
@@ -173,7 +173,7 @@ and the smoke queue with 40 on `/overview`.
 
 ## Implemented (P2, 2026-09-30)
 
-Branch `phase15-p2-behavior-failures`. Every current procedure case now has a runnable recipe or a
+Merged in PR #55. Every current procedure case now has a runnable recipe or a
 written harness procedure.
 
 - **BEHAVIOR** (Q01–Q04) and **PRESSURE** (P01–P03) — ported from Browser's `QueueBehaviorIT` and
