@@ -1,7 +1,7 @@
 # Phase 15 — Interactive regression lab
 
 Status: specified 2026-09-29; **P0 merged 2026-09-30** (PR #50) as the standalone Maven
-project `test-lab/`. P1–P3 are not started.
+project `test-lab/`; **P1 merged 2026-09-30** (PR #52). P2–P3 are not started.
 
 ## Purpose
 
@@ -118,7 +118,7 @@ assertion with a deadline. Every other catalog card is listed but refuses to run
 
 ## Implemented (P1, 2026-09-30)
 
-Branch `phase15-p1-message-fixtures`. All six P1 recipes are runnable — `BASIC`, `BODIES`,
+Merged in PR #52. All six P1 recipes are runnable — `BASIC`, `BODIES`,
 `SEARCH` (one-shot), and `DELIVERY`, `SUBSCRIPTIONS`, `RATES` (with workers). Their exact contents
 are on the catalog page and in each recipe's Javadoc.
 
