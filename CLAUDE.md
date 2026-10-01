@@ -34,7 +34,7 @@ merged (PR #46). Optional P5 — message comparison (`/message/compare`: two mes
 headers, typed properties, text or JSON bodies, bounded; gone or in flight is unavailable, never empty) —
 merged (PR #48). Every Phase 14 item, P1–P5, is done. Phase 15 (regression lab) P0 — a separate,
 write-capable app in `test-lab/` that provisions disposable brokers and prepares fixtures for them —
-is on branch `phase15-p0-regression-lab`; see *The regression lab* below. Planned in
+merged (PR #50); see *The regression lab* below. Planned in
 [docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 639 unit tests,
 108 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).

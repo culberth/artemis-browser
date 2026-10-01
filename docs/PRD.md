@@ -2,7 +2,7 @@
 
 Status: **Phase 13 (broker visibility) complete 2026-09-30. Phase 14 (incident investigation)
 complete 2026-09-30: P1–P3 and the acceptance checks; optional P4 merged (PR #46), optional P5 merged (PR #48). Phase 15 specified
-2026-09-29: interactive regression lab, not started.**
+2026-09-29: interactive regression lab; P0 merged 2026-09-30 (PR #50), P1–P3 not started.**
 Phase 12 merged 2026-09-27 (PR #26); Phase 11 merged the same day (PR #24). Phases 1–9 shipped and the project was declared
 feature-complete; it was reopened on 2026-09-27 for one theme — subscription inspection — and
 Phase 10 merged the same day (PR #19). It was reopened again the same day, on request, for a second
@@ -1112,8 +1112,8 @@ the acceptance checks, as of 2026-09-30; the optional P4 and P5 are merged as we
 
 ## Phase 15 — Interactive regression lab and regression procedure
 
-Specified 2026-09-29. **P0 implemented 2026-09-30** (`test-lab/`, branch
-`phase15-p0-regression-lab`); P1–P3 not started.
+Specified 2026-09-29. **P0 merged 2026-09-30** (`test-lab/`, PR #50); P1–P3 not
+started.
 Create separate test services with a web interface that prepares repeatable conditions on a test
 broker, so every implemented Artemis Browser feature can be demonstrated and regression tested.
 The lab may produce, consume, acknowledge and configure its owned disposable brokers; Artemis

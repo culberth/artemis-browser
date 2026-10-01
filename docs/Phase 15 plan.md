@@ -1,7 +1,7 @@
 # Phase 15 — Interactive regression lab
 
-Status: specified 2026-09-29; **P0 implemented 2026-09-30** on branch `phase15-p0-regression-lab` as the
-standalone Maven project `test-lab/`. P1–P3 are not started.
+Status: specified 2026-09-29; **P0 merged 2026-09-30** (PR #50) as the standalone Maven
+project `test-lab/`. P1–P3 are not started.
 
 ## Purpose
 
