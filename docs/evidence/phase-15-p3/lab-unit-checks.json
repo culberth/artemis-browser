@@ -1,0 +1,69 @@
+{
+  "command": "mvn -f test-lab/pom.xml test",
+  "kind": "P3 lab unit tests, including XA failure propagation",
+  "suites": [
+    {
+      "name": "com.culberth.tools.artemislab.broker.LabXidTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.broker.TargetGuardTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.job.JobRunnerTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.LabLimitsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.run.RunServiceTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.run.RunStoreTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.scenario.ScenarioCatalogTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.web.LabPagesTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.culberth.tools.artemislab.worker.WorkerRegistryTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}

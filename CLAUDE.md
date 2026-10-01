@@ -36,9 +36,9 @@ merged (PR #48). Every Phase 14 item, P1–P5, is done. Phase 15 (regression lab
 write-capable app in `test-lab/` that provisions disposable brokers and prepares fixtures for them —
 merged (PR #50); P1 — all six message and client recipes, with long-lived workers — merged
 (PR #52); P2 — behavior, pressure, failures with broker profiles, read-only check, scale — merged
-(PR #55); see *The regression lab* below. Planned in
+(PR #55); P3 adds INCIDENT, INVESTIGATION (exact owned XA branches), INVESTIGATION-CONTENT and the connectivity/failover harness. Full manual/deployment acceptance remains open; see the P3 procedure supplement. See *The regression lab* below. Planned in
 [docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 644 unit tests,
-109 integration, run once per supported broker version (plus the opt-in
+110 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

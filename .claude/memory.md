@@ -794,3 +794,4 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **Memory lives in `.claude/memory.md` here**, where all three sibling projects keep `memory.md` at
   the repo root. Deliberate divergence — don't "fix" it by moving the file back. It is committed on
   purpose, so it is shared across Claude Code, Desktop and Web.
+- 2026-10-01 (Phase 15 P3): the three-container connectivity fixture does not form a production quorum. Primary crash left the backup waiting for votes on both versions; an explicit test-only backup quorum-size=1 makes promotion reproducible. Verified node ID and persistent backlog survive; this is not partition-safety coverage.

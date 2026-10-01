@@ -49,11 +49,12 @@ class RunServiceTest
         ScenarioCatalog catalog = new ScenarioCatalog();
         List<Recipe> all = new ArrayList<>();
         for (String id : List.of("LAB-SMOKE", "BASIC", "BODIES", "SEARCH", "DELIVERY", "SUBSCRIPTIONS", "RATES",
-                "BEHAVIOR", "PRESSURE", "FAILURES", "LOW-LIMITS", "READONLY", "SCALE"))
+                "BEHAVIOR", "PRESSURE", "FAILURES", "LOW-LIMITS", "READONLY", "SCALE", "INCIDENT", "INVESTIGATION",
+                "INVESTIGATION-CONTENT"))
         {
             all.add(recipe(id));
         }
-        assertEquals(13, RunService.registry(all, catalog).size());
+        assertEquals(16, RunService.registry(all, catalog).size());
 
         assertThrows(IllegalStateException.class, () -> RunService.registry(all.subList(0, 12), catalog),
                 "a runnable card with no recipe");

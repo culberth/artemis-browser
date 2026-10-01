@@ -16,6 +16,18 @@ class TargetGuardTest
 {
 
     @Test
+    void xaConnectionIsVerifiedBeforeAnyTransaction() throws Exception
+    {
+        var factory = mock(org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory.class);
+        var connection = mock(jakarta.jms.XAConnection.class);
+        when(factory.createXAConnection("u", "p")).thenReturn(connection);
+        TargetGuard guard = new TargetGuard(factory, "u", "p", "lab-node", c -> "another-node");
+        assertThrows(TargetMismatchException.class, guard::openXa);
+        verify(connection).close();
+        verify(connection, never()).createXASession();
+    }
+
+    @Test
     @DisplayName("A connection reaching another broker is closed and refused before the caller can send on it")
     void refusesAnotherBroker() throws Exception
     {

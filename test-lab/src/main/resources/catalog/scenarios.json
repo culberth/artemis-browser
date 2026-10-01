@@ -1,5 +1,5 @@
 {
-  "revision": "2026-09-30.5",
+  "revision": "2026-10-01.6",
   "scenarios": [
     {
       "id": "LAB-SMOKE",
@@ -126,6 +126,42 @@
       "summary": "Not broker traffic: Browser profiles for loopback without login, configured login, hostile Host header, missing CSRF token, non-loopback startup, and the Helm deployment.",
       "expected": "Documented as a harness procedure rather than a lab recipe.",
       "cases": ["E05", "E06"]
+    },
+    {
+      "id": "INCIDENT",
+      "title": "Trends and snapshot changes",
+      "increment": "P3",
+      "runnable": true,
+      "summary": "An empty incident queue, with Add ten, Drain up to ten, Pause, Resume and Recreate steps. Use Restart broker and Interrupt broker for discontinuities. No automatic traffic: collect each Browser sample explicitly.",
+      "expected": "Readiness checks verify each count and paused setting. Capture /snapshot JSON before and after steps and upload to /compare. Refresh /overview and the queue Recent trend panel between actions; idle has unchanged counters, gaps stay gaps and recreation changes the queue ID. FAILURES supplies partial permissions; harness tests supply budget/schema variants.",
+      "cases": ["F01","F02","F05"]
+    },
+    {
+      "id": "INVESTIGATION",
+      "title": "Exact IDs and prepared XA",
+      "increment": "P3",
+      "runnable": true,
+      "summary": "One message each in invest-waiting, invest-scheduled (five minutes), invest-held (one worker) and invest-xa (prepared receive, no consumer). One uncommitted send to invest-xa-target. Every ID is recorded. Roll back prepared branch returns its receive and discards its send; cleanup also rolls it back.",
+      "expected": "Readiness: waiting 1, scheduled 1, held delivering 1, XA delivering 1 with no consumer. /search labels each state and coverage. /transactions reports the exact run branch. Stop the holder to return its message; acknowledge to remove it. Restricted users profile supplies denied permissions. Browser must leave the branch unresolved.",
+      "cases": ["F04","F06"]
+    },
+    {
+      "id": "INVESTIGATION-CONTENT",
+      "title": "Guided filters, triage and comparison",
+      "increment": "P3",
+      "runnable": true,
+      "summary": "guided has four messages with owner O'Brien/plain, numeric amount, boolean enabled and eventTime around 2026-10-01T00:00:00Z. compare has equal reordered JSON, changed JSON and property type, 1000-character text and an unsupported object. triage has two real dead-letter origins and a direct message without origin metadata.",
+      "expected": "Whole-queue assertions: owner = 'O''Brien' matches 2; amount >= 30 AND enabled = TRUE matches 1; eventTime >= 1790812800000 matches 3. Save/reopen/rename/delete filters in Browser. Compare recorded IDs; triage has three messages in three origin groups, including unknown. Lower Browser bounds for sample/truncation variants.",
+      "cases": ["F07","F08"]
+    },
+    {
+      "id": "CONNECTIVITY-HARNESS",
+      "title": "External harness: replicated brokers and connectivity",
+      "increment": "P3",
+      "runnable": false,
+      "summary": "Browser ConnectivityIT owns a Testcontainers network, primary, backup and peer, working and broken bridges, and AMQP mirror/sender connections. Run with the integration Maven profile on both broker versions; see the P3 procedure for coverage limits.",
+      "expected": "Automated broker evidence, not an interactive lab recipe or a manual Browser pass. Replica sync, topology, bridge traffic, broken paths, backup loss and explicit reconnection after primary crash are asserted. A dedicated federation demonstration remains separately recorded.",
+      "cases": ["F03"]
     }
   ],
   "cases": [

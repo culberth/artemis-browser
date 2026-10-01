@@ -436,6 +436,87 @@ class LabBrokerIT
     }
 
     @Test
+    @Order(10)
+    @DisplayName("P3 fixtures expose exact states, typed content and owned XA cleanup without resolving another run")
+    void currentFeatureRecipes() throws Exception
+    {
+        runId = runs.create("p3-it").runId();
+        assertEquals(50, store.get(runId).results().size());
+        assertTrue(store.get(runId).results().stream()
+                .allMatch(r -> r.fixture() == com.culberth.tools.artemislab.run.CaseResult.Status.NOT_RUN
+                        && r.browser() == com.culberth.tools.artemislab.run.CaseResult.Status.NOT_RUN));
+        String p = "lab." + runId + ".";
+        for (String id : List.of("INCIDENT", "INVESTIGATION", "INVESTIGATION-CONTENT"))
+        {
+            Job job = runs.runScenario(runId, id, Map.of(), JobRunner.newToken());
+            assertTrue(runner.awaitIdle(runId, Duration.ofSeconds(120)));
+            assertEquals(Job.State.SUCCEEDED, job.state(), id + ": " + job.detail());
+        }
+        step("INCIDENT", "grow", Map.of());
+        assertEquals(10, independentCount(p + "incident"));
+        step("INCIDENT", "pause", Map.of());
+        assertEquals(Boolean.TRUE, independentQueueValue(p + "incident", "paused"));
+        step("INCIDENT", "resume", Map.of());
+        step("INCIDENT", "drain", Map.of());
+        assertEquals(0, independentCount(p + "incident"));
+        long oldId = independentAttribute(p + "incident", "ID");
+        step("INCIDENT", "recreate", Map.of());
+        assertTrue(oldId != independentAttribute(p + "incident", "ID"));
+        assertEquals(1, independentBrowse(p + "invest-waiting", null).size());
+        assertEquals(1, independentAttribute(p + "invest-scheduled", "scheduledCount"));
+        assertEquals(1, independentAttribute(p + "invest-held", "deliveringCount"));
+        assertEquals(0, independentBrowse(p + "invest-xa", null).size());
+        assertEquals(1, independentAttribute(p + "invest-xa", "deliveringCount"));
+        assertEquals(0, independentAttribute(p + "invest-xa", "consumerCount"));
+        assertEquals(2, independentBrowse(p + "guided", "owner = 'O''Brien'").size());
+        assertEquals(1, independentBrowse(p + "guided", "amount >= 30 AND enabled = TRUE").size());
+        assertEquals(3, independentBrowse(p + "guided", "eventTime >= 1790812800000").size());
+        List<Message> pair = independentBrowse(p + "compare", null);
+        assertEquals(5, pair.size());
+        assertTrue(pair.get(0).getObjectProperty("typed") instanceof Integer);
+        assertTrue(pair.get(2).getObjectProperty("typed") instanceof String);
+        List<Message> triage = independentBrowse(p + "triage", null);
+        assertEquals(3, triage.size());
+        assertEquals(2, triage.stream().filter(m ->
+        {
+            try
+            {
+                return m.propertyExists("_AMQ_ORIG_QUEUE");
+            }
+            catch (Exception e)
+            {
+                throw new AssertionError(e);
+            }
+        }).count());
+
+        String other = runs.create("p3-other").runId();
+        Job second = runs.runScenario(other, "INVESTIGATION", Map.of(), JobRunner.newToken());
+        assertTrue(runner.awaitIdle(other, Duration.ofSeconds(90)));
+        assertEquals(Job.State.SUCCEEDED, second.state(), second.detail());
+        Job clean = runs.cleanup(runId, JobRunner.newToken());
+        assertTrue(runner.awaitIdle(runId, Duration.ofSeconds(60)));
+        assertEquals(Job.State.SUCCEEDED, clean.state(), clean.detail());
+        assertEquals(1, independentAttribute("lab." + other + ".invest-xa", "deliveringCount"),
+                "another run's branch survives cleanup");
+        saveP3Evidence(runId);
+        runId = other;
+        step("INVESTIGATION", "rollback", Map.of());
+        assertEquals(1, independentBrowse("lab." + other + ".invest-xa", null).size());
+        assertEquals(0, independentCount("lab." + other + ".invest-xa-target"));
+        clean = runs.cleanup(other, JobRunner.newToken());
+        assertTrue(runner.awaitIdle(other, Duration.ofSeconds(60)));
+        assertEquals(Job.State.SUCCEEDED, clean.state(), clean.detail());
+        saveP3Evidence(other);
+    }
+
+    private void saveP3Evidence(String id) throws IOException
+    {
+        Path directory = Path.of("target", "p3-evidence", IMAGE.contains("2.55.0") ? "deployed" : "newest");
+        java.nio.file.Files.createDirectories(directory);
+        java.nio.file.Files.write(directory.resolve(id + ".json"), store.json(store.get(id)));
+    }
+
+    @Test
     @Order(12)
     @DisplayName("Stopping the broker removes its container")
     void stopRemovesContainer() throws Exception

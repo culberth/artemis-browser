@@ -129,6 +129,9 @@ public class RunService
         RunManifest manifest = RunManifest.open(runId, catalog.revision(), Instant.now(),
                 ZoneId.systemDefault().getId(), commit, new BrokerRef(broker.brokerId(), broker.image(),
                         broker.reportedVersion(), broker.nodeId(), broker.endpoint(), broker.profile().name()));
+        for (ScenarioCatalog.Case c : catalog.cases())
+            manifest = manifest.withResult(new CaseResult(c.id(), CaseResult.Status.NOT_RUN, CaseResult.Status.NOT_RUN,
+                    "", manifest.createdAt()));
         store.create(manifest);
         return store.update(runId, r -> r.withAction(ActionRecord.now("", "create run", Outcome.SUCCEEDED,
                 "bound to broker " + broker.brokerId() + ", node " + broker.nodeId())));
@@ -399,6 +402,23 @@ public class RunService
     private String removeOwned(String runId, TargetGuard guard) throws JMSException
     {
         List<String> failures = new ArrayList<>();
+        // Prepared work survives disconnects. Resolve it before deleting any queue it holds.
+        for (OwnedResource resource : store.get(runId).resources())
+        {
+            if (resource.kind() != Kind.XA_BRANCH || !resource.state().mayExist())
+                continue;
+            try
+            {
+                new com.culberth.tools.artemislab.broker.LabXid(resource.name()).rollback(guard);
+                store.update(runId, r -> r.withResource(resource.with(State.DELETED, "rolled back during cleanup")));
+            }
+            catch (Exception e)
+            {
+                store.update(runId, r -> r.withResource(resource.with(State.DELETE_FAILED, e.getMessage()))
+                        .withState(RunState.CLEANUP_FAILED));
+                throw new LabException("Prepared branch cleanup failed; queues preserved: " + resource.name(), e);
+            }
+        }
         try (Connection connection = guard.open();
                 ManagementClient management = new ManagementClient(connection, limits.operationTimeout()))
         {

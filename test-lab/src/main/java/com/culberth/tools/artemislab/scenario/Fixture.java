@@ -381,6 +381,65 @@ public final class Fixture implements AutoCloseable
         return guard.open(clientId);
     }
 
+    /** Prepare one receive and one send, then disconnect. The branch remains broker-owned until resolved. */
+    public void prepareXa(String source, String target) throws Exception
+    {
+        job.checkCancelled();
+        requireOwned(source, "XA");
+        requireOwned(target, "XA");
+        String name = name("xa-branch");
+        requireNew(List.of(name));
+        var xid = new com.culberth.tools.artemislab.broker.LabXid(name);
+        String details = String
+                .valueOf(management.invoke(ResourceNames.BROKER, "listPreparedTransactionDetailsAsJSON"));
+        for (var tx : JSON.readTree(details.isBlank() ? "[]" : details))
+            if (name.equals(tx.path("xid_global_txid").asString()))
+                throw new LabException("Branch already exists; not adopted: " + name);
+        reserve(8);
+        limits.checkBodyBytes(8);
+        OwnedResource owned = new OwnedResource(Kind.XA_BRANCH, name, source, "", State.PLANNED,
+                "format 4242, branch lab-1");
+        store.update(runId, r -> r.withResource(owned));
+        try (var connection = holdingGuard.openXa(); var xa = connection.createXASession())
+        {
+            var resource = xa.getXAResource();
+            resource.start(xid, javax.transaction.xa.XAResource.TMNOFLAGS);
+            var session = xa.getSession();
+            try (var consumer = session.createConsumer(session.createQueue(source));
+                    var producer = session.createProducer(session.createQueue(target)))
+            {
+                Message received = consumer.receive(limits.operationTimeout().toMillis());
+                if (received == null)
+                    throw new LabException("Nothing to prepare on " + source);
+                job.checkCancelled();
+                var message = session.createTextMessage("prepared");
+                message.setStringProperty("labRun", runId);
+                message.setIntProperty("labSeq", 1);
+                producer.send(message);
+                recordSent(List.of(
+                        new SentMessage(target, 1, "text", message.getJMSMessageID(), 8, "XA send, not committed")));
+                resource.end(xid, javax.transaction.xa.XAResource.TMSUCCESS);
+                if (resource.prepare(xid) != javax.transaction.xa.XAResource.XA_OK)
+                    throw new LabException("XA did not prepare");
+                String receivedId = received.getJMSMessageID();
+                store.update(runId, r -> r.withResource(owned.with(State.CREATED, "prepared receive " + receivedId)));
+            }
+        }
+        assertThat(String.valueOf(management.invoke(ResourceNames.BROKER, "listPreparedTransactionDetailsAsJSON"))
+                .contains(name), "Prepared branch " + name + " listed by the broker");
+    }
+
+    public String rollbackXa() throws Exception
+    {
+        String name = name("xa-branch");
+        var owned = store.get(runId).resources().stream()
+                .filter(r -> r.kind() == Kind.XA_BRANCH && r.name().equals(name) && r.state().mayExist()).findFirst()
+                .orElseThrow(() -> new LabException("No owned prepared branch"));
+        new com.culberth.tools.artemislab.broker.LabXid(name).rollback(holdingGuard);
+        store.update(runId, r -> r.withResource(owned.with(State.DELETED, "rolled back by lab")));
+        return "Rolled back " + name + "; receive returned and uncommitted send discarded.";
+    }
+
     /** Receives and acknowledges {@code count} messages, then closes the consumer. Returns how many it got. */
     public int consume(String queue, int count) throws JMSException
     {
@@ -779,6 +838,7 @@ public final class Fixture implements AutoCloseable
             case ADDRESS -> management.addressNames().contains(resource.name());
             case DIVERT -> divertNames().contains(resource.name());
             case ADDRESS_SETTINGS -> false;
+            case XA_BRANCH -> throw new LabException("XA ownership uses its exact transaction identity");
         };
     }
 

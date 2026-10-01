@@ -1,0 +1,720 @@
+{
+  "revision": "a77567b2bbc932fc2b09fc33d0d0b1de572372a2",
+  "run": "2026-09-30 America/Los_Angeles",
+  "command": "mvn clean verify -Pintegration",
+  "kind": "automated Browser release checks before adding failover test",
+  "suites": [
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressDirectoryTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressPressureTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressRoutingTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.BrokerCredentialsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.BrokerHealthTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.BrokerInfoServiceTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.ClientDirectoryTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectionStoreTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectivityServiceTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.DeadLetterTriageServiceTest",
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.InFlightServiceTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.ManagementChannelTest",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageComparerTest",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageComparisonServiceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageExporterTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageIdLookupTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageInvestigationServiceTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessagePageTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageSearchServiceTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.PermissionServiceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueBehaviorTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueBrowseServiceTest",
+      "tests": 25,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueDirectoryTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueStatsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueTrendTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.RateTrackerTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotServiceTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotWriterTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.StuckDiagnosisServiceTest",
+      "tests": 51,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.SubscriberLagTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.SubscriptionDirectoryTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.broker.TransactionServiceTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.compare.SnapshotComparerTest",
+      "tests": 21,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.compare.SnapshotReaderTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.filter.GuidedFilterTest",
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.filter.SavedSearchStoreTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.LabIsolationTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.AllowedHostFilterTest",
+      "tests": 25,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.CompareControllerTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.LocalWithoutLoginTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.PageRenderingTest",
+      "tests": 95,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.QueueControllerTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.ReachabilityGuardTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.SavedSearchControllerTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.SearchControllerTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.SecurityConfigTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/surefire-reports",
+      "name": "com.culberth.tools.artemisbrowser.web.SnapshotControllerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressDetailIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressPressureIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ClientIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectivityIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.DeadLetterTriageIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.FilteredPagingIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.GuidedFilterIT",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.KilledAndExpiredIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ManagementChannelIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageComparisonIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageInvestigationIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.PagesIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.PartialAvailabilityIT",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueBehaviorIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.RatesIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ReadOnlyGuaranteeIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ScaleMeasurementIT",
+      "tests": 0,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotComparisonIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.TransactionsIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.TrendsIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressDetailIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.AddressPressureIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ClientIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectivityIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.DeadLetterTriageIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.FilteredPagingIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.GuidedFilterIT",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.KilledAndExpiredIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ManagementChannelIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageComparisonIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.MessageInvestigationIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.PagesIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.PartialAvailabilityIT",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.QueueBehaviorIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.RatesIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ReadOnlyGuaranteeIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ScaleMeasurementIT",
+      "tests": 0,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotComparisonIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.SnapshotIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.TransactionsIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.TrendsIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}
