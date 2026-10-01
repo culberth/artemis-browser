@@ -44,9 +44,12 @@ public class DiagnoseController
             model.addAttribute("rates", result.measured().rates());
             model.addAttribute("ratesSampled", result.measured().sampled());
             model.addAttribute("unchecked", result.unchecked());
+            model.addAttribute("checked", true);
         }
         catch (BrokerException e)
         {
+            // Nothing was looked at, so nothing may be called unblocked.
+            model.addAttribute("checked", false);
             model.addAttribute("findings", List.of());
             model.addAttribute("stuckCount", 0L);
             model.addAttribute("unchecked", List.of());

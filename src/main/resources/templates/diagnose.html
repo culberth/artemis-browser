@@ -15,9 +15,10 @@
     <div class="panel">
         <h2>
             Why is this stuck?
-            <span class="muted" th:if="${stuckCount > 0}"
+            <span class="muted" th:if="${checked and stuckCount > 0}"
                   th:text="${stuckCount} + ' not moving'">0 not moving</span>
-            <span class="muted" th:if="${stuckCount == 0}">nothing is obviously blocked</span>
+            <span class="muted" th:if="${checked and stuckCount == 0}">nothing is obviously blocked</span>
+            <span class="muted" th:unless="${checked}">not checked</span>
             <span style="float:right;font-size:.8rem;font-weight:normal">
                 <a class="badge-link" th:href="@{/diagnose(internal=${!internal})}"
                    th:text="${internal} ? 'Hide internal queues' : 'Include internal queues'">Include internal</a>
@@ -25,12 +26,16 @@
         </h2>
         <p th:replace="~{fragments/layout :: snapshotLinks}"></p>
 
-        <p class="muted" th:if="${findings.isEmpty() and unchecked.isEmpty()}">
+        <p class="unavailable" th:unless="${checked}">
+            Nothing was checked: the broker refused or failed a read this page needs (see above), so
+            this is not a finding that nothing is blocked.
+        </p>
+        <p class="muted" th:if="${checked and findings.isEmpty() and unchecked.isEmpty()}">
             Nothing on this broker looks blocked: no paused queues, nothing waiting without a
             consumer, no unrouted addresses, no address blocked or at a limit that blocks, rejects or
             drops, and the broker is not near its disk or memory limits.
         </p>
-        <p class="muted" th:if="${findings.isEmpty() and !unchecked.isEmpty()}">
+        <p class="muted" th:if="${checked and findings.isEmpty() and !unchecked.isEmpty()}">
             Nothing looks blocked in what this page could check &mdash; but not everything could be
             checked. See below for what was not.
         </p>

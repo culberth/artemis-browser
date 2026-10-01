@@ -207,7 +207,7 @@ Found along the way, recorded in `.claude/memory.md`:
 | Case | Defect | Status |
 |---|---|---|
 | Q01 | Diagnose calls a queue whose only client is a browse-only `QueueBrowser` "no consumer attached": the queue's `consumerCount` excludes browse-only consumers, though `/broker` lists it as "browse only". | Fixed: Diagnose now says only browsers are attached (PR #54). |
-| E02 | For a user without `manage`, `/overview` explains the refusal correctly but also renders "Queues (0) … This broker reported no queues" — a zero in place of a refused reading. | Open. |
+| E02 | For a user without `manage`, `/overview` explains the refusal correctly but also renders "Queues (0) … This broker reported no queues" — a zero in place of a refused reading. | Fixed: a refused or failed listing reads "Not shown: the broker did not list its queues", with no count; `/addresses` and `/diagnose` had the same pattern and are fixed alike (PR #57). |
 
 Verified 2026-09-30: `LabBrokerIT` 11/11 and `LabProfilesIT` 4/4 on 2.55.0 and 2.57.0. Live, Browser
 showed the behavior and pressure findings and badges listed in each card (the non-destructive flag is
