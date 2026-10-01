@@ -1,5 +1,5 @@
 {
-  "revision": "2026-09-30.4",
+  "revision": "2026-09-30.5",
   "scenarios": [
     {
       "id": "LAB-SMOKE",
@@ -86,28 +86,37 @@
       "id": "LOW-LIMITS",
       "title": "Global memory and disk thresholds",
       "increment": "P2",
-      "runnable": false,
-      "summary": "A broker started with a reduced global-max-size and disk threshold, then bounded traffic; the disk condition obtained by lowering the threshold, never by filling the host's disk.",
-      "expected": "Health shows global memory use and the disk threshold in the right units, and Diagnose reports pressure as observed.",
+      "runnable": true,
+      "summary": "Needs a broker provisioned with Low global memory (global-max-size 2MB) or Disk threshold reached (max-disk-usage 1%). Low memory: queue memory gets 150 x 10KB. Disk: nothing is written to fill the disk; disk usage is read against the threshold and one persistent send to disk is tried.",
+      "expected": "Fixture assertions: low memory, global-max-size 2MB and address memory at least 50%; disk, usage above the 1% threshold (the send's outcome is recorded). In Artemis Browser: health shows global memory use and the disk threshold in the right units, and Diagnose reports the pressure.",
       "cases": ["P04"]
     },
     {
       "id": "FAILURES",
       "title": "Permissions and interruption",
       "increment": "P2",
-      "runnable": false,
-      "summary": "Restricted viewer with management RBAC set at startup; a user without manage; the owned broker stopped and restarted under Browser.",
-      "expected": "Panels fail independently and explain why; connection loss is explicit and recovery works.",
+      "runnable": true,
+      "summary": "Needs a broker provisioned with the Restricted users profile (management-message-rbac on). Creates queue failures with 5 messages and proves, as each test user, what the profile grants: viewer (password viewer) may manage but is refused the acceptors, disk usage, diverts, prepared transactions, roles and every address attribute; nomanage (password nomanage) may connect and is refused all management. E03 is Interrupt broker on the lab page: the broker goes down for chosen seconds and must come back as the same node.",
+      "expected": "Fixture assertions: failures 5; viewer lists queues; viewer is denied getAcceptorsAsJSON, diskStoreUsage and address attributes; nomanage is denied management. In Artemis Browser signed in as viewer: the denied panels say why and the rest still stand. As nomanage: the required failure is clear. During an interrupt: connection loss is explicit and a reconnect works.",
       "cases": ["E01", "E02", "E03"]
+    },
+    {
+      "id": "READONLY",
+      "title": "Read-only guarantee",
+      "increment": "P2",
+      "runnable": true,
+      "summary": "Reads every queue this run owns (messages, delivering, scheduled, added, acknowledged, expired, killed) as a baseline. Use every Artemis Browser page on those queues, then Compare with baseline.",
+      "expected": "Compare finds no counter changed. Use a settled fixture: no traffic (refused while it runs), and nothing on a timer — a scheduled message falling due or a TTL shows as a change Browser did not cause.",
+      "cases": ["E04"]
     },
     {
       "id": "SCALE",
       "title": "Scale and responsiveness",
       "increment": "P2",
-      "runnable": false,
-      "summary": "A small preset, then up to 100,000 bounded small messages, many queues, clients, subscriptions and held deliveries within the lab's budgets.",
-      "expected": "Pages stay responsive and correct; the non-destructive guarantee holds.",
-      "cases": ["E04", "E07"]
+      "runnable": true,
+      "summary": "Queues x messages of small persistent bodies, from the form: 10 x 100 by default, up to 1,000 queues and lab.limits.max-scale-messages (100,000) in all. Combine with the other recipes for clients, subscriptions and held deliveries.",
+      "expected": "Fixture assertion: every queue holds its count. In Artemis Browser: overview, late-match filters, search, export, client and address pages stay responsive and correct; compare with the measured limits in .claude/memory.md.",
+      "cases": ["E07"]
     },
     {
       "id": "HARNESS",

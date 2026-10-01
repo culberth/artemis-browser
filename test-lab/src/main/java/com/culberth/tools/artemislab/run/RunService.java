@@ -128,7 +128,7 @@ public class RunService
         }
         RunManifest manifest = RunManifest.open(runId, catalog.revision(), Instant.now(),
                 ZoneId.systemDefault().getId(), commit, new BrokerRef(broker.brokerId(), broker.image(),
-                        broker.reportedVersion(), broker.nodeId(), broker.endpoint()));
+                        broker.reportedVersion(), broker.nodeId(), broker.endpoint(), broker.profile().name()));
         store.create(manifest);
         return store.update(runId, r -> r.withAction(ActionRecord.now("", "create run", Outcome.SUCCEEDED,
                 "bound to broker " + broker.brokerId() + ", node " + broker.nodeId())));
@@ -144,6 +144,13 @@ public class RunService
             throw new LabException("Run " + runId + " is " + run.state() + "; it accepts no more scenarios.");
         }
         Recipe recipe = recipes.get(scenarioId);
+        if (!recipe.profiles().isEmpty()
+                && recipe.profiles().stream().noneMatch(p -> p.name().equals(run.broker().profile())))
+        {
+            throw new LabException(scenarioId + " needs a broker provisioned with the "
+                    + recipe.profiles().stream().map(com.culberth.tools.artemislab.broker.BrokerProfile::label).toList()
+                    + " profile; this run's broker is " + run.broker().profile() + ". Nothing was run.");
+        }
         Map<String, Integer> params = parameters(recipe.params(limits), form);
         LabBroker broker = boundBroker(run);
         String action = params.isEmpty() ? scenarioId : scenarioId + " " + params;
@@ -210,6 +217,33 @@ public class RunService
     }
 
     /**
+     * Takes the broker down for {@code seconds}, then starts it again in place (E03). As with a restart, every worker
+     * is stopped first and the broker must come back with the same node id.
+     */
+    public Job interruptBroker(int seconds, String token)
+    {
+        if (seconds < 1 || seconds > 300)
+        {
+            throw new LabException("Interrupt for 1 to 300 seconds; got " + seconds + ".");
+        }
+        LabBroker broker = brokers.current().orElseThrow(() -> new LabException("No lab broker is running."));
+        return runner.submit(JobRunner.BROKER_SCOPE, token,
+                "interrupt broker " + broker.brokerId() + " for " + seconds + "s", job ->
+                {
+                    List<String> stopped = workers.stopEverything("broker interrupted");
+                    LabBroker back = brokers.interrupt(java.time.Duration.ofSeconds(seconds));
+                    String outcome = "Broker " + broker.brokerId() + " was down for " + seconds + "s and is back; node "
+                            + back.nodeId() + " unchanged. Stopped " + stopped.size() + " worker(s) first.";
+                    for (RunManifest run : runsOn(broker))
+                    {
+                        store.update(run.runId(), r -> r.withAction(
+                                ActionRecord.now(job.id(), "interrupt broker", Outcome.SUCCEEDED, outcome)));
+                    }
+                    return outcome;
+                });
+    }
+
+    /**
      * Restarts the broker in place. Every live worker is stopped first — held deliveries return to their queues — and
      * each open run on the broker records the restart, which is a discontinuity for any rate measured across it.
      */
@@ -233,7 +267,8 @@ public class RunService
 
     private Fixture fixture(Job job, String runId, LabBroker broker) throws JMSException
     {
-        return Fixture.open(job, runId, brokers.guard(broker), brokers.guard(broker, true), store, limits, workers);
+        return Fixture.open(job, runId, brokers.guard(broker), brokers.guard(broker, true), store, limits, workers,
+                broker.profile(), user -> brokers.guardAs(broker, user));
     }
 
     /** Each declared parameter from the form, or its default; anything else in the form is ignored. */

@@ -2,6 +2,7 @@ package com.culberth.tools.artemislab.scenario;
 
 import com.culberth.tools.artemislab.LabException;
 import com.culberth.tools.artemislab.LabLimits;
+import com.culberth.tools.artemislab.broker.BrokerProfile;
 import com.culberth.tools.artemislab.broker.ManagementClient;
 import com.culberth.tools.artemislab.broker.TargetGuard;
 import com.culberth.tools.artemislab.job.Job;
@@ -63,12 +64,17 @@ public final class Fixture implements AutoCloseable
     private final RunStore store;
     private final LabLimits limits;
     private final WorkerRegistry workers;
+    private final BrokerProfile profile;
+    private final java.util.function.Function<String, TargetGuard> userGuards;
     private final Connection admin;
     private final ManagementClient management;
 
     private Fixture(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
-            LabLimits limits, WorkerRegistry workers, Connection admin, ManagementClient management)
+            LabLimits limits, WorkerRegistry workers, BrokerProfile profile,
+            java.util.function.Function<String, TargetGuard> userGuards, Connection admin, ManagementClient management)
     {
+        this.profile = profile;
+        this.userGuards = userGuards;
         this.job = job;
         this.runId = runId;
         this.guard = guard;
@@ -87,10 +93,24 @@ public final class Fixture implements AutoCloseable
     public static Fixture open(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
             LabLimits limits, WorkerRegistry workers) throws JMSException
     {
+        return open(job, runId, guard, holdingGuard, store, limits, workers, BrokerProfile.STANDARD, user ->
+        {
+            throw new LabException("This broker has no test user " + user + ".");
+        });
+    }
+
+    /**
+     * @param profile    how the broker was configured at startup
+     * @param userGuards a guard connecting as one of the profile's test users
+     */
+    public static Fixture open(Job job, String runId, TargetGuard guard, TargetGuard holdingGuard, RunStore store,
+            LabLimits limits, WorkerRegistry workers, BrokerProfile profile,
+            java.util.function.Function<String, TargetGuard> userGuards) throws JMSException
+    {
         Connection admin = guard.open();
         try
         {
-            return new Fixture(job, runId, guard, holdingGuard, store, limits, workers, admin,
+            return new Fixture(job, runId, guard, holdingGuard, store, limits, workers, profile, userGuards, admin,
                     new ManagementClient(admin, limits.operationTimeout()));
         }
         catch (JMSException | RuntimeException e)
@@ -118,6 +138,63 @@ public final class Fixture implements AutoCloseable
     public ManagementClient management()
     {
         return management;
+    }
+
+    public BrokerProfile profile()
+    {
+        return profile;
+    }
+
+    /** A verified connection as one of the profile's test users; the caller closes it. */
+    public Connection connectionAs(String user) throws JMSException
+    {
+        return userGuards.apply(user).open();
+    }
+
+    /** Whether any of this run's traffic workers is still sending or receiving. */
+    public boolean trafficRunning()
+    {
+        return workers.active(runId).stream().anyMatch(w -> w instanceof Traffic);
+    }
+
+    /** Every queue this run created and still owns, by exact name. */
+    public List<String> ownedQueues()
+    {
+        return store.get(runId).resources().stream().filter(r -> r.kind() == Kind.QUEUE && r.state() == State.CREATED)
+                .map(OwnedResource::name).toList();
+    }
+
+    /** Reads these attributes of every owned queue. */
+    public Map<String, Map<String, Long>> readQueues(List<String> attributes) throws JMSException
+    {
+        Map<String, Map<String, Long>> reading = new java.util.TreeMap<>();
+        for (String queue : ownedQueues())
+        {
+            job.checkCancelled();
+            Map<String, Long> values = new LinkedHashMap<>();
+            for (String attribute : attributes)
+            {
+                values.put(attribute, management.queueAttribute(queue, attribute));
+            }
+            reading.put(queue, values);
+        }
+        return reading;
+    }
+
+    public void saveBaseline(com.culberth.tools.artemislab.run.RunManifest.Reading reading)
+    {
+        store.update(runId, r -> r.withBaseline(reading));
+    }
+
+    public com.culberth.tools.artemislab.run.RunManifest.Reading baseline()
+    {
+        return store.get(runId).baseline();
+    }
+
+    /** Records an automatic assertion's outcome, passed or failed; a failure throws. */
+    public String assertThat(boolean held, String text)
+    {
+        return held ? passed(text) : failed(text);
     }
 
     /** {@code lab.<runId>.<suffix>}. */

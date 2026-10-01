@@ -19,6 +19,7 @@
             <tr><th>Broker</th><td class="mono"
                                    th:text="${run.broker().brokerId()} + ' · ' + ${run.broker().image()} + ' · Artemis ' + ${run.broker().version()}">b1</td></tr>
             <tr><th>Node id</th><td class="mono" th:text="${run.broker().nodeId()}">node</td></tr>
+            <tr><th>Broker profile</th><td th:text="${run.broker().profile()}">STANDARD</td></tr>
             <tr><th>Endpoint</th><td class="mono" th:text="${run.broker().endpoint()}">127.0.0.1:62616</td></tr>
             <tr><th>Browser revision</th><td class="mono" th:text="${run.browserCommit().isEmpty()} ? '(not given)' : ${run.browserCommit()}">abc</td></tr>
             <tr><th>Catalog revision</th><td class="mono" th:text="${run.catalogRevision()}">rev</td></tr>

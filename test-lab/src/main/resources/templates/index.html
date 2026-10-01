@@ -17,6 +17,10 @@
             <table>
                 <tr><th>Broker</th><td class="mono" th:text="${broker.brokerId()}">b1</td></tr>
                 <tr><th>Image</th><td class="mono" th:text="${broker.image()}">apache/artemis:2.55.0-alpine</td></tr>
+                <tr><th>Profile</th><td th:text="${broker.profile().label()} + ' — ' + ${broker.profile().description()}">Standard</td></tr>
+                <tr th:if="${!broker.profile().users().isEmpty()}"><th>Test users</th>
+                    <td><span th:each="u, st : ${broker.profile().users()}"><code th:text="${u}">viewer</code>
+                        (password <code th:text="${u}">viewer</code>)<span th:unless="${st.last}">, </span></span></td></tr>
                 <tr><th>Reported version</th><td class="mono" th:text="${broker.reportedVersion()}">2.55.0</td></tr>
                 <tr><th>Node id</th><td class="mono" id="node-id" th:text="${broker.nodeId()}">node</td></tr>
                 <tr><th>Endpoint</th><td class="mono" id="endpoint" th:text="${broker.endpoint()}">127.0.0.1:62616</td></tr>
@@ -30,6 +34,16 @@
                 reports the node id above: a queue name starting with <code>lab.</code> alone does not prove you are
                 looking at this broker.
             </p>
+            <form method="post" th:action="@{/broker/interrupt}" class="field-row">
+                <input type="hidden" name="token" th:value="${token}">
+                <div>
+                    <label for="seconds">Down for (seconds)</label>
+                    <input id="seconds" name="seconds" type="number" min="1" max="300" value="30">
+                </div>
+                <button class="secondary" type="submit" th:disabled="${busy}">Interrupt broker</button>
+                <span class="note">Stops every worker, stops the container, waits, starts it again and checks it is the
+                    same node: long enough for Artemis Browser to see the connection go (E03).</span>
+            </form>
             <form method="post" th:action="@{/broker/restart}" class="field-row">
                 <input type="hidden" name="token" th:value="${token}">
                 <button class="secondary" type="submit" th:disabled="${busy}">Restart broker</button>
@@ -58,6 +72,13 @@
                     <label for="image">Image</label>
                     <select id="image" name="image">
                         <option th:each="i : ${images}" th:value="${i}" th:text="${i}">image</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="profile">Profile</label>
+                    <select id="profile" name="profile">
+                        <option th:each="p : ${profiles}" th:value="${p.name()}" th:text="${p.label()}"
+                                th:title="${p.description()}">Standard</option>
                     </select>
                 </div>
                 <div><button type="submit">Provision broker</button></div>

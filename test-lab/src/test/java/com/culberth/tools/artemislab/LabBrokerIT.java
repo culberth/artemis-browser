@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.culberth.tools.artemislab.broker.BrokerLauncher;
+import com.culberth.tools.artemislab.broker.BrokerProfile;
 import com.culberth.tools.artemislab.broker.BrokerService;
 import com.culberth.tools.artemislab.broker.LabBroker;
 import com.culberth.tools.artemislab.broker.ManagementClient;
@@ -333,6 +334,46 @@ class LabBrokerIT
     }
 
     @Test
+    @Order(7)
+    @DisplayName("READONLY passes when only browsing happened and catches a consume; SCALE seeds its preset")
+    void readOnlyAndScale() throws Exception
+    {
+        String p = "lab." + runId + ".";
+        Job baseline = runs.runScenario(runId, "READONLY", Map.of(), JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.SUCCEEDED, baseline.state(), baseline.detail());
+
+        // Browse as Artemis Browser's detail path does: nothing may change.
+        independentBrowse(p + "bodies", null);
+        independentBrowse(p + "search-a", "marker = 'late'");
+        assertTrue(step("READONLY", "compare", Map.of()).detail().startsWith("No counter changed"));
+
+        // Consume one message: the check must notice.
+        try (ActiveMQConnectionFactory factory = independentFactory();
+                Connection connection = factory.createConnection("artemis", "artemis"))
+        {
+            connection.start();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            assertTrue(session.createConsumer(session.createQueue(p + "one")).receive(5000) != null);
+        }
+        Job caught = runs.runStep(runId, "READONLY", "compare", Map.of(), JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.FAILED, caught.state());
+        assertTrue(caught.detail().contains(p + "one messageCount 1 -> 0"), caught.detail());
+
+        Job scale = runs.runScenario(runId, "SCALE", Map.of("queues", "3", "perQueue", "50", "bodyBytes", "100"),
+                JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(120));
+        assertEquals(Job.State.SUCCEEDED, scale.state(), scale.detail());
+        assertEquals(50, independentCount(p + "scale-0003"));
+        Job tooBig = runs.runScenario(runId, "SCALE", Map.of("queues", "1000", "perQueue", "1000"),
+                JobRunner.newToken());
+        runner.awaitIdle(runId, Duration.ofSeconds(30));
+        assertEquals(Job.State.FAILED, tooBig.state(), "1,000,000 messages is over max-scale-messages");
+        assertTrue(tooBig.detail().contains("max-scale-messages"), tooBig.detail());
+    }
+
+    @Test
     @Order(8)
     @DisplayName("A restart stops every worker, keeps durable messages, and the broker comes back as the same node")
     void restart() throws Exception
@@ -389,7 +430,7 @@ class LabBrokerIT
         {
             holder.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
             LabException refused = assertThrows(LabException.class, () -> launcher.launch("bport", IMAGE,
-                    holder.getLocalPort(), "artemis", "artemis", Duration.ofMinutes(1)));
+                    BrokerProfile.STANDARD, holder.getLocalPort(), "artemis", "artemis", Duration.ofMinutes(1)));
             assertTrue(refused.getMessage().contains("already in use"), refused.getMessage());
         }
     }
