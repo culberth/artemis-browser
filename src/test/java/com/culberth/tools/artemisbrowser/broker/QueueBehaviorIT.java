@@ -7,12 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.jms.Connection;
 import jakarta.jms.Message;
+import jakarta.jms.QueueBrowser;
 import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
 import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TextMessage;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.function.BiConsumer;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
@@ -39,6 +41,7 @@ class QueueBehaviorIT
     private static final String EXCLUSIVE = "it-qb-exclusive";
     private static final String GROUPED = "it-qb-grouped";
     private static final String GATED = "it-qb-gated";
+    private static final String BROWSED = "it-qb-browsed";
 
     private static BrokerSession brokerSession;
     private static QueueDirectory queues;
@@ -63,6 +66,7 @@ class QueueBehaviorIT
             create(session, EXCLUSIVE, "\"exclusive\":true");
             create(session, GROUPED, "");
             create(session, GATED, "\"consumers-before-dispatch\":2");
+            create(session, BROWSED, "");
             // No dead-letter address: a killed message on PURGE then has nowhere to go, which is
             // what makes diagnose look at it.
             manage(session, "addAddressSettings", PURGE, "{\"deadLetterAddress\":\"\"}");
@@ -120,6 +124,16 @@ class QueueBehaviorIT
         send(session, GATED, 3, (message, i) ->
         {
         });
+        // A JMS browser held open partway through its enumeration, and nothing else: procedure case
+        // Q01, where the broker lists a browse-only consumer and counts none.
+        send(session, BROWSED, 5, (message, i) ->
+        {
+        });
+        QueueBrowser browser = holders.createSession(false, Session.AUTO_ACKNOWLEDGE)
+                .createBrowser(session.createQueue(BROWSED));
+        Enumeration<?> enumeration = browser.getEnumeration();
+        assertTrue(enumeration.hasMoreElements());
+        enumeration.nextElement();
         Thread.sleep(1000);
     }
 
@@ -195,6 +209,25 @@ class QueueBehaviorIT
         Finding purge = about(findings, PURGE);
         assertFalse(purge.title().contains("delivery attempts"), purge.title());
         assertTrue(purge.explanation().contains("purge"), purge.explanation());
+    }
+
+    @Test
+    @DisplayName("a queue with only a browser attached counts no consumer, and diagnose names the browser")
+    void diagnosesABrowserOnlyQueue()
+    {
+        QueueOverview browsed = find(BROWSED);
+        assertEquals(5, browsed.messageCount());
+        assertEquals(0, browsed.consumerCount(), "the broker leaves browse-only consumers out of the count");
+        assertTrue(new BrokerInfoService(brokerSession).consumers().stream()
+                .anyMatch(consumer -> BROWSED.equals(consumer.queueName()) && consumer.browseOnly()));
+
+        Finding finding = about(diagnose(), BROWSED);
+
+        assertTrue(finding.isStuck());
+        assertEquals("Only browsers are attached to '" + BROWSED + "' — nothing is consuming it", finding.title());
+        assertTrue(finding.detail().contains("1 browse-only consumer(s)"), finding.detail());
+        assertFalse(finding.detail().contains("no consumer attached"), finding.detail());
+        assertEquals(5, find(BROWSED).messageCount(), "browsing took nothing");
     }
 
     @Test
