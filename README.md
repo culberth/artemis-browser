@@ -18,8 +18,8 @@ login and TLS, and refuses to start in the half-configured arrangement between t
 - Export CSV/JSON, triage dead-letter queues by origin, and compare two messages.
 - Capture incident snapshots and compare them offline, with collection limits and missing evidence shown.
 
-**Status:** Features through Phase 14 are implemented. The Phase 15 regression lab's first
-increment (P0) is in [`test-lab/`](#regression-lab-phase-15); its fixtures are still to come. The app supports one broker
+**Status:** Features through Phase 14 are implemented. The Phase 15 regression lab has P0–P3
+fixtures in [`test-lab/`](#regression-lab-phase-15); full manual release acceptance remains open. The app supports one broker
 connection per HTTP session and one configured app account. See the
 [supported broker versions](#supported-broker-versions) for the integration-test matrix.
 
@@ -251,12 +251,20 @@ cap, export bounds), `DELIVERY` (held, redelivered, dead-lettered, expired and l
 anonymous clients, traffic at a chosen rate), `BEHAVIOR` (queue configurations and consumers),
 `PRESSURE` (each full-address policy, an operator block), `LOW-LIMITS` and `FAILURES` (on a broker
 provisioned with a *profile*: low global memory, disk threshold reached, or restricted users),
-`READONLY` (counters before and after using Browser) and `SCALE`. Consumers that hold messages
+`READONLY` (counters before and after using Browser), `SCALE`, `INCIDENT` (trends and snapshot
+changes), `INVESTIGATION` (waiting/scheduled/held/prepared XA IDs), and `INVESTIGATION-CONTENT`
+(typed filters, comparison pairs and mixed dead-letter origins). Consumers that hold messages
 and traffic run as workers on the run page, where held messages can be acknowledged or released;
 *Restart broker* and *Interrupt broker* are on the lab page. Each run's manifest lists every message sent, with its id. The
-[catalog](docs/Phase%2015%20plan.md) lists the recipes to come and the
+[catalog](docs/Phase%2015%20plan.md) lists the available recipes and the
 [regression procedure](docs/Phase%2015%20regression%20procedure.md) the cases they serve. Port
 62616 must be free: the lab refuses a taken port rather than moving the broker.
+
+The [P3 supplement](docs/Phase%2015%20P3%20procedure.md) gives exact controls, expected matches,
+and the external multi-broker connectivity/failover harness. Prepared XA branches are recorded
+before creation and rolled back by an explicit step or cleanup before queue deletion. New run
+manifests list all 50 cases as Not run; successful preparation never marks Browser observations
+passed. Automated matrix evidence is separate from the remaining manual/deployment acceptance.
 
 ## Configuration
 

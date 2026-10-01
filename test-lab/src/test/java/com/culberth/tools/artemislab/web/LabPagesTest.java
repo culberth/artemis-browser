@@ -77,7 +77,9 @@ class LabPagesTest
                 .andExpect(content().string(containsString("No lab broker is running")));
         mvc.perform(get("/catalog").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(content().string(containsString("LAB-SMOKE")))
-                .andExpect(content().string(containsString("not implemented yet")));
+                .andExpect(content().string(containsString("external harness")))
+                .andExpect(content().string(containsString("INVESTIGATION-CONTENT")))
+                .andExpect(content().string(not(containsString("Cases without a recipe yet"))));
     }
 
     @Test
@@ -86,9 +88,14 @@ class LabPagesTest
     {
         store.create(RunManifest.open("rpage", "rev", Instant.now(), "UTC", "", new RunManifest.BrokerRef("b1",
                 "apache/artemis:2.55.0-alpine", "2.55.0", "node-1", "127.0.0.1:62616")));
+        for (String recipe : List.of("INCIDENT", "INVESTIGATION"))
+            store.update("rpage", r -> r.withAction(com.culberth.tools.artemislab.run.ActionRecord.now("job", recipe,
+                    com.culberth.tools.artemislab.run.ActionRecord.Outcome.SUCCEEDED, "prepared")));
 
         mvc.perform(get("/runs/rpage").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(content().string(containsString("BODIES")))
+                .andExpect(content().string(containsString("Roll back prepared branch")))
+                .andExpect(content().string(containsString("Add ten messages")))
                 .andExpect(content().string(containsString("node-1")));
         mvc.perform(get("/runs/rpage/manifest.json").header("Host", "localhost")).andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", containsString("lab-run-rpage.json")))

@@ -1,0 +1,25 @@
+{
+  "baseRevision": "a77567b2bbc932fc2b09fc33d0d0b1de572372a2",
+  "branch": "codex/phase-15-p3",
+  "run": "2026-09-30 America/Los_Angeles",
+  "command": "mvn clean verify -Pintegration -Dit.test=ConnectivityIT",
+  "kind": "Final working-tree connectivity harness with backup quorum-size=1 and primary crash",
+  "suites": [
+    {
+      "scope": "target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectivityIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemisbrowser.broker.ConnectivityIT",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}

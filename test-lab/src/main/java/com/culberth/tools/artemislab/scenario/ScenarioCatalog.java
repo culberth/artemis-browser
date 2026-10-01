@@ -69,8 +69,8 @@ public class ScenarioCatalog
         Scenario scenario = find(id).orElseThrow(() -> new LabException("No scenario " + id + " in the catalog."));
         if (!scenario.runnable())
         {
-            throw new LabException("Scenario " + id + " is catalogued but not implemented yet (" + scenario.increment()
-                    + "). Nothing was run.");
+            throw new LabException(
+                    "Scenario " + id + " requires the external harness in the regression procedure. Nothing was run.");
         }
         return scenario;
     }

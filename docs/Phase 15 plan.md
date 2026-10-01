@@ -1,8 +1,7 @@
 # Phase 15 — Interactive regression lab
 
 Status: specified 2026-09-29; **P0 merged 2026-09-30** (PR #50) as the standalone Maven
-project `test-lab/`; **P1 merged 2026-09-30** (PR #52); **P2 merged 2026-09-30** (PR #55). P3 is not
-started.
+project `test-lab/`; **P1 merged 2026-09-30** (PR #52); **P2 merged 2026-09-30** (PR #55). P3 fixtures and automated matrix verification are implemented on `codex/phase-15-p3`; full manual acceptance remains open.
 
 ## Purpose
 
@@ -15,7 +14,7 @@ as the servers, controls and broker fixtures are refined.
 The baseline is the current code: Phases 1–14, including Phase 13 P3–P6 and Phase 14's optional P4
 and P5, all merged by 2026-09-30. When this plan was drafted (2026-09-29) only Phases 1–12 and
 Phase 13 P0–P2 had shipped, so cases F01–F08 were written as deferred; they now cover shipped
-features and are **Blocked** (no lab recipe yet, planned for P3), never Deferred or passed. A test
+features. P3 supplies fixtures or a named external harness; unexecuted cases remain **Not run** and missing subfixtures **Blocked**, never Deferred or passed. A test
 for an unimplemented Browser feature is deferred, not a pass or a regression. Reconcile this
 baseline with the commit under test on every release.
 
@@ -215,6 +214,16 @@ not readable per queue on these versions, as already recorded), the operator blo
 *Unblock*, `viewer`'s denied panel beside the panels that stand, a clear connection-loss path during a
 20s interrupt and a working reconnect, and the two defects above.
 
+## P3 implementation (2026-10-01)
+
+- **INCIDENT**: stepped growth/drain, pause/resume and recreation for F01/F02/F05; existing broker restart/interrupt and RATES controls provide timeline variants.
+- **INVESTIGATION**: waiting, scheduled, held and prepared XA IDs for F04/F06. XA connections are identity-checked before use. Exact branch ownership is persisted before prepare; explicit rollback and cleanup resolve only that branch, and a failed resolution preserves the queues.
+- **INVESTIGATION-CONTENT**: quoted/typed/time-boundary properties, supported/truncated/unsupported comparison bodies, and two real dead-letter origins plus missing metadata for F07/F08.
+- **CONNECTIVITY-HARNESS**: the owned multi-broker Browser integration harness now also recreates a synchronized backup and tests explicit reconnection after primary loss. It remains an external harness, not a lab web recipe; a dedicated federation traffic demonstration remains outside its coverage.
+- New run downloads enumerate every procedure case as NOT_RUN until recorded. Fixture preparation never silently passes Browser assertions.
+
+See [P3 procedure](Phase%2015%20P3%20procedure.md) and `evidence/phase-15-p3/` for precise controls and automated evidence. Full manual matrix execution, E06 deployment and acceptance of outstanding defects remain release work. P3 is not marked fully complete on fixture evidence alone.
+
 ## Delivery increments
 
 ### P0 — Catalog, isolation and repeatable startup
@@ -251,9 +260,10 @@ not readable per queue on these versions, as already recorded), the operator blo
 ### P3 — Complete current-feature regression and extend as features land
 
 - [ ] Execute all applicable cases in the draft procedure on both supported broker versions.
-- [ ] Implement fixtures for the Phase 13 P3–P6 and Phase 14 features, all now shipped (F01–F08):
+- [x] Implement fixtures or an explicit external harness for the Phase 13 P3–P6 and Phase 14 features (F01–F08):
       trends, snapshots/comparison, topology/HA, bridges, prepared XA/permissions, message
-      investigation, guided/saved searches, triage and message comparison.
+      investigation, guided/saved searches, triage and message comparison. The F03 harness covers
+      replication/bridges/mirror/sender; a dedicated federation traffic demonstration is still missing.
 - [ ] Promote verified instructions from draft to tested procedure; retain case IDs, evidence,
       version-specific expectations and a revision history.
 

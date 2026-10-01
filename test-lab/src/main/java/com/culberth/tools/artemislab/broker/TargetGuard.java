@@ -70,6 +70,19 @@ public final class TargetGuard
     public Connection open(String clientId) throws JMSException
     {
         Connection connection = factory.createConnection(user, password);
+        return verify(connection, clientId);
+    }
+
+    /** XA uses the same endpoint and per-connection identity check as ordinary workers. */
+    public jakarta.jms.XAConnection openXa() throws JMSException
+    {
+        var connection = ((jakarta.jms.XAConnectionFactory) factory).createXAConnection(user, password);
+        verify(connection, null);
+        return connection;
+    }
+
+    private Connection verify(Connection connection, String clientId) throws JMSException
+    {
         try
         {
             if (clientId != null && !clientId.isBlank())

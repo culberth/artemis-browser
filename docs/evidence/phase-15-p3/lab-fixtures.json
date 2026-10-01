@@ -1,0 +1,1993 @@
+{
+  "kind": "LabBrokerIT fixture and cleanup evidence only; Browser procedure results remain NOT_RUN",
+  "runs": [
+    {
+      "runId": "r20261001-044131-cc2d",
+      "catalogRevision": "2026-10-01.6",
+      "createdAt": "2026-10-01T04:41:31.621954200Z",
+      "zone": "America/Los_Angeles",
+      "broker": {
+        "brokerId": "b6efdf2ad",
+        "image": "apache/artemis:2.55.0-alpine",
+        "version": "2.55.0",
+        "nodeId": "41e376c9-bd52-11f1-9c7c-32ee2ea6a67d",
+        "endpoint": "127.0.0.1:58901",
+        "profile": "STANDARD"
+      },
+      "state": "CLEANED",
+      "generatedBytes": 1300,
+      "resources": [
+        {
+          "kind": "XA_BRANCH",
+          "name": "lab.r20261001-044131-cc2d.xa-branch",
+          "address": "lab.r20261001-044131-cc2d.invest-xa",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "rolled back during cleanup"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.invest-waiting",
+          "address": "lab.r20261001-044131-cc2d.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:32.996355300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.invest-scheduled",
+          "address": "lab.r20261001-044131-cc2d.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.000855200Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.invest-held",
+          "address": "lab.r20261001-044131-cc2d.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.005355400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.invest-xa",
+          "address": "lab.r20261001-044131-cc2d.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.008855300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.invest-xa-target",
+          "address": "lab.r20261001-044131-cc2d.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.014355100Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.guided",
+          "address": "lab.r20261001-044131-cc2d.guided",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.019477500Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.compare",
+          "address": "lab.r20261001-044131-cc2d.compare",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.024477300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.triage",
+          "address": "lab.r20261001-044131-cc2d.triage",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.028977200Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.triage-a",
+          "address": "lab.r20261001-044131-cc2d.triage-a",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.033477300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.triage-b",
+          "address": "lab.r20261001-044131-cc2d.triage-b",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.037977300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044131-cc2d.incident",
+          "address": "lab.r20261001-044131-cc2d.incident",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.042477300Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.incident",
+          "address": "lab.r20261001-044131-cc2d.incident",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.046712700Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.invest-waiting",
+          "address": "lab.r20261001-044131-cc2d.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.052065800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.invest-scheduled",
+          "address": "lab.r20261001-044131-cc2d.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.055754700Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.invest-held",
+          "address": "lab.r20261001-044131-cc2d.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.059896600Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.invest-xa",
+          "address": "lab.r20261001-044131-cc2d.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.064030600Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.invest-xa-target",
+          "address": "lab.r20261001-044131-cc2d.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.068030800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.guided",
+          "address": "lab.r20261001-044131-cc2d.guided",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.071531Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.compare",
+          "address": "lab.r20261001-044131-cc2d.compare",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.075530600Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.triage",
+          "address": "lab.r20261001-044131-cc2d.triage",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.081361200Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.triage-a",
+          "address": "lab.r20261001-044131-cc2d.triage-a",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.085030600Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044131-cc2d.triage-b",
+          "address": "lab.r20261001-044131-cc2d.triage-b",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.089030600Z"
+        },
+        {
+          "kind": "ADDRESS_SETTINGS",
+          "name": "lab.r20261001-044131-cc2d.triage-a",
+          "address": "lab.r20261001-044131-cc2d.triage-a",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "removed 2026-10-01T04:41:33.090570900Z"
+        },
+        {
+          "kind": "ADDRESS_SETTINGS",
+          "name": "lab.r20261001-044131-cc2d.triage-b",
+          "address": "lab.r20261001-044131-cc2d.triage-b",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "removed 2026-10-01T04:41:33.092571300Z"
+        }
+      ],
+      "sent": [
+        {
+          "queue": "lab.r20261001-044131-cc2d.invest-waiting",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5fce4f20-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-waiting"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.invest-scheduled",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:5fd023e1-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-scheduled"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.invest-held",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:5fd10e42-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-held"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.invest-xa",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:5fd18373-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-xa"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.invest-xa-target",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5fda3612-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "XA send, not committed"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.guided",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5fef9303-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.guided",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:5fefe124-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.guided",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:5ff0a475-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.guided",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:5ff18ed6-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.compare",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5ff22b17-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.compare",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:5ff27938-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.compare",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:5ff2c759-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.compare",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:5ff2ee6a-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 1000,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.compare",
+          "seq": 5,
+          "kind": "object",
+          "messageId": "ID:5ff3639b-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 64,
+          "note": "unsupported body"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.triage",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5ff3d8cc-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 9,
+          "note": "missing metadata"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.triage-a",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5ff4750d-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "dead-letter from triage-a"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.triage-b",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:5ff4ea3e-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "dead-letter from triage-b"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:60160601-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:60165422-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:60167b33-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:6016a244-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 5,
+          "kind": "text",
+          "messageId": "ID:6016c955-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 6,
+          "kind": "text",
+          "messageId": "ID:60171776-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 7,
+          "kind": "text",
+          "messageId": "ID:60173e87-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 8,
+          "kind": "text",
+          "messageId": "ID:60176598-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 9,
+          "kind": "text",
+          "messageId": "ID:60178ca9-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044131-cc2d.incident",
+          "seq": 10,
+          "kind": "text",
+          "messageId": "ID:6017b3ba-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-10-01T04:41:31.622954500Z",
+          "jobId": "",
+          "action": "create run",
+          "outcome": "SUCCEEDED",
+          "detail": "bound to broker b6efdf2ad, node 41e376c9-bd52-11f1-9c7c-32ee2ea6a67d"
+        },
+        {
+          "at": "2026-10-01T04:41:31.623453900Z",
+          "jobId": "jd6b4df67",
+          "action": "INCIDENT",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:31.658983700Z",
+          "jobId": "jd6b4df67",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:31.663984100Z",
+          "jobId": "jd6b4df67",
+          "action": "INCIDENT",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:31.674484100Z",
+          "jobId": "j3e3f2285",
+          "action": "INVESTIGATION",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:31.798849100Z",
+          "jobId": "j3e3f2285",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "started investigation holder, holding 1"
+        },
+        {
+          "at": "2026-10-01T04:41:31.844262300Z",
+          "jobId": "j3e3f2285",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Prepared branch lab.r20261001-044131-cc2d.xa-branch listed by the broker"
+        },
+        {
+          "at": "2026-10-01T04:41:31.846868400Z",
+          "jobId": "j3e3f2285",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.invest-waiting: messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:31.851367600Z",
+          "jobId": "j3e3f2285",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.invest-scheduled: scheduledCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:31.855406400Z",
+          "jobId": "j3e3f2285",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.invest-held: deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:31.859928800Z",
+          "jobId": "j3e3f2285",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.invest-xa: consumerCount 0, messageCount 1, deliveringCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:31.868925600Z",
+          "jobId": "j3e3f2285",
+          "action": "INVESTIGATION",
+          "outcome": "SUCCEEDED",
+          "detail": "Use the recorded JMS IDs on /search; /transactions lists the prepared branch. Scheduled delivery becomes eligible after five minutes."
+        },
+        {
+          "at": "2026-10-01T04:41:31.876426500Z",
+          "jobId": "j6154d4e7",
+          "action": "INVESTIGATION-CONTENT",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.035531600Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Received first attempt from triage-a"
+        },
+        {
+          "at": "2026-10-01T04:41:32.038585800Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.triage-a: messagesKilled 1, messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:32.061089800Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Received first attempt from triage-b"
+        },
+        {
+          "at": "2026-10-01T04:41:32.063588500Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.triage-b: messagesKilled 1, messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:32.065091400Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.triage: messageCount 3"
+        },
+        {
+          "at": "2026-10-01T04:41:32.066559500Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.compare: messageCount 5"
+        },
+        {
+          "at": "2026-10-01T04:41:32.067922500Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.guided: messageCount 4"
+        },
+        {
+          "at": "2026-10-01T04:41:32.105588200Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.guided [owner = 'O''Brien']: 2"
+        },
+        {
+          "at": "2026-10-01T04:41:32.130588300Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.guided [amount >= 30 AND enabled = TRUE]: 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.151589300Z",
+          "jobId": "j6154d4e7",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.guided [eventTime >= 1790812800000]: 3"
+        },
+        {
+          "at": "2026-10-01T04:41:32.158588500Z",
+          "jobId": "j6154d4e7",
+          "action": "INVESTIGATION-CONTENT",
+          "outcome": "SUCCEEDED",
+          "detail": "guided: 2 quoted-name matches, 1 numeric/boolean match, 3 UTC-boundary matches. compare: JSON reorder, changed typed property, long text, unsupported object. triage: two real origins plus one unknown."
+        },
+        {
+          "at": "2026-10-01T04:41:32.179590300Z",
+          "jobId": "jba531acf",
+          "action": "INCIDENT: Add ten messages",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.237111800Z",
+          "jobId": "jba531acf",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 10"
+        },
+        {
+          "at": "2026-10-01T04:41:32.242111100Z",
+          "jobId": "jba531acf",
+          "action": "INCIDENT: Add ten messages",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 10"
+        },
+        {
+          "at": "2026-10-01T04:41:32.296623Z",
+          "jobId": "j7757a111",
+          "action": "INCIDENT: Pause incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.331556200Z",
+          "jobId": "j7757a111",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.incident pause"
+        },
+        {
+          "at": "2026-10-01T04:41:32.337658700Z",
+          "jobId": "j7757a111",
+          "action": "INCIDENT: Pause incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044131-cc2d.incident pause"
+        },
+        {
+          "at": "2026-10-01T04:41:32.363935900Z",
+          "jobId": "j35af5b90",
+          "action": "INCIDENT: Resume incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.388962600Z",
+          "jobId": "j35af5b90",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.incident resume"
+        },
+        {
+          "at": "2026-10-01T04:41:32.394462900Z",
+          "jobId": "j35af5b90",
+          "action": "INCIDENT: Resume incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044131-cc2d.incident resume"
+        },
+        {
+          "at": "2026-10-01T04:41:32.415466200Z",
+          "jobId": "j227b18d2",
+          "action": "INCIDENT: Drain up to ten",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.459194900Z",
+          "jobId": "j227b18d2",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:32.465192800Z",
+          "jobId": "j227b18d2",
+          "action": "INCIDENT: Drain up to ten",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044131-cc2d.incident: messageCount 0; acknowledged 10"
+        },
+        {
+          "at": "2026-10-01T04:41:32.545358700Z",
+          "jobId": "j4d27bccd",
+          "action": "INCIDENT: Recreate incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.575874600Z",
+          "jobId": "j4d27bccd",
+          "action": "recreate queue",
+          "outcome": "SUCCEEDED",
+          "detail": "Recreated lab.r20261001-044131-cc2d.incident: id 12881 -> 13955."
+        },
+        {
+          "at": "2026-10-01T04:41:32.581374400Z",
+          "jobId": "j4d27bccd",
+          "action": "INCIDENT: Recreate incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "Recreated lab.r20261001-044131-cc2d.incident: id 12881 -> 13955."
+        },
+        {
+          "at": "2026-10-01T04:41:32.954631Z",
+          "jobId": "",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "investigation holder stopped (cleanup): 1 held message(s) returned unacknowledged"
+        },
+        {
+          "at": "2026-10-01T04:41:32.955631400Z",
+          "jobId": "j47bbafcf",
+          "action": "clean up",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:33.098571600Z",
+          "jobId": "j47bbafcf",
+          "action": "clean up",
+          "outcome": "SUCCEEDED",
+          "detail": "Every owned resource is gone."
+        }
+      ]
+    },
+    {
+      "runId": "r20261001-044132-e5ee",
+      "catalogRevision": "2026-10-01.6",
+      "createdAt": "2026-10-01T04:41:32.747052700Z",
+      "zone": "America/Los_Angeles",
+      "broker": {
+        "brokerId": "b6efdf2ad",
+        "image": "apache/artemis:2.55.0-alpine",
+        "version": "2.55.0",
+        "nodeId": "41e376c9-bd52-11f1-9c7c-32ee2ea6a67d",
+        "endpoint": "127.0.0.1:58901",
+        "profile": "STANDARD"
+      },
+      "state": "CLEANED",
+      "generatedBytes": 40,
+      "resources": [
+        {
+          "kind": "XA_BRANCH",
+          "name": "lab.r20261001-044132-e5ee.xa-branch",
+          "address": "lab.r20261001-044132-e5ee.invest-xa",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "rolled back by lab"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044132-e5ee.invest-waiting",
+          "address": "lab.r20261001-044132-e5ee.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.223118400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044132-e5ee.invest-scheduled",
+          "address": "lab.r20261001-044132-e5ee.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.228118700Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044132-e5ee.invest-held",
+          "address": "lab.r20261001-044132-e5ee.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.232118500Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044132-e5ee.invest-xa",
+          "address": "lab.r20261001-044132-e5ee.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.235619500Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044132-e5ee.invest-xa-target",
+          "address": "lab.r20261001-044132-e5ee.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.240118100Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044132-e5ee.invest-waiting",
+          "address": "lab.r20261001-044132-e5ee.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.245817800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044132-e5ee.invest-scheduled",
+          "address": "lab.r20261001-044132-e5ee.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.249317900Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044132-e5ee.invest-held",
+          "address": "lab.r20261001-044132-e5ee.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.252817800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044132-e5ee.invest-xa",
+          "address": "lab.r20261001-044132-e5ee.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.255821300Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044132-e5ee.invest-xa-target",
+          "address": "lab.r20261001-044132-e5ee.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:41:33.260099800Z"
+        }
+      ],
+      "sent": [
+        {
+          "queue": "lab.r20261001-044132-e5ee.invest-waiting",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:60745352-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-waiting"
+        },
+        {
+          "queue": "lab.r20261001-044132-e5ee.invest-scheduled",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:6074c883-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-scheduled"
+        },
+        {
+          "queue": "lab.r20261001-044132-e5ee.invest-held",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:60753db4-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-held"
+        },
+        {
+          "queue": "lab.r20261001-044132-e5ee.invest-xa",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:6075b2e5-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-xa"
+        },
+        {
+          "queue": "lab.r20261001-044132-e5ee.invest-xa-target",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:607c90c4-bd52-11f1-b53c-00155d348692",
+          "bodyBytes": 8,
+          "note": "XA send, not committed"
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-10-01T04:41:32.748552600Z",
+          "jobId": "",
+          "action": "create run",
+          "outcome": "SUCCEEDED",
+          "detail": "bound to broker b6efdf2ad, node 41e376c9-bd52-11f1-9c7c-32ee2ea6a67d"
+        },
+        {
+          "at": "2026-10-01T04:41:32.749052700Z",
+          "jobId": "ja8e4ad7e",
+          "action": "INVESTIGATION",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:32.870183500Z",
+          "jobId": "ja8e4ad7e",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "started investigation holder, holding 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.903402300Z",
+          "jobId": "ja8e4ad7e",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Prepared branch lab.r20261001-044132-e5ee.xa-branch listed by the broker"
+        },
+        {
+          "at": "2026-10-01T04:41:32.904902700Z",
+          "jobId": "ja8e4ad7e",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-waiting: messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.906902300Z",
+          "jobId": "ja8e4ad7e",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-scheduled: scheduledCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.909402300Z",
+          "jobId": "ja8e4ad7e",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-held: deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.911902600Z",
+          "jobId": "ja8e4ad7e",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-xa: consumerCount 0, messageCount 1, deliveringCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:32.917403Z",
+          "jobId": "ja8e4ad7e",
+          "action": "INVESTIGATION",
+          "outcome": "SUCCEEDED",
+          "detail": "Use the recorded JMS IDs on /search; /transactions lists the prepared branch. Scheduled delivery becomes eligible after five minutes."
+        },
+        {
+          "at": "2026-10-01T04:41:33.127119Z",
+          "jobId": "j02a3d5dc",
+          "action": "INVESTIGATION: Roll back prepared branch",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:33.168118600Z",
+          "jobId": "j02a3d5dc",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-xa: deliveringCount 0, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:41:33.169617700Z",
+          "jobId": "j02a3d5dc",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044132-e5ee.invest-xa-target: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:41:33.174618400Z",
+          "jobId": "j02a3d5dc",
+          "action": "INVESTIGATION: Roll back prepared branch",
+          "outcome": "SUCCEEDED",
+          "detail": "Rolled back lab.r20261001-044132-e5ee.xa-branch; receive returned and uncommitted send discarded."
+        },
+        {
+          "at": "2026-10-01T04:41:33.202118400Z",
+          "jobId": "",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "investigation holder stopped (cleanup): 1 held message(s) returned unacknowledged"
+        },
+        {
+          "at": "2026-10-01T04:41:33.202618100Z",
+          "jobId": "jb4a2cf19",
+          "action": "clean up",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:41:33.266144Z",
+          "jobId": "jb4a2cf19",
+          "action": "clean up",
+          "outcome": "SUCCEEDED",
+          "detail": "Every owned resource is gone."
+        }
+      ]
+    },
+    {
+      "runId": "r20261001-044304-b488",
+      "catalogRevision": "2026-10-01.6",
+      "createdAt": "2026-10-01T04:43:04.682109800Z",
+      "zone": "America/Los_Angeles",
+      "broker": {
+        "brokerId": "b8d119183",
+        "image": "apache/artemis:2.57.0-alpine",
+        "version": "2.57.0",
+        "nodeId": "7910387d-bd52-11f1-8c62-72a98113f5a3",
+        "endpoint": "127.0.0.1:50942",
+        "profile": "STANDARD"
+      },
+      "state": "CLEANED",
+      "generatedBytes": 1300,
+      "resources": [
+        {
+          "kind": "XA_BRANCH",
+          "name": "lab.r20261001-044304-b488.xa-branch",
+          "address": "lab.r20261001-044304-b488.invest-xa",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "rolled back during cleanup"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.invest-waiting",
+          "address": "lab.r20261001-044304-b488.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.323487300Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.invest-scheduled",
+          "address": "lab.r20261001-044304-b488.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.328487600Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.invest-held",
+          "address": "lab.r20261001-044304-b488.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.332986900Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.invest-xa",
+          "address": "lab.r20261001-044304-b488.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.337489400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.invest-xa-target",
+          "address": "lab.r20261001-044304-b488.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.341486700Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.guided",
+          "address": "lab.r20261001-044304-b488.guided",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.345986800Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.compare",
+          "address": "lab.r20261001-044304-b488.compare",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.349986800Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.triage",
+          "address": "lab.r20261001-044304-b488.triage",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.354013200Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.triage-a",
+          "address": "lab.r20261001-044304-b488.triage-a",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.357512600Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.triage-b",
+          "address": "lab.r20261001-044304-b488.triage-b",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.361014Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044304-b488.incident",
+          "address": "lab.r20261001-044304-b488.incident",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.381709800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.incident",
+          "address": "lab.r20261001-044304-b488.incident",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.391234100Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.invest-waiting",
+          "address": "lab.r20261001-044304-b488.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.395234200Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.invest-scheduled",
+          "address": "lab.r20261001-044304-b488.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.399232900Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.invest-held",
+          "address": "lab.r20261001-044304-b488.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.402734100Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.invest-xa",
+          "address": "lab.r20261001-044304-b488.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.406234300Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.invest-xa-target",
+          "address": "lab.r20261001-044304-b488.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.415233800Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.guided",
+          "address": "lab.r20261001-044304-b488.guided",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.419733200Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.compare",
+          "address": "lab.r20261001-044304-b488.compare",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.423734200Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.triage",
+          "address": "lab.r20261001-044304-b488.triage",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.427234Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.triage-a",
+          "address": "lab.r20261001-044304-b488.triage-a",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.431233700Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044304-b488.triage-b",
+          "address": "lab.r20261001-044304-b488.triage-b",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.435233100Z"
+        },
+        {
+          "kind": "ADDRESS_SETTINGS",
+          "name": "lab.r20261001-044304-b488.triage-a",
+          "address": "lab.r20261001-044304-b488.triage-a",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "removed 2026-10-01T04:43:06.437235500Z"
+        },
+        {
+          "kind": "ADDRESS_SETTINGS",
+          "name": "lab.r20261001-044304-b488.triage-b",
+          "address": "lab.r20261001-044304-b488.triage-b",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "removed 2026-10-01T04:43:06.439233Z"
+        }
+      ],
+      "sent": [
+        {
+          "queue": "lab.r20261001-044304-b488.invest-waiting",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:9757615e-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-waiting"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.invest-scheduled",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:975899df-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-scheduled"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.invest-held",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:97598440-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-held"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.invest-xa",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:975a95b1-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-xa"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.invest-xa-target",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:97682a50-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "XA send, not committed"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.guided",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:9784b331-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.guided",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:97850152-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.guided",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:97852863-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.guided",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:97857684-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "typed properties and UTC boundary"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.compare",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:9785ebb5-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.compare",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:978639d6-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.compare",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:978687f7-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 13,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.compare",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:9786d618-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 1000,
+          "note": "comparison pair"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.compare",
+          "seq": 5,
+          "kind": "object",
+          "messageId": "ID:97872439-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 64,
+          "note": "unsupported body"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.triage",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:9787996a-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 9,
+          "note": "missing metadata"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.triage-a",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:978835ab-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "dead-letter from triage-a"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.triage-b",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:9788d1ec-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "dead-letter from triage-b"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:97ae336f-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:97ae8190-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:97aea8a1-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:97aecfb2-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 5,
+          "kind": "text",
+          "messageId": "ID:97af1dd3-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 6,
+          "kind": "text",
+          "messageId": "ID:97af44e4-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 7,
+          "kind": "text",
+          "messageId": "ID:97af6bf5-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 8,
+          "kind": "text",
+          "messageId": "ID:97afe126-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 9,
+          "kind": "text",
+          "messageId": "ID:97b00837-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        },
+        {
+          "queue": "lab.r20261001-044304-b488.incident",
+          "seq": 10,
+          "kind": "text",
+          "messageId": "ID:97b02f48-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 10,
+          "note": "incident growth"
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-10-01T04:43:04.683609900Z",
+          "jobId": "",
+          "action": "create run",
+          "outcome": "SUCCEEDED",
+          "detail": "bound to broker b8d119183, node 7910387d-bd52-11f1-8c62-72a98113f5a3"
+        },
+        {
+          "at": "2026-10-01T04:43:04.684609900Z",
+          "jobId": "j4e19f88a",
+          "action": "INCIDENT",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:04.731109700Z",
+          "jobId": "j4e19f88a",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:04.746622800Z",
+          "jobId": "j4e19f88a",
+          "action": "INCIDENT",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:04.785511800Z",
+          "jobId": "j0043edf4",
+          "action": "INVESTIGATION",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:04.993399800Z",
+          "jobId": "j0043edf4",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "started investigation holder, holding 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.053405800Z",
+          "jobId": "j0043edf4",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Prepared branch lab.r20261001-044304-b488.xa-branch listed by the broker"
+        },
+        {
+          "at": "2026-10-01T04:43:05.056406800Z",
+          "jobId": "j0043edf4",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.invest-waiting: messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.061405100Z",
+          "jobId": "j0043edf4",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.invest-scheduled: scheduledCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.064905400Z",
+          "jobId": "j0043edf4",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.invest-held: deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.068908200Z",
+          "jobId": "j0043edf4",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.invest-xa: consumerCount 0, deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.086446200Z",
+          "jobId": "j0043edf4",
+          "action": "INVESTIGATION",
+          "outcome": "SUCCEEDED",
+          "detail": "Use the recorded JMS IDs on /search; /transactions lists the prepared branch. Scheduled delivery becomes eligible after five minutes."
+        },
+        {
+          "at": "2026-10-01T04:43:05.089447100Z",
+          "jobId": "j7abe2573",
+          "action": "INVESTIGATION-CONTENT",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.282574200Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Received first attempt from triage-a"
+        },
+        {
+          "at": "2026-10-01T04:43:05.286074300Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.triage-a: messagesKilled 1, messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:05.317074Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Received first attempt from triage-b"
+        },
+        {
+          "at": "2026-10-01T04:43:05.320574600Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.triage-b: messagesKilled 1, messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:05.322576900Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.triage: messageCount 3"
+        },
+        {
+          "at": "2026-10-01T04:43:05.325079100Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.compare: messageCount 5"
+        },
+        {
+          "at": "2026-10-01T04:43:05.327575700Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.guided: messageCount 4"
+        },
+        {
+          "at": "2026-10-01T04:43:05.352073700Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.guided [owner = 'O''Brien']: 2"
+        },
+        {
+          "at": "2026-10-01T04:43:05.373573700Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.guided [amount >= 30 AND enabled = TRUE]: 1"
+        },
+        {
+          "at": "2026-10-01T04:43:05.395688700Z",
+          "jobId": "j7abe2573",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.guided [eventTime >= 1790812800000]: 3"
+        },
+        {
+          "at": "2026-10-01T04:43:05.402709100Z",
+          "jobId": "j7abe2573",
+          "action": "INVESTIGATION-CONTENT",
+          "outcome": "SUCCEEDED",
+          "detail": "guided: 2 quoted-name matches, 1 numeric/boolean match, 3 UTC-boundary matches. compare: JSON reorder, changed typed property, long text, unsupported object. triage: two real origins plus one unknown."
+        },
+        {
+          "at": "2026-10-01T04:43:05.442244600Z",
+          "jobId": "j7b4133fe",
+          "action": "INCIDENT: Add ten messages",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.512972900Z",
+          "jobId": "j7b4133fe",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 10"
+        },
+        {
+          "at": "2026-10-01T04:43:05.518474900Z",
+          "jobId": "j7b4133fe",
+          "action": "INCIDENT: Add ten messages",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 10"
+        },
+        {
+          "at": "2026-10-01T04:43:05.563618300Z",
+          "jobId": "j82e7d7f5",
+          "action": "INCIDENT: Pause incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.586617300Z",
+          "jobId": "j82e7d7f5",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.incident pause"
+        },
+        {
+          "at": "2026-10-01T04:43:05.592617200Z",
+          "jobId": "j82e7d7f5",
+          "action": "INCIDENT: Pause incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044304-b488.incident pause"
+        },
+        {
+          "at": "2026-10-01T04:43:05.642955600Z",
+          "jobId": "j3014e193",
+          "action": "INCIDENT: Resume incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.67296Z",
+          "jobId": "j3014e193",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.incident resume"
+        },
+        {
+          "at": "2026-10-01T04:43:05.678459100Z",
+          "jobId": "j3014e193",
+          "action": "INCIDENT: Resume incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044304-b488.incident resume"
+        },
+        {
+          "at": "2026-10-01T04:43:05.694493200Z",
+          "jobId": "j559abddc",
+          "action": "INCIDENT: Drain up to ten",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.744006400Z",
+          "jobId": "j559abddc",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:05.755008400Z",
+          "jobId": "j559abddc",
+          "action": "INCIDENT: Drain up to ten",
+          "outcome": "SUCCEEDED",
+          "detail": "lab.r20261001-044304-b488.incident: messageCount 0; acknowledged 10"
+        },
+        {
+          "at": "2026-10-01T04:43:05.834523900Z",
+          "jobId": "j9a7dff99",
+          "action": "INCIDENT: Recreate incident queue",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:05.873024500Z",
+          "jobId": "j9a7dff99",
+          "action": "recreate queue",
+          "outcome": "SUCCEEDED",
+          "detail": "Recreated lab.r20261001-044304-b488.incident: id 12963 -> 14037."
+        },
+        {
+          "at": "2026-10-01T04:43:05.878523700Z",
+          "jobId": "j9a7dff99",
+          "action": "INCIDENT: Recreate incident queue",
+          "outcome": "SUCCEEDED",
+          "detail": "Recreated lab.r20261001-044304-b488.incident: id 12963 -> 14037."
+        },
+        {
+          "at": "2026-10-01T04:43:06.276452800Z",
+          "jobId": "",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "investigation holder stopped (cleanup): 1 held message(s) returned unacknowledged"
+        },
+        {
+          "at": "2026-10-01T04:43:06.276952100Z",
+          "jobId": "j142fd237",
+          "action": "clean up",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:06.444733Z",
+          "jobId": "j142fd237",
+          "action": "clean up",
+          "outcome": "SUCCEEDED",
+          "detail": "Every owned resource is gone."
+        }
+      ]
+    },
+    {
+      "runId": "r20261001-044306-9c58",
+      "catalogRevision": "2026-10-01.6",
+      "createdAt": "2026-10-01T04:43:06.068226700Z",
+      "zone": "America/Los_Angeles",
+      "broker": {
+        "brokerId": "b8d119183",
+        "image": "apache/artemis:2.57.0-alpine",
+        "version": "2.57.0",
+        "nodeId": "7910387d-bd52-11f1-8c62-72a98113f5a3",
+        "endpoint": "127.0.0.1:50942",
+        "profile": "STANDARD"
+      },
+      "state": "CLEANED",
+      "generatedBytes": 40,
+      "resources": [
+        {
+          "kind": "XA_BRANCH",
+          "name": "lab.r20261001-044306-9c58.xa-branch",
+          "address": "lab.r20261001-044306-9c58.invest-xa",
+          "routingType": "",
+          "state": "DELETED",
+          "detail": "rolled back by lab"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044306-9c58.invest-waiting",
+          "address": "lab.r20261001-044306-9c58.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.600112400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044306-9c58.invest-scheduled",
+          "address": "lab.r20261001-044306-9c58.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.604612500Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044306-9c58.invest-held",
+          "address": "lab.r20261001-044306-9c58.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.609612400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044306-9c58.invest-xa",
+          "address": "lab.r20261001-044306-9c58.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.614613400Z"
+        },
+        {
+          "kind": "QUEUE",
+          "name": "lab.r20261001-044306-9c58.invest-xa-target",
+          "address": "lab.r20261001-044306-9c58.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.619142300Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044306-9c58.invest-waiting",
+          "address": "lab.r20261001-044306-9c58.invest-waiting",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.623142300Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044306-9c58.invest-scheduled",
+          "address": "lab.r20261001-044306-9c58.invest-scheduled",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.627144400Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044306-9c58.invest-held",
+          "address": "lab.r20261001-044306-9c58.invest-held",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.638150600Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044306-9c58.invest-xa",
+          "address": "lab.r20261001-044306-9c58.invest-xa",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.648034400Z"
+        },
+        {
+          "kind": "ADDRESS",
+          "name": "lab.r20261001-044306-9c58.invest-xa-target",
+          "address": "lab.r20261001-044306-9c58.invest-xa-target",
+          "routingType": "ANYCAST",
+          "state": "DELETED",
+          "detail": "deleted 2026-10-01T04:43:06.652651900Z"
+        }
+      ],
+      "sent": [
+        {
+          "queue": "lab.r20261001-044306-9c58.invest-waiting",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:98155a60-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-waiting"
+        },
+        {
+          "queue": "lab.r20261001-044306-9c58.invest-scheduled",
+          "seq": 2,
+          "kind": "text",
+          "messageId": "ID:9815f6a1-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-scheduled"
+        },
+        {
+          "queue": "lab.r20261001-044306-9c58.invest-held",
+          "seq": 3,
+          "kind": "text",
+          "messageId": "ID:981692e2-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-held"
+        },
+        {
+          "queue": "lab.r20261001-044306-9c58.invest-xa",
+          "seq": 4,
+          "kind": "text",
+          "messageId": "ID:98170813-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "invest-xa"
+        },
+        {
+          "queue": "lab.r20261001-044306-9c58.invest-xa-target",
+          "seq": 1,
+          "kind": "text",
+          "messageId": "ID:981fbab2-bd52-11f1-a8b5-00155d348692",
+          "bodyBytes": 8,
+          "note": "XA send, not committed"
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-10-01T04:43:06.069258500Z",
+          "jobId": "",
+          "action": "create run",
+          "outcome": "SUCCEEDED",
+          "detail": "bound to broker b8d119183, node 7910387d-bd52-11f1-8c62-72a98113f5a3"
+        },
+        {
+          "at": "2026-10-01T04:43:06.069758600Z",
+          "jobId": "j54d44f04",
+          "action": "INVESTIGATION",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:06.212859100Z",
+          "jobId": "j54d44f04",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "started investigation holder, holding 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.245857500Z",
+          "jobId": "j54d44f04",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "Prepared branch lab.r20261001-044306-9c58.xa-branch listed by the broker"
+        },
+        {
+          "at": "2026-10-01T04:43:06.247359200Z",
+          "jobId": "j54d44f04",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-waiting: messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.249357800Z",
+          "jobId": "j54d44f04",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-scheduled: scheduledCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.251858200Z",
+          "jobId": "j54d44f04",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-held: deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.254857400Z",
+          "jobId": "j54d44f04",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-xa: consumerCount 0, deliveringCount 1, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.259857500Z",
+          "jobId": "j54d44f04",
+          "action": "INVESTIGATION",
+          "outcome": "SUCCEEDED",
+          "detail": "Use the recorded JMS IDs on /search; /transactions lists the prepared branch. Scheduled delivery becomes eligible after five minutes."
+        },
+        {
+          "at": "2026-10-01T04:43:06.493995200Z",
+          "jobId": "j6131dc16",
+          "action": "INVESTIGATION: Roll back prepared branch",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:06.535555500Z",
+          "jobId": "j6131dc16",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-xa: deliveringCount 0, messageCount 1"
+        },
+        {
+          "at": "2026-10-01T04:43:06.538065200Z",
+          "jobId": "j6131dc16",
+          "action": "assert",
+          "outcome": "ASSERTION_PASSED",
+          "detail": "lab.r20261001-044306-9c58.invest-xa-target: messageCount 0"
+        },
+        {
+          "at": "2026-10-01T04:43:06.543589900Z",
+          "jobId": "j6131dc16",
+          "action": "INVESTIGATION: Roll back prepared branch",
+          "outcome": "SUCCEEDED",
+          "detail": "Rolled back lab.r20261001-044306-9c58.xa-branch; receive returned and uncommitted send discarded."
+        },
+        {
+          "at": "2026-10-01T04:43:06.574112800Z",
+          "jobId": "",
+          "action": "worker",
+          "outcome": "SUCCEEDED",
+          "detail": "investigation holder stopped (cleanup): 1 held message(s) returned unacknowledged"
+        },
+        {
+          "at": "2026-10-01T04:43:06.574614600Z",
+          "jobId": "ja081e2fe",
+          "action": "clean up",
+          "outcome": "STARTED",
+          "detail": ""
+        },
+        {
+          "at": "2026-10-01T04:43:06.659151600Z",
+          "jobId": "ja081e2fe",
+          "action": "clean up",
+          "outcome": "SUCCEEDED",
+          "detail": "Every owned resource is gone."
+        }
+      ]
+    }
+  ]
+}

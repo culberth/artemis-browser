@@ -1,21 +1,14 @@
-# Artemis Browser regression procedure — first draft
+# Artemis Browser regression procedure
 
-Revision 0.2 · 2026-09-30 · **Design draft; not an executed test report.** The lab's P0 is
-implemented (`test-lab/`); every current case has a runnable recipe — P1's six, P2's `BEHAVIOR`,
-`PRESSURE`, `LOW-LIMITS`, `FAILURES`, `READONLY`, `SCALE` — or, for E05/E06, a written harness
-procedure below. Some recipes need a broker *profile* chosen when provisioning.
+Revision 0.6 · 2026-10-01. Runnable setup is available for P0–P3; see the [P3 supplement](Phase%2015%20P3%20procedure.md) for F01–F08, verified fixture expectations and external harness commands. **This document is a procedure, not a claim that every manual case passed.** Automated execution evidence is retained separately under `evidence/phase-15-p3/`.
 
-Companion: [Phase 15 plan](Phase%2015%20plan.md). The proposed lab controls and scenario names below
-are requirements for the test services, not controls that exist today. Startup commands, final
-labels and provisioning details must be filled in and verified as those services are implemented.
-Existing integration tests supply useful recipes but do not constitute execution of this procedure.
+Companion: [Phase 15 plan](Phase%2015%20plan.md). Some recipes require a broker profile chosen at provisioning. The complete manual regression and deployment acceptance gate remains open.
 
 ## Baseline and result rules
 
 Current coverage is Phases 1–14 (Phase 13 P3–P6 and Phase 14 P1–P5 merged by 2026-09-30). Use
 the commit actually under test to confirm availability. Cases F01–F08 were written as deferred
-when those features were planned; they have shipped, so record them **Blocked** (no lab recipe
-yet) until P3 supplies fixtures — never Deferred, never a pass. Never mark a missing fixture as a pass.
+when those features were planned. They now have runnable P3 setup or a named external harness; start at **Not run**, mark unavailable subcases **Blocked**, and never count a missing fixture as a pass.
 
 For each case record **Not run, Pass, Fail, Blocked, or Deferred**, actual result, evidence links,
 execution time, operator and defect reference. Pass requires both the verified broker precondition
@@ -60,8 +53,7 @@ images in the supported matrix; a result on one version is not a result on the o
    the Browser actions in order, record expected versus actual, then use its cleanup instruction.
    Always retain failure evidence before resetting.
 
-Proposed recipe aliases: **BASIC**, **BODIES**, **SEARCH**, **DELIVERY**, **SUBSCRIPTIONS**, **RATES**,
-**BEHAVIOR**, **PRESSURE**, **FAILURES**, **SCALE**. They are catalog names, not runnable commands.
+Runnable cards: **BASIC**, **BODIES**, **SEARCH**, **DELIVERY**, **SUBSCRIPTIONS**, **RATES**, **BEHAVIOR**, **PRESSURE**, **FAILURES**, **LOW-LIMITS**, **READONLY**, **SCALE**, **INCIDENT**, **INVESTIGATION**, **INVESTIGATION-CONTENT**. Select them on the run page.
 Unless a row says otherwise, cleanup means stop workers and reset that case's owned fixture.
 For asynchronous counts compare settled observations, not the instant a send method returned.
 
@@ -139,12 +131,11 @@ Run behavior variants separately; settings are verified effective values, not on
 | E07 Scale and responsiveness (P7/11–13) | SCALE: small preset first, then 100,000 bounded small messages, many queues/clients/subscriptions and held deliveries within resource budget. Exercise overview, late-match filters, search, export, client/address and Diagnose. | Results remain correct and bounded; capture latency, response size and Browser/lab/broker memory plus limits. Set performance budgets before execution; do not invent a universal latency pass threshold. Excess reads are disclosed. | Stop all workers; reset and check resource release. |
 | E08 Lab safeguards (P15) | Attempt wrong broker identity, invalid/out-of-range parameters, double Start, reset during a worker, blocked-send cancellation, lab restart and partial cleanup failure. | Wrong target performs no mutation; jobs remain bounded; duplicate requests do not duplicate data; interrupted work/cleanup failures are visible and recoverable; unrelated broker/resources are untouched. | Reconcile exact ownership manifest. |
 
-## Shipped features awaiting lab recipes
+## Current-feature P3 coverage
 
-Written as reserved coverage before these features shipped; all have now merged. Record them
-Blocked until P3 provides fixtures.
+Use the [P3 supplement](Phase%2015%20P3%20procedure.md): INCIDENT covers F01/F02/F05; INVESTIGATION covers F04/F06; INVESTIGATION-CONTENT covers F07/F08; CONNECTIVITY-HARNESS covers automated F03. Unexecuted UI assertions stay Not run and missing subfixtures Blocked.
 
-| ID / planned feature | Required fixture and future assertion |
+| ID / shipped feature | Required condition and assertion |
 |---|---|
 | F01 Trends (P13 P3) | Bounded growth/drain/idle/gap/restart timeline; verify honest timestamps, history bounds and counter discontinuities. |
 | F02 Snapshot export (P13 P4) | Healthy and partially denied/budget-limited runs; verify schema, collection window, completeness, bounded/redacted evidence and no default bodies/credentials. |
@@ -217,6 +208,7 @@ cases into the appropriate execution group. Maintain a feature-to-case review at
 
 | Revision | Change | Execution status |
 |---|---|---|
+| 0.6 — 2026-10-01 | P3 recipes, exact XA ownership and rollback, explicit all-case NOT_RUN manifests, current-feature supplement and connectivity failover harness | Automated evidence under evidence/phase-15-p3; full manual acceptance remains open |
 | 0.1 — 2026-09-29 | Initial current-feature catalog, proposed fixtures, expected observations, cleanup and future coverage | Not run; lab services pending |
 | 0.5 — 2026-09-30 | P2: BEHAVIOR, PRESSURE, LOW-LIMITS, FAILURES, READONLY, SCALE runnable; broker profiles (Restricted users, Low global memory, Disk threshold reached); Interrupt broker for E03; E05/E06 harness procedures | Partly executed live: Q01 Browser FAIL and E02 Browser FAIL (open defects), E01 and E03 PASS, E05 steps 1–3 PASS |
 | 0.4 — 2026-09-30 | DELIVERY, SUBSCRIPTIONS, RATES runnable with workers and steps; A02's durable subscriptions are named `lab-<run>.…` (Artemis escapes dots in a client id); A06 has *Recreate rate queue* and *Restart broker* | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |

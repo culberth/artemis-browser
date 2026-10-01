@@ -37,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>
  * The app connects to the primary only. The peer and the backup exist so the primary has something true to report about
  * them; nothing here asks them anything. Three brokers per version is slow to start, so one fixture serves every test,
- * and the one that stops the backup runs last.
+ * with backup loss followed by primary crash and explicit reconnection tested last.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ConnectivityIT
@@ -116,13 +116,14 @@ class ConnectivityIT
                         + "<address name=\"bridge.lost\"><anycast><queue name=\"bridge.lost\"/></anycast></address>",
                 ".*Server is now active.*\\n");
         primary.start();
+        // This bounded failover fixture uses quorum-size=1; it is not a partition-safety/quorum test.
         backup = broker("p5-a-backup",
                 """
                     <connectors>
                       <connector name="self">tcp://p5-a-backup:61616</connector>
                       <connector name="toA">tcp://p5-a:61616</connector>
                     </connectors>
-                    <ha-policy><replication><backup><group-name>pair-a</group-name><allow-failback>true</allow-failback></backup></replication></ha-policy>
+                    <ha-policy><replication><backup><group-name>pair-a</group-name><allow-failback>true</allow-failback><quorum-size>1</quorum-size></backup></replication></ha-policy>
                     """ + cluster(
                         "toA"),
                 "", ".*AMQ221024.*\\n");
@@ -418,5 +419,34 @@ class ConnectivityIT
                 .findFirst().orElseThrow(() -> new AssertionError(findings.toString()));
         assertNotNull(replica.detail());
         assertFalse(replica.isStuck());
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("after primary loss an explicitly reconnected Browser reads the promoted backup and replicated backlog")
+    void failoverToOwnedBackup() throws Exception
+    {
+        // The preceding case removed this harness's backup. Recreate it and prove synchronization before failure.
+        backup.start();
+        await("the replacement backup to synchronize", () -> read().ha().replicaSync().orElse(false));
+        String node = read().ha().nodeId().value();
+        brokerSession.close();
+        // Crash the owned primary: a graceful shutdown does not request failover with this profile's defaults.
+        primary.getDockerClient().killContainerCmd(primary.getContainerId()).withSignal("KILL").exec();
+        try
+        {
+            await("the owned backup to activate", () -> backup.getLogs().contains("Server is now active"));
+        }
+        catch (AssertionError timeout)
+        {
+            throw new AssertionError(timeout.getMessage() + "\n" + backup.getLogs(), timeout);
+        }
+        // Browser never silently follows the container-only topology addresses. The operator reconnects explicitly.
+        brokerSession.connect(new BrokerCredentials(backup.getHost(), backup.getMappedPort(61616),
+                ArtemisBrokerSupport.USER, ArtemisBrokerSupport.PASSWORD));
+        Connectivity promoted = read();
+        assertTrue(promoted.ha().active().value());
+        assertEquals(node, promoted.ha().nodeId().value(), "replication retains the logical broker identity");
+        assertEquals(3, promoted.queue("bridge.lost").messageCount(), "unforwarded persistent messages survived");
     }
 }

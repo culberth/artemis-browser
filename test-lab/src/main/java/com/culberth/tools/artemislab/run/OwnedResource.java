@@ -20,7 +20,7 @@ public record OwnedResource(Kind kind, String name, String address, String routi
 
     public enum Kind
     {
-        ADDRESS, QUEUE, DIVERT,
+        ADDRESS, QUEUE, DIVERT, XA_BRANCH,
         /** Address settings added for exactly this address match; removing them restores what applied before. */
         ADDRESS_SETTINGS
     }

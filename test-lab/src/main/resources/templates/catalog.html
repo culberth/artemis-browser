@@ -12,7 +12,7 @@
     <div class="panel">
         <h2>Scenario catalog <span class="muted" th:text="'revision ' + ${catalog.revision()}">revision</span></h2>
         <p class="note">One card per recipe in the regression procedure. Only runnable cards can be run; the others
-            describe the recipe to come and the case ids it will serve. A prepared fixture is never a Browser pass by
+            describe an external harness and its case IDs. A prepared fixture is never a Browser pass by
             itself: each case records the fixture result and the Browser observation separately.</p>
     </div>
 
@@ -21,7 +21,7 @@
             <span class="mono" th:text="${s.id()}">BASIC</span> &mdash; <span th:text="${s.title()}">title</span>
             <span class="badge" th:text="${s.increment()}">P1</span>
             <span class="badge" th:if="${s.runnable()}">runnable</span>
-            <span class="badge warn" th:unless="${s.runnable()}">not implemented yet</span>
+            <span class="badge warn" th:unless="${s.runnable()}">external harness</span>
         </h2>
         <p th:text="${s.summary()}">summary</p>
         <p class="note" th:text="${s.expected()}">expected</p>
@@ -33,7 +33,7 @@
 
     <div class="panel" th:if="${!catalog.unserved().isEmpty()}">
         <h2>Cases without a recipe yet</h2>
-        <p class="note">These features have shipped in Artemis Browser; their fixtures are planned for P3.</p>
+        <p class="note">These features have shipped in Artemis Browser; no recipe or harness is catalogued for them.</p>
         <p><span th:each="c : ${catalog.unserved()}" class="badge" th:title="${c.group()}"
                  th:text="${c.id()} + ' ' + ${c.title()}">F01</span></p>
     </div>

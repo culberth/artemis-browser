@@ -1,0 +1,41 @@
+{
+  "baseRevision": "a77567b2bbc932fc2b09fc33d0d0b1de572372a2",
+  "branch": "codex/phase-15-p3",
+  "run": "2026-09-30 America/Los_Angeles",
+  "command": "mvn -f test-lab/pom.xml clean verify -Pintegration",
+  "kind": "P3 working-tree lab integration checks",
+  "suites": [
+    {
+      "scope": "test-lab/target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemislab.LabBrokerIT",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "test-lab/target/failsafe-reports/deployed",
+      "name": "com.culberth.tools.artemislab.LabProfilesIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "test-lab/target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemislab.LabBrokerIT",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "scope": "test-lab/target/failsafe-reports/newest",
+      "name": "com.culberth.tools.artemislab.LabProfilesIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}
