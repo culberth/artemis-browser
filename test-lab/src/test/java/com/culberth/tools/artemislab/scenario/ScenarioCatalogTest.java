@@ -42,11 +42,12 @@ class ScenarioCatalogTest
     }
 
     @Test
-    @DisplayName("Only LAB-SMOKE is runnable in P0; a catalogued recipe that is not implemented refuses to run")
+    @DisplayName("Implemented recipes run; a catalogued recipe that is not implemented refuses to run")
     void onlyImplementedScenariosRun()
     {
         assertEquals(SmokeScenario.ID, catalog.runnable(SmokeScenario.ID).id());
-        assertThrows(LabException.class, () -> catalog.runnable("BASIC"));
+        assertEquals("BASIC", catalog.runnable("BASIC").id());
+        assertThrows(LabException.class, () -> catalog.runnable("DELIVERY"));
         assertThrows(LabException.class, () -> catalog.runnable("NOPE"));
         assertTrue(catalog.knowsCase("E08"));
         assertFalse(catalog.knowsCase("Z99"));

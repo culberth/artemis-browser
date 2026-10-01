@@ -18,7 +18,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param maxRuns           run manifests kept on disk
  */
 @ConfigurationProperties("lab.limits")
-public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("65536") int maxBodyBytes,
+public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("262144") int maxBodyBytes,
         @DefaultValue("2") int maxWorkers, @DefaultValue("52428800") long maxRunBytes,
         @DefaultValue("10s") Duration operationTimeout, @DefaultValue("30s") Duration readinessDeadline,
         @DefaultValue("50") int maxRuns)
@@ -46,7 +46,7 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("65
     /** The defaults, for tests and anything constructed outside Spring. */
     public static LabLimits defaults()
     {
-        return new LabLimits(1000, 65536, 2, 52428800L, Duration.ofSeconds(10), Duration.ofSeconds(30), 50);
+        return new LabLimits(1000, 262144, 2, 52428800L, Duration.ofSeconds(10), Duration.ofSeconds(30), 50);
     }
 
     /** A requested message count, refused rather than clamped: a silently smaller fixture is a wrong fixture. */

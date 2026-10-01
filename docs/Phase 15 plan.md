@@ -108,13 +108,39 @@ Selected values for the open decisions this plan listed:
 | Brokers | Testcontainers, one at a time, pinned images from `lab.broker.images` (default the pom matrix), labelled `artemis-lab.broker=<id>`, 61616 published on **127.0.0.1:62616** (`lab.broker.port`); a taken port is refused, never moved |
 | Identity | node id recorded after two concurrent connections agree; every later connection checked by `TargetGuard` before use; `useTopologyForLoadBalancing=false` and `callTimeout` on the factory URL |
 | Run records | one JSON manifest per run under `lab.data-dir` (default `~/.artemis-lab/runs`), at most `lab.limits.max-runs` (50); oldest finished runs pruned; no password field |
-| Worker limits | `lab.limits.*`: 1,000 messages per action, 64KB bodies, 2 workers, 50MB per run, 10s operations, 30s readiness — each under a hard ceiling in `LabLimits` |
+| Worker limits | `lab.limits.*`: 1,000 messages per action, 256KiB bodies (raised from 64KB in P1 so `BODIES` can send 250,000-byte large messages), 2 workers, 50MB per run, 10s operations, 30s readiness — each under a hard ceiling in `LabLimits` |
 | Restart | STARTED actions without an outcome become INTERRUPTED; open runs become BROKER_GONE; labelled containers the process did not start are listed as leftovers (removable only if still labelled); nothing resumes |
 
 Start it with `mvn -f test-lab/pom.xml spring-boot:run` (Docker required). The one runnable
 scenario is `LAB-SMOKE`: an owned anycast queue `lab.<runId>.smoke`, recorded PLANNED only after
 the broker is seen not to have it, then a bounded deterministic send and a `messageCount`
 assertion with a deadline. Every other catalog card is listed but refuses to run.
+
+## Implemented (P1, first part: static fixtures, 2026-09-30)
+
+Branch `phase15-p1-message-fixtures`. `BASIC`, `BODIES` and `SEARCH` are runnable; their exact
+contents are on the catalog page and in each recipe's Javadoc. They are one-shot: everything they
+prepare stays put with no worker running, so they need no held consumers. `DELIVERY`,
+`SUBSCRIPTIONS` and `RATES` need long-lived workers and follow separately.
+
+- **Recipes** implement `Recipe` and build with `Fixture` (owned queue creation, guarded `Sender`s,
+  one-shot consumption, readiness assertions read from the broker) — so every recipe inherits the
+  P0 guarantees. The registry must equal the catalog's runnable cards or the lab does not start.
+- **Send manifest**: every accepted message is recorded in the run manifest (queue, `labSeq`, kind,
+  JMS message id, size, role), bounded at 2,000 with the rest counted — what M05/M06 compare
+  Browser's results and exports against. Every message carries `labRun` and `labSeq`.
+- **Assertions** use management counters and, for selections, a JMS `QueueBrowser` over the whole
+  queue — never a filtered `countMessages`, which looks at the first 200 only.
+- **Priority order**: Artemis keeps a queue in priority order, so `SEARCH`'s late markers take
+  priority 0 (everything else 1–9) to sit at browse positions 291–300; with priority `seq % 10`
+  the first late marker browsed 26th, defeating the case.
+
+Verified 2026-09-30: `LabBrokerIT` 7/7 on 2.55.0 and 2.57.0, checking each recipe independently
+of the lab; live, Artemis Browser showed BASIC's counters (9 / 2 scheduled / 12 added / 3 acked),
+six pages of `paged` with one row on the last, the odd name encoded in links, escaped HTML and
+intact Unicode in BODIES, large badges, the four formula values neutralised in CSV, and SEARCH's
+filters at 10 / 31 / 150 / 50 with cross-queue search listing both late queues and a capped floor
+for `search-many`.
 
 Verified 2026-09-30: `LabBrokerIT` on 2.55.0 and 2.57.0 (provision and identity, wrong target
 refused with nothing created, smoke count asserted independently, cleanup proven, taken port
@@ -134,8 +160,8 @@ and the smoke queue with 40 on `/overview`.
 
 ### P1 — Message and client fixtures
 
-- [ ] Baseline queues, mixed bodies/properties, long/large bodies, core filters, paging/search caps,
-      export limits and formula-like values.
+- [x] Baseline queues, mixed bodies/properties, long/large bodies, core filters, paging/search caps,
+      export limits and formula-like values. (`BASIC`, `BODIES`, `SEARCH`)
 - [ ] Scheduled messages, held deliveries, controlled acknowledgment/redelivery, dead lettering,
       expiry and missing-destination variants.
 - [ ] Bounded producers/consumers, rate transitions, clients with and without IDs, durable/shared/

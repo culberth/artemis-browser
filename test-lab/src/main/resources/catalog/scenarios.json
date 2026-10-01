@@ -1,5 +1,5 @@
 {
-  "revision": "2026-09-30.1",
+  "revision": "2026-09-30.2",
   "scenarios": [
     {
       "id": "LAB-SMOKE",
@@ -14,27 +14,27 @@
       "id": "BASIC",
       "title": "Basic queues and connection",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Empty and populated queues with distinct waiting, delivering, scheduled, added, acked, expired and killed counts; names with spaces, & and Unicode; 0, 1 and 251 persistent messages with sequence properties.",
-      "expected": "Overview counters, sorting and filters, paging and refresh match independent lab readings.",
+      "runnable": true,
+      "summary": "Five owned queues: empty (0); one (1 persistent); paged (251 persistent, seq 1..251); counters (12 sent, 3 consumed and acknowledged, 2 scheduled an hour out); and 'odd name & ü 日本', one message, for link encoding.",
+      "expected": "Fixture assertions: empty 0, one 1, paged 251; counters messageCount 9, scheduledCount 2, messagesAdded 12, messagesAcknowledged 3; odd name 1. In Artemis Browser: overview counters match, paged gives six pages at size 50 with one row on the last, scheduled messages are counted but not browsed, and the odd name links and escapes correctly. Delivering, expired and killed counts need held consumers and come with DELIVERY.",
       "cases": ["C01", "C02", "C03", "C04", "M01"]
     },
     {
       "id": "BODIES",
       "title": "Message bodies and export content",
       "increment": "P1",
-      "runnable": false,
-      "summary": "Text, bytes, map, stream, object and empty bodies; typed properties; Unicode, quotes, newlines, literal HTML; long and large (250KB) bodies; values beginning =, +, - and @.",
-      "expected": "Detail, previews, large badges, downloads and CSV/JSON exports agree with the send manifest; CSV neutralises formulas.",
+      "runnable": true,
+      "summary": "One queue, bodies, with 17 messages in labSeq order: plain text; Unicode, quotes, newline and literal HTML; empty and null text; bytes 0..63 and empty bytes; map; stream; object; one property of every type; 1,000-character text; 250,000-character text and 250,000 bytes (large messages); bodies and a note property starting =, +, - and @ with commas, quotes and newlines. Each carries labCase naming it.",
+      "expected": "Fixture assertion: messageCount 17. In Artemis Browser: each detail page matches its labCase; HTML shows as text; the two 250,000 messages carry large badges and bounded previews; exports parse, carry full supported bodies, and the CSV neutralises the four formula-like values. Compare with the run's send manifest.",
       "cases": ["M03", "M04", "M06", "M08", "M09"]
     },
     {
       "id": "SEARCH",
       "title": "Filters, search and export bounds",
       "increment": "P1",
-      "runnable": false,
-      "summary": "300 messages with a late marker at positions 251-260, distinct priority, durability and timestamps; matches across two queues; known exact IDs.",
-      "expected": "Core filters, cross-queue search, match caps and export limits behave as documented.",
+      "runnable": true,
+      "summary": "search-a: 300 messages, marker='late' on 251-260 only (priority 0, so they browse last, at positions 291-300; every other message priority 1-9), odd seq persistent and even non-persistent, region eu/us, amount seq*3, distinct timestamps. search-b: 20, marker='late' on 5-8. search-many: 60, all marker='many' (over the 50-per-queue search cap). export-bounds: ten 400-character bodies, marker='deep' on 7-10.",
+      "expected": "Fixture assertions: the four counts, and by a whole-queue QueueBrowser marker='late' 10 and 4, marker='many' 60, marker='deep' 4, region='eu' AND amount>600 50. In Artemis Browser: the core filters marker = 'late', AMQPriority = 9, AMQDurable = 'NON_DURABLE' and region = 'eu' AND amount > 600 find exactly these; cross-queue search reports both late queues and a capped floor for search-many; exact-id lookups use ids from the send manifest.",
       "cases": ["M02", "M05", "M06", "M07"]
     },
     {

@@ -21,7 +21,7 @@ class LabLimitsTest
         assertThrows(LabException.class, () -> limits.checkCount(0));
         assertThrows(LabException.class, () -> limits.checkCount(1001));
         assertThrows(LabException.class, () -> limits.checkBodyBytes(-1));
-        assertThrows(LabException.class, () -> limits.checkBodyBytes(65537));
+        assertThrows(LabException.class, () -> limits.checkBodyBytes(262145));
     }
 
     @Test

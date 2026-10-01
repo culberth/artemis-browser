@@ -243,8 +243,11 @@ case's fixture and Browser results on the run page; download the run manifest as
 mvn -f test-lab/pom.xml clean verify -Pintegration
 ```
 
-checks the lab itself against both supported broker versions. Only `LAB-SMOKE` runs today (P0);
-the [catalog](docs/Phase%2015%20plan.md) lists the recipes to come and the
+checks the lab itself against both supported broker versions. Runnable today: `LAB-SMOKE`,
+`BASIC` (known counts, paging, scheduled, an awkward queue name), `BODIES` (every body kind,
+large messages, formula-like values) and `SEARCH` (filter matches past the first 200, the
+search cap, export bounds). Each run's manifest lists every message sent, with its id. The
+[catalog](docs/Phase%2015%20plan.md) lists the recipes to come and the
 [regression procedure](docs/Phase%2015%20regression%20procedure.md) the cases they serve. Port
 62616 must be free: the lab refuses a taken port rather than moving the broker.
 

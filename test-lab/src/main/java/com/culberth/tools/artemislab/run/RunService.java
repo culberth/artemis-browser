@@ -15,7 +15,8 @@ import com.culberth.tools.artemislab.run.OwnedResource.State;
 import com.culberth.tools.artemislab.run.RunManifest.BrokerRef;
 import com.culberth.tools.artemislab.run.RunManifest.RunState;
 import com.culberth.tools.artemislab.scenario.ScenarioCatalog;
-import com.culberth.tools.artemislab.scenario.SmokeScenario;
+import com.culberth.tools.artemislab.scenario.Fixture;
+import com.culberth.tools.artemislab.scenario.Recipe;
 import jakarta.jms.Connection;
 import jakarta.jms.JMSException;
 import java.time.Instant;
@@ -24,9 +25,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 import org.apache.activemq.artemis.api.core.management.ResourceNames;
 import org.springframework.stereotype.Service;
 
@@ -46,18 +51,59 @@ public class RunService
     private final JobRunner runner;
     private final BrokerService brokers;
     private final ScenarioCatalog catalog;
-    private final SmokeScenario smoke;
+    private final Map<String, Recipe> recipes;
     private final LabLimits limits;
 
     public RunService(RunStore store, JobRunner runner, BrokerService brokers, ScenarioCatalog catalog,
-            SmokeScenario smoke, LabLimits limits)
+            List<Recipe> recipes, LabLimits limits)
     {
         this.store = store;
         this.runner = runner;
         this.brokers = brokers;
         this.catalog = catalog;
-        this.smoke = smoke;
+        this.recipes = registry(recipes, catalog);
         this.limits = limits;
+    }
+
+    /**
+     * Recipes by id, which must be exactly the catalog's runnable cards: a card marked runnable with nothing behind it,
+     * or a recipe the catalog still calls unimplemented, fails startup rather than a click.
+     */
+    static Map<String, Recipe> registry(List<Recipe> recipes, ScenarioCatalog catalog)
+    {
+        Map<String, Recipe> byId = new LinkedHashMap<>();
+        for (Recipe recipe : recipes)
+        {
+            if (byId.put(recipe.id(), recipe) != null)
+            {
+                throw new IllegalStateException("Two recipes claim " + recipe.id());
+            }
+        }
+        Set<String> runnable = catalog.scenarios().stream().filter(ScenarioCatalog.Scenario::runnable)
+                .map(ScenarioCatalog.Scenario::id).collect(Collectors.toSet());
+        if (!runnable.equals(byId.keySet()))
+        {
+            throw new IllegalStateException(
+                    "Catalog runnable cards " + runnable + " do not match the implemented recipes " + byId.keySet());
+        }
+        return Map.copyOf(byId);
+    }
+
+    /** The runnable scenarios, in catalog order, with their parameters. */
+    public List<RunnableScenario> runnable()
+    {
+        return catalog.scenarios().stream().filter(ScenarioCatalog.Scenario::runnable)
+                .map(card -> new RunnableScenario(card, recipes.get(card.id()).params(limits))).toList();
+    }
+
+    /**
+     * A runnable catalog card and its form parameters.
+     *
+     * @param card   the catalog card
+     * @param params what its form asks for
+     */
+    public record RunnableScenario(ScenarioCatalog.Scenario card, List<Recipe.Param> params)
+    {
     }
 
     /** A new run bound to the current broker by identity. */
@@ -72,16 +118,16 @@ public class RunService
         {
             throw new LabException("The Browser commit field takes a revision, at most 80 characters.");
         }
-        RunManifest manifest = new RunManifest(RunManifest.SCHEMA, runId, catalog.revision(), Instant.now(),
+        RunManifest manifest = RunManifest.open(runId, catalog.revision(), Instant.now(),
                 ZoneId.systemDefault().getId(), commit, new BrokerRef(broker.brokerId(), broker.image(),
-                        broker.reportedVersion(), broker.nodeId(), broker.endpoint()),
-                RunState.OPEN, 0, List.of(), List.of(), 0, List.of());
+                        broker.reportedVersion(), broker.nodeId(), broker.endpoint()));
         store.create(manifest);
         return store.update(runId, r -> r.withAction(ActionRecord.now("", "create run", Outcome.SUCCEEDED,
                 "bound to broker " + broker.brokerId() + ", node " + broker.nodeId())));
     }
 
-    public Job runScenario(String runId, String scenarioId, int count, int bodyBytes, String token)
+    /** Runs a catalogued recipe in the run, with its parameters validated server-side. */
+    public Job runScenario(String runId, String scenarioId, Map<String, String> form, String token)
     {
         RunManifest run = store.get(runId);
         catalog.runnable(scenarioId);
@@ -89,19 +135,50 @@ public class RunService
         {
             throw new LabException("Run " + runId + " is " + run.state() + "; it accepts no more scenarios.");
         }
-        if (!SmokeScenario.ID.equals(scenarioId))
-        {
-            throw new LabException("No implementation is wired for " + scenarioId + ".");
-        }
-        limits.checkCount(count);
-        limits.checkBodyBytes(bodyBytes);
+        Recipe recipe = recipes.get(scenarioId);
+        Map<String, Integer> params = parameters(recipe.params(limits), form);
         LabBroker broker = boundBroker(run);
-        String action = scenarioId + " (" + count + " x " + bodyBytes + " bytes)";
+        String action = params.isEmpty() ? scenarioId : scenarioId + " " + params;
         return runner.submit(runId, token, action, job -> recorded(runId, job, action, () ->
         {
-            TargetGuard guard = brokers.guard(broker);
-            return smoke.run(job, runId, guard, count, bodyBytes);
+            try (Fixture fixture = Fixture.open(job, runId, brokers.guard(broker), store, limits))
+            {
+                return recipe.run(fixture, params);
+            }
         }));
+    }
+
+    /** Each declared parameter from the form, or its default; anything else in the form is ignored. */
+    static Map<String, Integer> parameters(List<Recipe.Param> declared, Map<String, String> form)
+    {
+        Map<String, Integer> values = new LinkedHashMap<>();
+        for (Recipe.Param param : declared)
+        {
+            String raw = form == null ? null : form.get(param.name());
+            int value;
+            if (raw == null || raw.isBlank())
+            {
+                value = param.defaultValue();
+            }
+            else
+            {
+                try
+                {
+                    value = Integer.parseInt(raw.strip());
+                }
+                catch (NumberFormatException e)
+                {
+                    throw new LabException(param.label() + " must be a whole number; got \"" + raw + "\".");
+                }
+            }
+            if (value < param.min() || value > param.max())
+            {
+                throw new LabException(param.label() + " must be between " + param.min() + " and " + param.max()
+                        + "; got " + value + ".");
+            }
+            values.put(param.name(), value);
+        }
+        return values;
     }
 
     /**

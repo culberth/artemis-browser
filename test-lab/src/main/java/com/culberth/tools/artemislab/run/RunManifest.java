@@ -22,20 +22,33 @@ import java.util.function.UnaryOperator;
  * @param history         the action log, oldest first, bounded
  * @param droppedHistory  how many of the oldest entries the bound dropped
  * @param results         per-case results, fixture and Browser kept apart
+ * @param sent            the send manifest: one line per message the broker accepted, bounded
+ * @param droppedSent     how many sends the bound left out of {@code sent}
  */
 public record RunManifest(String schema, String runId, String catalogRevision, Instant createdAt, String zone,
         String browserCommit, BrokerRef broker, RunState state, long generatedBytes, List<OwnedResource> resources,
-        List<ActionRecord> history, int droppedHistory, List<CaseResult> results)
+        List<ActionRecord> history, int droppedHistory, List<CaseResult> results, List<SentMessage> sent,
+        int droppedSent)
 {
 
     public static final String SCHEMA = "artemis-lab-run/1";
     static final int MAX_HISTORY = 500;
+    static final int MAX_SENT = 2000;
 
     public RunManifest
     {
         resources = resources == null ? List.of() : List.copyOf(resources);
         history = history == null ? List.of() : List.copyOf(history);
         results = results == null ? List.of() : List.copyOf(results);
+        sent = sent == null ? List.of() : List.copyOf(sent);
+    }
+
+    /** A new, empty, open run. */
+    public static RunManifest open(String runId, String catalogRevision, Instant createdAt, String zone,
+            String browserCommit, BrokerRef broker)
+    {
+        return new RunManifest(SCHEMA, runId, catalogRevision, createdAt, zone, browserCommit, broker, RunState.OPEN, 0,
+                List.of(), List.of(), 0, List.of(), List.of(), 0);
     }
 
     /** The run's resource prefix. Naming only — never on its own a reason to delete something. */
@@ -49,16 +62,21 @@ public record RunManifest(String schema, String runId, String catalogRevision, I
         return state == RunState.OPEN;
     }
 
+    public boolean owns(String name)
+    {
+        return resources.stream().anyMatch(r -> r.name().equals(name) && r.state().mayExist());
+    }
+
     public RunManifest withState(RunState next)
     {
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, next,
-                generatedBytes, resources, history, droppedHistory, results);
+                generatedBytes, resources, history, droppedHistory, results, sent, droppedSent);
     }
 
     public RunManifest withGeneratedBytes(long bytes)
     {
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state, bytes,
-                resources, history, droppedHistory, results);
+                resources, history, droppedHistory, results, sent, droppedSent);
     }
 
     public RunManifest withResource(OwnedResource resource)
@@ -67,13 +85,14 @@ public record RunManifest(String schema, String runId, String catalogRevision, I
         next.removeIf(r -> r.kind() == resource.kind() && r.name().equals(resource.name()));
         next.add(resource);
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state,
-                generatedBytes, next, history, droppedHistory, results);
+                generatedBytes, next, history, droppedHistory, results, sent, droppedSent);
     }
 
     public RunManifest withResources(UnaryOperator<OwnedResource> change)
     {
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state,
-                generatedBytes, resources.stream().map(change).toList(), history, droppedHistory, results);
+                generatedBytes, resources.stream().map(change).toList(), history, droppedHistory, results, sent,
+                droppedSent);
     }
 
     public RunManifest withAction(ActionRecord action)
@@ -87,7 +106,7 @@ public record RunManifest(String schema, String runId, String catalogRevision, I
             dropped++;
         }
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state,
-                generatedBytes, resources, next, dropped, results);
+                generatedBytes, resources, next, dropped, results, sent, droppedSent);
     }
 
     public RunManifest withResult(CaseResult result)
@@ -96,7 +115,28 @@ public record RunManifest(String schema, String runId, String catalogRevision, I
         next.removeIf(r -> r.caseId().equals(result.caseId()));
         next.add(result);
         return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state,
-                generatedBytes, resources, history, droppedHistory, next);
+                generatedBytes, resources, history, droppedHistory, next, sent, droppedSent);
+    }
+
+    /** Appends sends, keeping the earliest {@link #MAX_SENT} and counting the rest, and adds their body bytes. */
+    public RunManifest withSent(List<SentMessage> more)
+    {
+        List<SentMessage> next = new ArrayList<>(sent);
+        int dropped = droppedSent;
+        for (SentMessage message : more)
+        {
+            if (next.size() < MAX_SENT)
+            {
+                next.add(message);
+            }
+            else
+            {
+                dropped++;
+            }
+        }
+        long bytes = generatedBytes + more.stream().mapToLong(SentMessage::bodyBytes).sum();
+        return new RunManifest(schema, runId, catalogRevision, createdAt, zone, browserCommit, broker, state, bytes,
+                resources, history, droppedHistory, results, next, dropped);
     }
 
     /**

@@ -29,24 +29,24 @@
             <span class="muted">&mdash; no passwords; partial while a job is running.</span></p>
     </div>
 
-    <div class="panel" th:if="${run.acceptsScenarios()}">
-        <h2><span class="mono" th:text="${smoke.id()}">LAB-SMOKE</span> &mdash; <span th:text="${smoke.title()}">t</span></h2>
-        <p th:text="${smoke.summary()}">summary</p>
-        <p class="note" th:text="${smoke.expected()}">expected</p>
-        <form method="post" th:action="@{/runs/{id}/scenarios/{s}(id=${run.runId()},s=${smoke.id()})}" class="field-row">
+    <th:block th:if="${run.acceptsScenarios()}">
+    <div class="panel" th:each="sc : ${scenarios}">
+        <h2><span class="mono" th:text="${sc.card().id()}">LAB-SMOKE</span> &mdash;
+            <span th:text="${sc.card().title()}">title</span>
+            <span class="badge" th:each="c : ${sc.card().cases()}" th:text="${c}">E08</span></h2>
+        <p th:text="${sc.card().summary()}">summary</p>
+        <p class="note" th:text="${sc.card().expected()}">expected</p>
+        <form method="post" th:action="@{/runs/{id}/scenarios/{s}(id=${run.runId()},s=${sc.card().id()})}" class="field-row">
             <input type="hidden" name="token" th:value="${token}">
-            <div>
-                <label for="count">Messages</label>
-                <input id="count" name="count" type="number" min="1" th:max="${limits.maxMessages()}" value="10">
-            </div>
-            <div>
-                <label for="bodyBytes">Body bytes</label>
-                <input id="bodyBytes" name="bodyBytes" type="number" min="0" th:max="${limits.maxBodyBytes()}" value="100">
+            <div th:each="p : ${sc.params()}">
+                <label th:for="${sc.card().id()} + '-' + ${p.name()}" th:text="${p.label()}">Messages</label>
+                <input type="number" th:id="${sc.card().id()} + '-' + ${p.name()}" th:name="${p.name()}"
+                       th:min="${p.min()}" th:max="${p.max()}" th:value="${p.defaultValue()}">
             </div>
             <div><button type="submit" th:disabled="${busy}">Run</button></div>
         </form>
-        <p class="note">Queue: <code th:text="${smokeQueue}">lab.r1.smoke</code></p>
     </div>
+    </th:block>
 
     <div class="panel" th:if="${!jobs.isEmpty()}">
         <h2>Jobs</h2>
@@ -91,6 +91,28 @@
             <button class="secondary" type="submit" th:disabled="${busy}"
                     th:text="${run.state().name() == 'CLEANUP_FAILED'} ? 'Retry cleanup' : 'Stop workers and clean up'">Clean up</button>
         </form>
+    </div>
+
+    <div class="panel" th:if="${!run.sent().isEmpty()}">
+        <h2>Send manifest</h2>
+        <p class="note">
+            <span th:text="${run.sent().size() + run.droppedSent()}">390</span> messages accepted by the broker
+            <span th:if="${run.droppedSent() > 0}" th:text="'(' + ${run.droppedSent()} + ' beyond the manifest bound are counted, not listed)'">(dropped)</span>.
+            Below, the ones with a role in a case; the downloaded manifest lists every one with its message id.
+        </p>
+        <table th:if="${!marked.isEmpty()}">
+            <thead><tr><th>Queue</th><th>labSeq</th><th>Kind</th><th>Bytes</th><th>Note</th><th>Message id</th></tr></thead>
+            <tbody>
+            <tr th:each="m : ${marked}">
+                <td class="mono" th:text="${m.queue()}">lab.r1.bodies</td>
+                <td th:text="${m.seq()}">1</td>
+                <td th:text="${m.kind()}">text</td>
+                <td th:text="${m.bodyBytes()}">18</td>
+                <td th:text="${m.note()}">plain-text</td>
+                <td class="mono" th:text="${m.messageId()}">ID:</td>
+            </tr>
+            </tbody>
+        </table>
     </div>
 
     <div class="panel">

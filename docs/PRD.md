@@ -1132,7 +1132,8 @@ as the test servers and their controls are refined.
       run records through a separate web application.
 - [ ] **P1 — Message and client services.** Deterministic producers and controlled consumers create
       waiting, scheduled, in-flight, redelivery, dead-letter and expiry conditions, mixed bodies,
-      subscriptions, routing, rates and client identities.
+      subscriptions, routing, rates and client identities. *Static fixtures (`BASIC`, `BODIES`,
+      `SEARCH`) on branch `phase15-p1-message-fixtures`; held-consumer recipes to follow.*
 - [ ] **P2 — Behavior and failure services.** Create queue-behavior and pressure scenarios, restricted
       reads, connection failures and bounded scale; cover security/deployment through an explicit
       external harness where broker traffic alone cannot test the feature.

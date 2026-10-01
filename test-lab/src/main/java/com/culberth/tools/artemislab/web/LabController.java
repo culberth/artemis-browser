@@ -11,8 +11,8 @@ import com.culberth.tools.artemislab.run.RunManifest;
 import com.culberth.tools.artemislab.run.RunService;
 import com.culberth.tools.artemislab.run.RunStore;
 import com.culberth.tools.artemislab.scenario.ScenarioCatalog;
-import com.culberth.tools.artemislab.scenario.SmokeScenario;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +31,9 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 @Controller
 public class LabController
 {
+
+    /** Send-manifest rows with a note shown on the run page; the download has them all. */
+    static final int SENT_SHOWN = 100;
 
     private final BrokerService brokers;
     private final RunService runs;
@@ -136,8 +139,8 @@ public class LabController
         model.addAttribute("jobs", jobs);
         model.addAttribute("busy", jobs.stream().anyMatch(Job::active));
         model.addAttribute("broker", brokers.current().orElse(null));
-        model.addAttribute("smoke", catalog.find(SmokeScenario.ID).orElseThrow());
-        model.addAttribute("smokeQueue", SmokeScenario.queueName(runId));
+        model.addAttribute("scenarios", runs.runnable());
+        model.addAttribute("marked", run.sent().stream().filter(m -> !m.note().isBlank()).limit(SENT_SHOWN).toList());
         model.addAttribute("cases", catalog.cases());
         model.addAttribute("statuses", CaseResult.Status.values());
         model.addAttribute("limits", limits);
@@ -147,10 +150,10 @@ public class LabController
 
     @PostMapping("/runs/{runId}/scenarios/{scenarioId}")
     public String runScenario(@PathVariable String runId, @PathVariable String scenarioId,
-            @RequestParam(defaultValue = "10") int count, @RequestParam(defaultValue = "100") int bodyBytes,
-            @RequestParam String token, RedirectAttributes redirect)
+            @RequestParam Map<String, String> form, RedirectAttributes redirect)
     {
-        return act(redirect, "/runs/" + runId, () -> runs.runScenario(runId, scenarioId, count, bodyBytes, token));
+        return act(redirect, "/runs/" + runId,
+                () -> runs.runScenario(runId, scenarioId, form, form.getOrDefault("token", "")));
     }
 
     @PostMapping("/runs/{runId}/jobs/{jobId}/cancel")

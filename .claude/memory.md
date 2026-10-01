@@ -658,6 +658,11 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
 - **Testcontainers' reaper took ~40s, not ~10s,** to remove the lab's broker after the lab JVM was killed
   (2026-09-30, Ryuk 0.14.0, Docker Desktop npipe). A lab restarted inside that window finds 62616 still
   held — and lists the container as a leftover, which is what that list is for.
+- **A queue browses in priority order, not send order** (2026-09-30, 2.55.0 and 2.57.0): with priority
+  `seq % 10` on 300 messages, a JMS `QueueBrowser` returned seq 259 (priority 9) before seq 251, and the
+  first "late" marker sat at position ~26. Highest priority first, then arrival. Management `browse`
+  and Browser's pages follow the same order. A fixture that needs a message at a queue *position* must
+  control priorities (the lab's SEARCH gives its late markers priority 0, landing them at 291–300).
 - **A container is not "launched here" until `start()` returns** (2026-09-30): the lab first recorded
   ownership by container id after start, so while provisioning, its own starting broker was listed as
   a removable leftover. Ownership is now the broker-id label, recorded before the container exists.

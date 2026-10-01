@@ -1,7 +1,8 @@
 # Artemis Browser regression procedure — first draft
 
 Revision 0.2 · 2026-09-30 · **Design draft; not an executed test report.** The lab's P0 is
-implemented (`test-lab/`); only `LAB-SMOKE` is runnable, so every case below still needs its recipe.
+implemented (`test-lab/`); `LAB-SMOKE`, `BASIC`, `BODIES` and `SEARCH` are runnable. Cases on
+the other recipes still need theirs.
 
 Companion: [Phase 15 plan](Phase%2015%20plan.md). The proposed lab controls and scenario names below
 are requirements for the test services, not controls that exist today. Startup commands, final
@@ -77,7 +78,7 @@ For asynchronous counts compare settled observations, not the instant a send met
 | ID / feature | Lab condition and Browser steps | Expected result / evidence | Cleanup |
 |---|---|---|---|
 | M01 Empty and paged queues (P1–2/12) | BASIC: 0, 1 and 251 persistent waiting messages with sequence properties. Browse at size 50 through first/next/previous/last; repeat at another offered size. | Empty state is honest; 251 static messages yield six pages at 50 with one final row, no missing/duplicate IDs; properties/headers are visible. Scheduled/delivering messages are tested separately, not counted as browsable rows. | Reset. |
-| M02 Core filters (P2/5/7) | SEARCH: 300 messages, only positions 251–260 have `marker='late'`; distinct priority/durability/timestamps. Filter `marker = 'late'`, then priority, durability and timestamp using the page's documented core names; try malformed syntax and `JMSPriority = 4`. | Late matches are found beyond the broker's first 200; filtered navigation makes no false exact-total claim; malformed syntax is explained; UI explicitly calls the dialect core and does not promise JMS aliases work. Keep filter and returned IDs. | Reset. |
+| M02 Core filters (P2/5/7) | SEARCH: 300 messages, only seq 251–260 have `marker='late'` (priority 0, so they browse at positions 291–300 — a queue is kept in priority order); distinct priority/durability/timestamps. Filter `marker = 'late'`, then priority, durability and timestamp using the page's documented core names; try malformed syntax and `JMSPriority = 4`. | Late matches are found beyond the broker's first 200; filtered navigation makes no false exact-total claim; malformed syntax is explained; UI explicitly calls the dialect core and does not promise JMS aliases work. Keep filter and returned IDs. | Reset. |
 | M03 Body types/detail (P2/4) | BODIES: text, bytes, map, stream, harmless object and empty body; include typed properties, Unicode, quotes, newlines and literal HTML. Open each detail page. | Supported text/bytes/map representations agree with sent data; stream/object bodies have explicit unsupported placeholders; no object deserialization or HTML execution. Headers/properties remain readable. | Reset. |
 | M04 Long and large messages (P5) | BODIES: 1,000-character text plus 250KB text/bytes, recording broker large-message threshold; open list, detail, search and export. | List previews are bounded; qualifying messages carry large badges; detail/body limits and truncation are honest; content below limits is not replaced by the broker's 256-character management preview. | Reset. |
 | M05 Cross-queue search (P3/5/11) | SEARCH: matching properties on two queues; copy a known exact ID; search all queues and follow each queue link; repeat for an absent ID and for more than the per-queue match cap. | Matches and queue links are correct; capped results say at least/limited, not exact; absent results disclose unsearched states. Record exact ID form and core expression used. | Reset. |
@@ -181,4 +182,5 @@ cases into the appropriate execution group. Maintain a feature-to-case review at
 | Revision | Change | Execution status |
 |---|---|---|
 | 0.1 — 2026-09-29 | Initial current-feature catalog, proposed fixtures, expected observations, cleanup and future coverage | Not run; lab services pending |
+| 0.3 — 2026-09-30 | BASIC, BODIES, SEARCH runnable; M02 positions restated for priority order | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |
 | 0.2 — 2026-09-30 | Baseline moved to Phases 1–14; F01–F08 are shipped features awaiting recipes (Blocked, not Deferred); lab P0 start/verify commands | Not run; only LAB-SMOKE runnable (E08 partial) |
