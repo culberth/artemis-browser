@@ -95,7 +95,7 @@ public class JobRunner implements DisposableBean
         jobs.put(job.id(), job);
         tokens.put(token, job.id());
         trim();
-        job.attach(executor.submit(() -> execute(job, work)));
+        executor.execute(() -> execute(job, work));
         return job;
     }
 
@@ -170,6 +170,10 @@ public class JobRunner implements DisposableBean
 
     private void execute(Job job, Work work)
     {
+        if (!job.begin())
+        {
+            return;
+        }
         try
         {
             job.finish(Job.State.SUCCEEDED, work.run(job));
@@ -182,6 +186,10 @@ public class JobRunner implements DisposableBean
         {
             job.finish(job.cancelRequested() ? Job.State.CANCELLED : Job.State.FAILED,
                     e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
+        finally
+        {
+            job.end();
         }
     }
 

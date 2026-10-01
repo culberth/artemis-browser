@@ -12,6 +12,7 @@ import com.culberth.tools.artemislab.run.OwnedResource.Kind;
 import com.culberth.tools.artemislab.run.OwnedResource.State;
 import com.culberth.tools.artemislab.run.RunStore;
 import com.culberth.tools.artemislab.run.SentMessage;
+import com.culberth.tools.artemislab.worker.BrowsingClient;
 import com.culberth.tools.artemislab.worker.HeldConsumer;
 import com.culberth.tools.artemislab.worker.OpenClient;
 import com.culberth.tools.artemislab.worker.Traffic;
@@ -211,6 +212,22 @@ public final class Fixture implements AutoCloseable
      */
     public void createQueue(String name, String address, String routingType) throws JMSException
     {
+        createQueue(name, address, routingType, Map.of());
+    }
+
+    /**
+     * An owned durable anycast queue on an address of the same name, with queue configuration in the broker's
+     * {@code createQueue} JSON keys, e.g. {@code last-value-key}, {@code ring-size}, {@code non-destructive},
+     * {@code exclusive}, {@code purge-on-no-consumers}, {@code consumers-before-dispatch}.
+     */
+    public void createQueue(String name, Map<String, Object> queueConfiguration) throws JMSException
+    {
+        createQueue(name, name, "ANYCAST", queueConfiguration);
+    }
+
+    private void createQueue(String name, String address, String routingType, Map<String, Object> extra)
+            throws JMSException
+    {
         boolean newAddress = !store.get(runId).owns(address);
         List<OwnedResource> planned = newAddress
                 ? List.of(resource(Kind.ADDRESS, address, address, routingType),
@@ -222,6 +239,7 @@ public final class Fixture implements AutoCloseable
         configuration.put("routing-type", routingType);
         configuration.put("durable", true);
         configuration.put("auto-create-address", newAddress);
+        configuration.putAll(extra);
         own(planned, () -> management.invoke(ResourceNames.BROKER, "createQueue",
                 JSON.writeValueAsString(configuration), false));
     }
@@ -394,11 +412,85 @@ public final class Fixture implements AutoCloseable
     public OpenClient openClient(String description, String clientId, String queue, OpenClient.Role role, int sessions)
             throws JMSException
     {
+        return openClient(description, clientId, queue, role, sessions, false);
+    }
+
+    /**
+     * As {@link #openClient(String, String, String, OpenClient.Role, int)}; {@code buffered} consumers use the default
+     * 1MB consumer window, so the broker dispatches into their buffers and the messages show as delivering to them —
+     * how an exclusive or grouped queue's distribution becomes visible without anything being received.
+     */
+    public OpenClient openClient(String description, String clientId, String queue, OpenClient.Role role, int sessions,
+            boolean buffered) throws JMSException
+    {
         workers.reserve(1);
+        TargetGuard chosen = buffered ? guard : holdingGuard;
         OpenClient client = workers.add(OpenClient.open(WorkerRegistry.newId(), runId, description, clientId,
-                holdingGuard.open(clientId), queue, role, sessions));
+                chosen.open(clientId), queue, role, sessions));
         recordWorker("started " + description);
         return client;
+    }
+
+    /** A browse-only client held open on a queue, registered as a worker of this run. */
+    public BrowsingClient browse(String description, String queue) throws JMSException
+    {
+        workers.reserve(1);
+        BrowsingClient client = workers
+                .add(BrowsingClient.open(WorkerRegistry.newId(), runId, description, guard.open(), queue));
+        recordWorker("started " + description);
+        return client;
+    }
+
+    /**
+     * Sends {@code count} bodies from a thread of its own and gives up after {@code wait}: under the BLOCK policy a
+     * send waits for credit that never comes, so the connection is closed under it. Returns how many sends the broker
+     * accepted; those are added to the send manifest.
+     */
+    public int sendBlocking(String queue, int count, int bodyBytes, Duration wait) throws Exception
+    {
+        limits.checkCount(count);
+        limits.checkBodyBytes(bodyBytes);
+        reserve((long) count * bodyBytes);
+        Connection connection = guard.open();
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.List<SentMessage> sent = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        Thread sender = new Thread(() ->
+        {
+            try
+            {
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                jakarta.jms.MessageProducer producer = session.createProducer(session.createQueue(queue));
+                for (int i = 1; i <= count; i++)
+                {
+                    jakarta.jms.TextMessage message = session.createTextMessage("x".repeat(bodyBytes));
+                    message.setStringProperty("labRun", runId);
+                    message.setIntProperty("labSeq", i);
+                    producer.send(message, jakarta.jms.DeliveryMode.PERSISTENT, 4, 0);
+                    sent.add(new SentMessage(queue, i, "text", message.getJMSMessageID(), bodyBytes, "accepted"));
+                    accepted.incrementAndGet();
+                }
+            }
+            catch (JMSException | RuntimeException e)
+            {
+                // Blocked and then cut off, or refused: what the broker accepted is what is counted.
+            }
+        }, "lab-blocking-sender");
+        sender.setDaemon(true);
+        sender.start();
+        sender.join(wait.toMillis());
+        try
+        {
+            connection.close();
+        }
+        catch (JMSException ignored)
+        {
+            // Closing under a blocked send may complain; the broker side is what is measured.
+        }
+        sender.join(limits.operationTimeout().toMillis());
+        recordSent(List.copyOf(sent));
+        record("blocking send", queue + ": " + accepted.get() + " of " + count + " accepted before giving up after "
+                + wait.toSeconds() + "s");
+        return accepted.get();
     }
 
     /** Bounded traffic on its own thread, registered as a worker of this run. */

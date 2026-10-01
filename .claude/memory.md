@@ -680,6 +680,14 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
   queue; a dead-letter address that does not exist is not auto-created when a message is killed (cleanup
   found nothing left); a container restart keeps the node id and durable messages, and held messages
   return to their queue; a 2s TTL expired within the default 30s scan.
+- **A browse-only consumer is not in a queue's `consumerCount`** (2026-09-30, 2.55.0): a JMS
+  `QueueBrowser` held open mid-enumeration shows in Browser's `/broker` consumer list as "browse only",
+  while `listQueues`' `consumerCount` for that queue reads 0 — so Diagnose says "no consumer attached".
+  Open Browser defect for procedure Q01 (recorded in the Phase 15 plan); told apart only via the
+  consumer listing's browse-only flag.
+- **A job cancelled through its executor `Future` before it started never ran and never finished**
+  (2026-09-30, lab): `Future.cancel` on a not-yet-started task stops it from running, so the lab's job
+  stayed RUNNING and blocked its run's cleanup. Cancel by flag plus interrupting the job's own thread.
 - **A container is not "launched here" until `start()` returns** (2026-09-30): the lab first recorded
   ownership by container id after start, so while provisioning, its own starting broker was listed as
   a removable leftover. Ownership is now the broker-id label, recorded before the container exists.

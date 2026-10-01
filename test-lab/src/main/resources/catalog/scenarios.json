@@ -1,5 +1,5 @@
 {
-  "revision": "2026-09-30.3",
+  "revision": "2026-09-30.4",
   "scenarios": [
     {
       "id": "LAB-SMOKE",
@@ -68,19 +68,28 @@
       "id": "BEHAVIOR",
       "title": "Queue behavior",
       "increment": "P2",
-      "runnable": false,
-      "summary": "Paused and browse-only queues; last-value, ring, non-destructive and purge-on-no-consumers; exclusive, grouped and dispatch-gated consumers.",
-      "expected": "Effective settings and behavior findings explain what the counters show.",
+      "runnable": true,
+      "summary": "Q01: idle (5, no client), browsed (5, only a browse-only client), paused (5, paused through management). Q02: lvq (last-value key k, 5 sends, 1 kept), ring (ring size 3, 10 sent, 3 kept). Q03: keep (non-destructive, 3 consumed and still 3), purge (purge on no consumers, no dead-letter address, 3 held by a consumer that leaves). Q04: exclusive (two consumers, all 20 to one), grouped (two consumers, groups g1/g2), gated (dispatch waits for 2 consumers, has 1).",
+      "expected": "Fixture assertions: idle 5 with no consumer; browsed 5, none delivering; paused 5 and paused; lvq 1 of 5 added; ring 3 of 10 added; keep 3, acknowledged 0; purge 0 left, 3 killed; exclusive 20 delivering on 2 consumers; grouped 20 delivering, 2 groups; gated 3 waiting, none delivering, 1 consumer. In Artemis Browser: effective settings and behavior findings explain each, and Diagnose tells no consumer, browse-only and paused apart. Steps resume and re-pause paused, and add gated's second consumer.",
       "cases": ["Q01", "Q02", "Q03", "Q04"]
     },
     {
       "id": "PRESSURE",
       "title": "Address pressure",
       "increment": "P2",
+      "runnable": true,
+      "summary": "page, fail, drop and block: each address limited to 20KB in 10KB pages under its policy, then sent 40 x 1KB (block's sender gives up after 5s). blocked: ample room, one message, blocked by an operator through management. Limits are on these addresses only.",
+      "expected": "Fixture assertions: page keeps all 40 and has pages; fail kept fewer than 40 and a send was refused; drop routed more than it kept; block kept fewer than 40; blocked is blocked via management. In Artemis Browser: usage beside policy with correct units, the observed operator block distinguished from inferred full-policy behaviour, and the observed block clearing after Unblock blocked.",
+      "cases": ["P01", "P02", "P03"]
+    },
+    {
+      "id": "LOW-LIMITS",
+      "title": "Global memory and disk thresholds",
+      "increment": "P2",
       "runnable": false,
-      "summary": "Low-limit addresses under PAGE, BLOCK, FAIL and DROP; an operator block; reduced global memory and disk thresholds in an isolated profile.",
-      "expected": "Usage, policy and observed versus inferred findings match independently measured results.",
-      "cases": ["P01", "P02", "P03", "P04"]
+      "summary": "A broker started with a reduced global-max-size and disk threshold, then bounded traffic; the disk condition obtained by lowering the threshold, never by filling the host's disk.",
+      "expected": "Health shows global memory use and the disk threshold in the right units, and Diagnose reports pressure as observed.",
+      "cases": ["P04"]
     },
     {
       "id": "FAILURES",

@@ -25,7 +25,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("262144") int maxBodyBytes,
         @DefaultValue("2") int maxWorkers, @DefaultValue("52428800") long maxRunBytes,
         @DefaultValue("10s") Duration operationTimeout, @DefaultValue("30s") Duration readinessDeadline,
-        @DefaultValue("50") int maxRuns, @DefaultValue("10") int maxLiveWorkers, @DefaultValue("200") int maxRate,
+        @DefaultValue("50") int maxRuns, @DefaultValue("20") int maxLiveWorkers, @DefaultValue("200") int maxRate,
         @DefaultValue("5m") Duration maxTraffic)
 {
 
@@ -59,7 +59,7 @@ public record LabLimits(@DefaultValue("1000") int maxMessages, @DefaultValue("26
     public LabLimits(int maxMessages, int maxBodyBytes, int maxWorkers, long maxRunBytes, Duration operationTimeout,
             Duration readinessDeadline, int maxRuns)
     {
-        this(maxMessages, maxBodyBytes, maxWorkers, maxRunBytes, operationTimeout, readinessDeadline, maxRuns, 10, 200,
+        this(maxMessages, maxBodyBytes, maxWorkers, maxRunBytes, operationTimeout, readinessDeadline, maxRuns, 20, 200,
                 Duration.ofMinutes(5));
     }
 

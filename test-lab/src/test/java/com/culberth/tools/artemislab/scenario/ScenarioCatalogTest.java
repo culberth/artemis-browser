@@ -47,7 +47,7 @@ class ScenarioCatalogTest
     {
         assertEquals(SmokeScenario.ID, catalog.runnable(SmokeScenario.ID).id());
         assertEquals("BASIC", catalog.runnable("BASIC").id());
-        assertThrows(LabException.class, () -> catalog.runnable("BEHAVIOR"));
+        assertThrows(LabException.class, () -> catalog.runnable("FAILURES"));
         assertThrows(LabException.class, () -> catalog.runnable("NOPE"));
         assertTrue(catalog.knowsCase("E08"));
         assertFalse(catalog.knowsCase("Z99"));

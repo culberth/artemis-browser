@@ -300,6 +300,40 @@ class LabBrokerIT
 
     @Test
     @Order(6)
+    @DisplayName("BEHAVIOR and PRESSURE: configured queues and full addresses, and their steps, checked independently")
+    void behaviorAndPressure() throws Exception
+    {
+        for (String id : List.of("BEHAVIOR", "PRESSURE"))
+        {
+            Job job = runs.runScenario(runId, id, Map.of(), JobRunner.newToken());
+            runner.awaitIdle(runId, Duration.ofSeconds(180));
+            assertEquals(Job.State.SUCCEEDED, job.state(), id + ": " + job.detail());
+        }
+        String p = "lab." + runId + ".";
+
+        assertEquals(1, independentCount(p + "lvq"));
+        assertEquals(3, independentCount(p + "ring"));
+        assertEquals(3, independentCount(p + "keep"));
+        assertEquals(3, independentAttribute(p + "purge", "messagesKilled"));
+        assertEquals(20, independentAttribute(p + "exclusive", "deliveringCount"));
+        assertEquals(0, independentAttribute(p + "gated", "deliveringCount"));
+        assertEquals(Boolean.TRUE, independentQueueValue(p + "paused", "paused"));
+
+        step("BEHAVIOR", "resume", Map.of());
+        assertEquals(Boolean.FALSE, independentQueueValue(p + "paused", "paused"));
+        step("BEHAVIOR", "gate", Map.of());
+        assertEquals(3, waitFor(p + "gated", "deliveringCount", 3), "dispatch starts at two consumers");
+
+        assertEquals(40, independentCount(p + "page"));
+        assertTrue(independentCount(p + "fail") < 40);
+        assertTrue(independentCount(p + "block") < 40);
+        assertEquals(Boolean.TRUE, independentAddressValue(p + "blocked", "blockedViaManagement"));
+        step("PRESSURE", "unblock", Map.of());
+        assertEquals(Boolean.FALSE, independentAddressValue(p + "blocked", "blockedViaManagement"));
+    }
+
+    @Test
+    @Order(8)
     @DisplayName("A restart stops every worker, keeps durable messages, and the broker comes back as the same node")
     void restart() throws Exception
     {
@@ -314,7 +348,7 @@ class LabBrokerIT
     }
 
     @Test
-    @Order(7)
+    @Order(9)
     @DisplayName("Cleanup removes exactly the manifest's queue and address and proves them gone")
     void cleanup() throws Exception
     {
@@ -347,7 +381,7 @@ class LabBrokerIT
     }
 
     @Test
-    @Order(9)
+    @Order(11)
     @DisplayName("A taken port is refused, not moved")
     void takenPortRefused() throws Exception
     {
@@ -361,7 +395,7 @@ class LabBrokerIT
     }
 
     @Test
-    @Order(10)
+    @Order(12)
     @DisplayName("Stopping the broker removes its container")
     void stopRemovesContainer() throws Exception
     {
@@ -417,6 +451,30 @@ class LabBrokerIT
     private ActiveMQConnectionFactory independentFactory()
     {
         return new ActiveMQConnectionFactory("tcp://127.0.0.1:" + PORT + "?useTopologyForLoadBalancing=false");
+    }
+
+    private Object independentQueueValue(String queue, String attribute) throws Exception
+    {
+        return independentValue(org.apache.activemq.artemis.api.core.management.ResourceNames.QUEUE + queue, attribute);
+    }
+
+    private Object independentAddressValue(String address, String attribute) throws Exception
+    {
+        return independentValue(org.apache.activemq.artemis.api.core.management.ResourceNames.ADDRESS + address,
+                attribute);
+    }
+
+    private Object independentValue(String resource, String attribute) throws Exception
+    {
+        try (ActiveMQConnectionFactory factory = independentFactory();
+                Connection connection = factory.createConnection("artemis", "artemis"))
+        {
+            connection.start();
+            try (ManagementClient management = new ManagementClient(connection, Duration.ofSeconds(10)))
+            {
+                return management.attribute(resource, attribute);
+            }
+        }
     }
 
     private long independentAttribute(String queue, String attribute) throws Exception
