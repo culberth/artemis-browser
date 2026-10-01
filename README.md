@@ -245,8 +245,12 @@ mvn -f test-lab/pom.xml clean verify -Pintegration
 
 checks the lab itself against both supported broker versions. Runnable today: `LAB-SMOKE`,
 `BASIC` (known counts, paging, scheduled, an awkward queue name), `BODIES` (every body kind,
-large messages, formula-like values) and `SEARCH` (filter matches past the first 200, the
-search cap, export bounds). Each run's manifest lists every message sent, with its id. The
+large messages, formula-like values), `SEARCH` (filter matches past the first 200, the search
+cap, export bounds), `DELIVERY` (held, redelivered, dead-lettered, expired and lost messages),
+`SUBSCRIPTIONS` (routing, every subscription kind, diverts, unrouted) and `RATES` (identified and
+anonymous clients, traffic at a chosen rate). Consumers that hold messages and traffic run as
+workers on the run page, where held messages can be acknowledged or released; *Restart broker*
+is on the lab page. Each run's manifest lists every message sent, with its id. The
 [catalog](docs/Phase%2015%20plan.md) lists the recipes to come and the
 [regression procedure](docs/Phase%2015%20regression%20procedure.md) the cases they serve. Port
 62616 must be free: the lab refuses a taken port rather than moving the broker.

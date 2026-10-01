@@ -99,6 +99,32 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
             {
                 container.stop();
             }
+
+            @Override
+            public void restart(Duration startupTimeout)
+            {
+                // Readiness is read from the container's whole log, so after a restart it is the next occurrence.
+                long before = activeLines(container.getLogs());
+                container.getDockerClient().restartContainerCmd(container.getContainerId()).exec();
+                long deadline = System.nanoTime() + startupTimeout.toNanos();
+                while (activeLines(container.getLogs()) <= before)
+                {
+                    if (System.nanoTime() > deadline)
+                    {
+                        throw new LabException(
+                                "The broker was not active again within " + startupTimeout + " of a restart.");
+                    }
+                    try
+                    {
+                        Thread.sleep(250);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        Thread.currentThread().interrupt();
+                        throw new LabException("Interrupted waiting for the broker to restart.", e);
+                    }
+                }
+            }
         };
     }
 
@@ -131,6 +157,11 @@ class TestcontainersBrokerLauncher implements BrokerLauncher
         }
         DockerClientFactory.instance().client().removeContainerCmd(containerId).withForce(true).withRemoveVolumes(true)
                 .exec();
+    }
+
+    private static long activeLines(String log)
+    {
+        return log.lines().filter(line -> line.contains("Server is now active")).count();
     }
 
     private static String rootMessage(Throwable e)

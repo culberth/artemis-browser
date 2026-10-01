@@ -1,8 +1,9 @@
 # Artemis Browser regression procedure — first draft
 
 Revision 0.2 · 2026-09-30 · **Design draft; not an executed test report.** The lab's P0 is
-implemented (`test-lab/`); `LAB-SMOKE`, `BASIC`, `BODIES` and `SEARCH` are runnable. Cases on
-the other recipes still need theirs.
+implemented (`test-lab/`); P1's recipes are runnable — `BASIC`, `BODIES`, `SEARCH`, `DELIVERY`,
+`SUBSCRIPTIONS`, `RATES` — plus `LAB-SMOKE`. `BEHAVIOR`, `PRESSURE`, `FAILURES` and `SCALE` (P2)
+still need theirs.
 
 Companion: [Phase 15 plan](Phase%2015%20plan.md). The proposed lab controls and scenario names below
 are requirements for the test services, not controls that exist today. Startup commands, final
@@ -182,5 +183,6 @@ cases into the appropriate execution group. Maintain a feature-to-case review at
 | Revision | Change | Execution status |
 |---|---|---|
 | 0.1 — 2026-09-29 | Initial current-feature catalog, proposed fixtures, expected observations, cleanup and future coverage | Not run; lab services pending |
+| 0.4 — 2026-09-30 | DELIVERY, SUBSCRIPTIONS, RATES runnable with workers and steps; A02's durable subscriptions are named `lab-<run>.…` (Artemis escapes dots in a client id); A06 has *Recreate rate queue* and *Restart broker* | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |
 | 0.3 — 2026-09-30 | BASIC, BODIES, SEARCH runnable; M02 positions restated for priority order | Not run as a procedure; recipes verified by LabBrokerIT and a live Browser check |
 | 0.2 — 2026-09-30 | Baseline moved to Phases 1–14; F01–F08 are shipped features awaiting recipes (Blocked, not Deferred); lab P0 start/verify commands | Not run; only LAB-SMOKE runnable (E08 partial) |

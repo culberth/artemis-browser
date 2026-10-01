@@ -36,6 +36,11 @@ public class BrokerService
      * connection it made, which is what stopping the broker wants and nothing else does.
      */
     private ActiveMQConnectionFactory factory;
+    /**
+     * The same broker with {@code consumerWindowSize=0}, for consumers that must hold exactly what they received: with
+     * the default 1MB window the client buffers ahead, and every buffered message counts as delivering too.
+     */
+    private ActiveMQConnectionFactory holdingFactory;
 
     public BrokerService(BrokerLauncher launcher, LabBrokerProperties properties, LabLimits limits)
     {
@@ -81,6 +86,8 @@ public class BrokerService
                     properties.user(), identity.version(), identity.nodeId(), Instant.now());
             this.launched = started;
             this.factory = startedFactory;
+            this.holdingFactory = new ActiveMQConnectionFactory(
+                    url(started.host(), started.port()) + "&consumerWindowSize=0");
             this.current = broker;
             return broker;
         }
@@ -100,14 +107,10 @@ public class BrokerService
         current = null;
         try
         {
-            if (factory != null)
-            {
-                factory.close();
-            }
+            closeFactories();
         }
         finally
         {
-            factory = null;
             if (launched != null)
             {
                 launched.stop();
@@ -126,13 +129,81 @@ public class BrokerService
      */
     public synchronized TargetGuard guard(LabBroker broker)
     {
+        return guard(broker, false);
+    }
+
+    /** As {@link #guard(LabBroker)}; {@code holding} for consumers that must receive exactly what they ask for. */
+    public synchronized TargetGuard guard(LabBroker broker, boolean holding)
+    {
         LabBroker now = current;
         if (now == null || !now.brokerId().equals(broker.brokerId()))
         {
             throw new LabException("Broker " + broker.brokerId() + " is no longer the lab's broker; nothing was sent.");
         }
-        return new TargetGuard(factory, properties.user(), properties.password(), now.nodeId(),
-                TargetGuard.managementReader(limits.operationTimeout()));
+        return new TargetGuard(holding ? holdingFactory : factory, properties.user(), properties.password(),
+                now.nodeId(), TargetGuard.managementReader(limits.operationTimeout()));
+    }
+
+    /**
+     * Restarts the broker's container and checks it comes back as the same broker. Closing the factories first drops
+     * every lab connection, so the caller stops the workers before this. The journal lives in the container, so durable
+     * messages and the node id survive; non-durable ones and counters that are not reloaded do not. A different node id
+     * afterwards is refused: the broker is stopped rather than adopted.
+     */
+    public synchronized LabBroker restart()
+    {
+        LabBroker broker = current;
+        if (broker == null)
+        {
+            throw new LabException("No lab broker is running.");
+        }
+        closeFactories();
+        launched.restart(properties.startupTimeout());
+        ActiveMQConnectionFactory restarted = new ActiveMQConnectionFactory(url(broker.host(), broker.port()));
+        Identity identity;
+        try
+        {
+            identity = identify(restarted);
+        }
+        catch (JMSException | RuntimeException e)
+        {
+            restarted.close();
+            stop();
+            throw new LabException(
+                    "The broker did not come back identifiable after a restart; stopped it: " + e.getMessage(), e);
+        }
+        if (!identity.nodeId().equals(broker.nodeId()))
+        {
+            restarted.close();
+            stop();
+            throw new LabException("After the restart the broker reported node " + identity.nodeId() + ", not "
+                    + broker.nodeId() + ". Not adopted; stopped it.");
+        }
+        factory = restarted;
+        holdingFactory = new ActiveMQConnectionFactory(url(broker.host(), broker.port()) + "&consumerWindowSize=0");
+        current = new LabBroker(broker.brokerId(), broker.image(), broker.containerId(), broker.host(), broker.port(),
+                broker.user(), identity.version(), identity.nodeId(), broker.startedAt());
+        return current;
+    }
+
+    private void closeFactories()
+    {
+        try
+        {
+            if (holdingFactory != null)
+            {
+                holdingFactory.close();
+            }
+        }
+        finally
+        {
+            holdingFactory = null;
+            if (factory != null)
+            {
+                factory.close();
+            }
+            factory = null;
+        }
     }
 
     public List<BrokerLauncher.Leftover> leftovers()

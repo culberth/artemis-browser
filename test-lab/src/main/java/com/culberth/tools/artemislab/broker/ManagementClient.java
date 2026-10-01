@@ -70,6 +70,12 @@ public final class ManagementClient implements AutoCloseable
         return names(attribute(ResourceNames.BROKER, "addressNames"));
     }
 
+    /** The broker's divert names; there is no listing operation, only this attribute. */
+    public Set<String> divertNames() throws JMSException
+    {
+        return names(attribute(ResourceNames.BROKER, "divertNames"));
+    }
+
     public String nodeId() throws JMSException
     {
         return String.valueOf(attribute(ResourceNames.BROKER, "nodeID"));

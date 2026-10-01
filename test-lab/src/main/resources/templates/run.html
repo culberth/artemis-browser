@@ -43,10 +43,59 @@
                 <input type="number" th:id="${sc.card().id()} + '-' + ${p.name()}" th:name="${p.name()}"
                        th:min="${p.min()}" th:max="${p.max()}" th:value="${p.defaultValue()}">
             </div>
-            <div><button type="submit" th:disabled="${busy}">Run</button></div>
+            <div><button type="submit" th:disabled="${busy or ran.contains(sc.card().id())}"
+                         th:text="${ran.contains(sc.card().id())} ? 'Already run' : 'Run'">Run</button></div>
         </form>
+        <div th:if="${ran.contains(sc.card().id()) and !sc.steps().isEmpty()}" class="steps">
+            <form method="post" th:each="st : ${sc.steps()}" class="field-row"
+                  th:action="@{/runs/{id}/scenarios/{s}/steps/{st}(id=${run.runId()},s=${sc.card().id()},st=${st.id()})}">
+                <input type="hidden" name="token" th:value="${token}">
+                <div th:each="p : ${st.params()}">
+                    <label th:for="${sc.card().id()} + '-' + ${st.id()} + '-' + ${p.name()}" th:text="${p.label()}">Rate</label>
+                    <input type="number" th:id="${sc.card().id()} + '-' + ${st.id()} + '-' + ${p.name()}"
+                           th:name="${p.name()}" th:min="${p.min()}" th:max="${p.max()}" th:value="${p.defaultValue()}">
+                </div>
+                <div><button class="secondary" type="submit" th:disabled="${busy}" th:text="${st.label()}">Step</button></div>
+                <p class="note" th:text="${st.note()}">note</p>
+            </form>
+        </div>
     </div>
     </th:block>
+
+    <div class="panel" th:if="${!workers.isEmpty()}">
+        <h2>Workers</h2>
+        <p class="note">Clients kept running between actions. Stopping one closes its connection: anything it holds goes
+            back to its queue unacknowledged. Cleanup stops them all first.</p>
+        <table>
+            <thead><tr><th>Worker</th><th>Client id</th><th>State</th><th>Held</th><th>Sent</th><th>Received</th>
+                <th>Acked</th><th>Detail</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="w : ${workers}">
+                <td th:text="${w.description()}">holder</td>
+                <td class="mono" th:text="${w.clientId().isEmpty()} ? '(anonymous)' : ${w.clientId()}">lab-r1-holder</td>
+                <td th:text="${w.state()}" th:classappend="${w.state().name() == 'FAILED'} ? 'bad' : ''">ACTIVE</td>
+                <td th:text="${w.held()}">10</td>
+                <td th:text="${w.sent()}">0</td>
+                <td th:text="${w.received()}">10</td>
+                <td th:text="${w.acknowledged()}">0</td>
+                <td th:text="${w.detail()}">holding 10</td>
+                <td class="field-row">
+                    <form method="post" th:if="${w.active() and w.held() > 0}"
+                          th:action="@{/runs/{r}/workers/{w}/acknowledge(r=${run.runId()},w=${w.id()})}">
+                        <input type="hidden" name="token" th:value="${token}">
+                        <button class="secondary" type="submit" th:disabled="${busy}">Acknowledge</button>
+                    </form>
+                    <form method="post" th:if="${w.active()}"
+                          th:action="@{/runs/{r}/workers/{w}/stop(r=${run.runId()},w=${w.id()})}">
+                        <input type="hidden" name="token" th:value="${token}">
+                        <button class="secondary" type="submit" th:disabled="${busy}"
+                                th:text="${w.held() > 0} ? 'Release' : 'Stop'">Stop</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
 
     <div class="panel" th:if="${!jobs.isEmpty()}">
         <h2>Jobs</h2>

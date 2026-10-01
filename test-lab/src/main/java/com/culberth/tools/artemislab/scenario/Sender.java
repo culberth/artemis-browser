@@ -44,6 +44,11 @@ public final class Sender implements AutoCloseable
             return new Options(value, priority, timeToLive, deliveryDelay);
         }
 
+        public Options withTimeToLive(long value)
+        {
+            return new Options(deliveryMode, priority, value, deliveryDelay);
+        }
+
         public Options withDeliveryDelay(long value)
         {
             return new Options(deliveryMode, priority, timeToLive, value);
@@ -81,15 +86,29 @@ public final class Sender implements AutoCloseable
     public String send(String queue, int seq, Message message, String kind, int bodyBytes, String note, Options options)
             throws JMSException
     {
+        return send(queue, false, seq, message, kind, bodyBytes, note, options);
+    }
+
+    /** As {@link #send}, to an address as a topic: every multicast queue bound to it gets a copy. */
+    public String publish(String address, int seq, Message message, String kind, int bodyBytes, String note,
+            Options options) throws JMSException
+    {
+        return send(address, true, seq, message, kind, bodyBytes, note, options);
+    }
+
+    private String send(String queue, boolean topic, int seq, Message message, String kind, int bodyBytes, String note,
+            Options options) throws JMSException
+    {
         fixture.job().checkCancelled();
         fixture.limits().checkBodyBytes(bodyBytes);
         message.setStringProperty("labRun", fixture.runId());
         message.setIntProperty("labSeq", seq);
-        MessageProducer producer = producers.get(queue);
+        String key = (topic ? "topic:" : "queue:") + queue;
+        MessageProducer producer = producers.get(key);
         if (producer == null)
         {
-            producer = session.createProducer(session.createQueue(queue));
-            producers.put(queue, producer);
+            producer = session.createProducer(topic ? session.createTopic(queue) : session.createQueue(queue));
+            producers.put(key, producer);
         }
         producer.setDeliveryDelay(options.deliveryDelay());
         producer.send(message, options.deliveryMode(), options.priority(), options.timeToLive());

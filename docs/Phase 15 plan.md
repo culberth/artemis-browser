@@ -116,12 +116,30 @@ scenario is `LAB-SMOKE`: an owned anycast queue `lab.<runId>.smoke`, recorded PL
 the broker is seen not to have it, then a bounded deterministic send and a `messageCount`
 assertion with a deadline. Every other catalog card is listed but refuses to run.
 
-## Implemented (P1, first part: static fixtures, 2026-09-30)
+## Implemented (P1, 2026-09-30)
 
-Branch `phase15-p1-message-fixtures`. `BASIC`, `BODIES` and `SEARCH` are runnable; their exact
-contents are on the catalog page and in each recipe's Javadoc. They are one-shot: everything they
-prepare stays put with no worker running, so they need no held consumers. `DELIVERY`,
-`SUBSCRIPTIONS` and `RATES` need long-lived workers and follow separately.
+Branch `phase15-p1-message-fixtures`. All six P1 recipes are runnable — `BASIC`, `BODIES`,
+`SEARCH` (one-shot), and `DELIVERY`, `SUBSCRIPTIONS`, `RATES` (with workers). Their exact contents
+are on the catalog page and in each recipe's Javadoc.
+
+- **Workers** are clients that outlive the job that started them, owned by a run: held consumers
+  (CLIENT_ACKNOWLEDGE on a `consumerWindowSize=0` factory, so they hold exactly what they
+  received), live non-durable subscribers, idle identified/anonymous clients, and traffic threads
+  at a bounded rate for a bounded time. Bounded by `lab.limits.max-live-workers` (10),
+  `max-rate` (200/s) and `max-traffic` (5m). The run page acknowledges or releases held messages;
+  cleanup, broker stop and broker restart stop every worker first.
+- **Steps** are follow-up actions a recipe offers once it has run: *Roll back once* (D05),
+  *Start producer / consumer*, *Stop traffic*, *Recreate rate queue* (A05/A06).
+- **Restart broker** (lab page) restarts the container in place and accepts it only if it comes
+  back with the same node id; otherwise it is stopped, not adopted.
+- **New owned kinds**: diverts and address settings for exactly one owned address (never a
+  wildcard), removed in cleanup — diverts first, then queues, addresses, settings.
+- **Verified broker behaviour this needed** (recorded in `.claude/memory.md`): dots inside a JMS
+  client id or subscription name are backslash-escaped in the subscription queue's name, so
+  durable subscriptions use client id `lab-<run>` (queue `lab-<run>.durable-all`); a JMS send to
+  a queue named after an address with a differently named anycast queue auto-creates a queue of
+  that name and splits the messages, so `orders` is sent by FQQN. Both were caught by ownership —
+  an unexpected queue failed the recipe and blocked cleanup, rather than passing silently.
 
 - **Recipes** implement `Recipe` and build with `Fixture` (owned queue creation, guarded `Sender`s,
   one-shot consumption, readiness assertions read from the broker) — so every recipe inherits the
@@ -135,12 +153,16 @@ prepare stays put with no worker running, so they need no held consumers. `DELIV
   priority 0 (everything else 1–9) to sit at browse positions 291–300; with priority `seq % 10`
   the first late marker browsed 26th, defeating the case.
 
-Verified 2026-09-30: `LabBrokerIT` 7/7 on 2.55.0 and 2.57.0, checking each recipe independently
-of the lab; live, Artemis Browser showed BASIC's counters (9 / 2 scheduled / 12 added / 3 acked),
+Verified 2026-09-30: `LabBrokerIT` 9/9 on 2.55.0 and 2.57.0, checking each recipe independently
+of the lab, a restart, and that cleanup leaves no queue, address or divert with the run's name; live, Artemis Browser showed BASIC's counters (9 / 2 scheduled / 12 added / 3 acked),
 six pages of `paged` with one row on the last, the odd name encoded in links, escaped HTML and
 intact Unicode in BODIES, large badges, the four formula values neutralised in CSV, and SEARCH's
 filters at 10 / 31 / 150 / 50 with cross-queue search listing both late queues and a capped floor
-for `search-many`.
+for `search-many`. For the worker recipes, Browser showed the in-flight panel and holder client,
+Diagnose's three distinct dead-letter explanations (none configured, missing, no queue) and
+expiry with no address, the never-acknowledging consumer, every subscription kind with its filter,
+the exclusive and non-exclusive diverts, three unrouted on `nowhere`, client pages by id, and a
+rate of exactly 20/s while the lab produced 20/s.
 
 Verified 2026-09-30: `LabBrokerIT` on 2.55.0 and 2.57.0 (provision and identity, wrong target
 refused with nothing created, smoke count asserted independently, cleanup proven, taken port
@@ -162,10 +184,10 @@ and the smoke queue with 40 on `/overview`.
 
 - [x] Baseline queues, mixed bodies/properties, long/large bodies, core filters, paging/search caps,
       export limits and formula-like values. (`BASIC`, `BODIES`, `SEARCH`)
-- [ ] Scheduled messages, held deliveries, controlled acknowledgment/redelivery, dead lettering,
-      expiry and missing-destination variants.
-- [ ] Bounded producers/consumers, rate transitions, clients with and without IDs, durable/shared/
-      non-durable subscriptions, selectors and divert fixtures.
+- [x] Scheduled messages, held deliveries, controlled acknowledgment/redelivery, dead lettering,
+      expiry and missing-destination variants. (`DELIVERY`)
+- [x] Bounded producers/consumers, rate transitions, clients with and without IDs, durable/shared/
+      non-durable subscriptions, selectors and divert fixtures. (`SUBSCRIPTIONS`, `RATES`)
 
 ### P2 — Broker behavior and failure fixtures
 

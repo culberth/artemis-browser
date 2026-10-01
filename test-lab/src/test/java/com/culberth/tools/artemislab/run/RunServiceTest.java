@@ -48,16 +48,16 @@ class RunServiceTest
     {
         ScenarioCatalog catalog = new ScenarioCatalog();
         List<Recipe> all = new ArrayList<>();
-        for (String id : List.of("LAB-SMOKE", "BASIC", "BODIES", "SEARCH"))
+        for (String id : List.of("LAB-SMOKE", "BASIC", "BODIES", "SEARCH", "DELIVERY", "SUBSCRIPTIONS", "RATES"))
         {
             all.add(recipe(id));
         }
-        assertEquals(4, RunService.registry(all, catalog).size());
+        assertEquals(7, RunService.registry(all, catalog).size());
 
-        assertThrows(IllegalStateException.class, () -> RunService.registry(all.subList(0, 3), catalog),
+        assertThrows(IllegalStateException.class, () -> RunService.registry(all.subList(0, 6), catalog),
                 "a runnable card with no recipe");
         List<Recipe> extra = new ArrayList<>(all);
-        extra.add(recipe("DELIVERY"));
+        extra.add(recipe("BEHAVIOR"));
         assertThrows(IllegalStateException.class, () -> RunService.registry(extra, catalog),
                 "a recipe the catalog calls unimplemented");
         List<Recipe> twice = new ArrayList<>(all);

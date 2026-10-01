@@ -33,6 +33,9 @@ public interface BrokerLauncher
         int port();
 
         void stop();
+
+        /** Restarts the container in place (same port, same journal) and waits until the broker is active again. */
+        void restart(Duration startupTimeout);
     }
 
     /** A labelled container from an earlier lab process. */
