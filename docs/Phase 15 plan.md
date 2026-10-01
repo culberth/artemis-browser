@@ -202,12 +202,12 @@ Found along the way, recorded in `.claude/memory.md`:
   FAILURES confirms the admin can read each attribute before counting the viewer's failure as a
   refusal. Disk usage reads 0 until the broker's first periodic disk check.
 
-**Open Browser defects** (procedure results recorded in lab runs; each queued as its own task):
+**Browser defects found** (procedure results recorded in lab runs; each handled as its own task):
 
-| Case | Defect |
-|---|---|
-| Q01 | Diagnose calls a queue whose only client is a browse-only `QueueBrowser` "no consumer attached": the queue's `consumerCount` excludes browse-only consumers, though `/broker` lists it as "browse only". |
-| E02 | For a user without `manage`, `/overview` explains the refusal correctly but also renders "Queues (0) … This broker reported no queues" — a zero in place of a refused reading. |
+| Case | Defect | Status |
+|---|---|---|
+| Q01 | Diagnose calls a queue whose only client is a browse-only `QueueBrowser` "no consumer attached": the queue's `consumerCount` excludes browse-only consumers, though `/broker` lists it as "browse only". | Fixed: Diagnose now says only browsers are attached (PR #54). |
+| E02 | For a user without `manage`, `/overview` explains the refusal correctly but also renders "Queues (0) … This broker reported no queues" — a zero in place of a refused reading. | Open. |
 
 Verified 2026-09-30: `LabBrokerIT` 11/11 and `LabProfilesIT` 4/4 on 2.55.0 and 2.57.0. Live, Browser
 showed the behavior and pressure findings and badges listed in each card (the non-destructive flag is

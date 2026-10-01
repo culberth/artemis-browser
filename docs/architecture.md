@@ -164,6 +164,12 @@ What was measured on 2.55.0 and 2.57.0 (shapes in `.claude/memory.md`) shapes th
   appears beside it, labelled as a default, and diagnose uses it only as a possible explanation.
 - **Consuming from a non-destructive queue acknowledges nothing**, and **a purge on no consumers
   counts every removed message as killed**. Both would otherwise make a diagnose finding lie.
+- **A browse-only consumer is not in a queue's `consumerCount`.** A JMS `QueueBrowser` held open
+  reads 0 there while the consumer listing shows it, `browseOnly` true. Diagnose used to call that
+  queue one with "no consumer attached", contradicting `/broker` (procedure case Q01). It now counts
+  browsers on the queue from the consumer listing it already reads, and says only browsers are
+  attached and nothing is consuming. When that listing could not be read, the no-consumer finding
+  says whether a browser is attached was not checked, rather than implying there is none.
 
 A finding's `detail` holds only what was read. Configured behavior that may account for it goes in a
 separate `explanation`, rendered as "May be intended:". That keeps "this is what we saw" and "this

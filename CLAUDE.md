@@ -37,8 +37,8 @@ write-capable app in `test-lab/` that provisions disposable brokers and prepares
 merged (PR #50); P1 — all six message and client recipes, with long-lived workers — merged
 (PR #52); P2 — behavior, pressure, failures with broker profiles, read-only check, scale — is on
 branch `phase15-p2-behavior-failures`; see *The regression lab* below. Planned in
-[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 639 unit tests,
-108 integration, run once per supported broker version (plus the opt-in
+[docs/PRD.md](docs/PRD.md); see *Closed as won't do* there before proposing more. 644 unit tests,
+109 integration, run once per supported broker version (plus the opt-in
 `ScaleMeasurementIT`, `-Dmeasure=true`).
 
 **Read-only is the product, not a detail.** Nothing consumes, acknowledges, moves, expires or

@@ -680,11 +680,12 @@ test JVM (no HTTP hop), median of three, warm; calls are `ManagementChannel` rou
   queue; a dead-letter address that does not exist is not auto-created when a message is killed (cleanup
   found nothing left); a container restart keeps the node id and durable messages, and held messages
   return to their queue; a 2s TTL expired within the default 30s scan.
-- **A browse-only consumer is not in a queue's `consumerCount`** (2026-09-30, 2.55.0): a JMS
-  `QueueBrowser` held open mid-enumeration shows in Browser's `/broker` consumer list as "browse only",
-  while `listQueues`' `consumerCount` for that queue reads 0 — so Diagnose says "no consumer attached".
-  Open Browser defect for procedure Q01 (recorded in the Phase 15 plan); told apart only via the
-  consumer listing's browse-only flag.
+- **A browse-only consumer is not in a queue's `consumerCount`** (2026-09-30, measured on 2.55.0 and
+  2.57.0, `QueueBehaviorIT`): a JMS `QueueBrowser` held open mid-enumeration is in
+  `listAllConsumersAsJSON` with `browseOnly` true while `listQueues` reads `consumerCount` 0. Diagnose
+  used to say "no consumer attached" (procedure Q01); fixed — it counts browsers from the consumer
+  listing it already reads and says "Only browsers are attached … nothing is consuming it", and says
+  "not checked" when that listing is unreadable.
 - **`diskStoreUsage` reads 0 until the broker's first periodic disk check** (2026-09-30, 2.55.0 and 2.57.0):
   read straight after startup it was 0.0 on a broker with `max-disk-usage` 1%; a few seconds later it
   was above 1%. Poll for a reading. With `max-disk-usage` 1% the store counts as full with nothing
